@@ -55,14 +55,31 @@ export interface AuditReport {
 // ---------------------------------------------------------------------------
 
 /**
- * Match a single finding line. Captures:
+ * Strict shape: bracketed severity, e.g. "[error] path/to/file.ts:6 \u2014 \u2026".
+ * This is what the audit system prompt asks for verbatim.
+ *
+ * Captures:
  *   1: severity (error | warning | info), case-insensitive
- *   2: everything after the bracket — location + description + fix
+ *   2: everything after the bracket \u2014 location + description + fix
  *
  * Accepts optional leading numbering like "1. ", "1) ", "  2. " etc.
  */
-const FINDING_LINE =
+const STRICT_FINDING_LINE =
   /^\s*(?:\d+[.)\]]\s+)?\[(error|warning|info)\]\s+(.+)$/i;
+
+/**
+ * Loose shape: severity word without brackets, e.g.
+ * "error src/services/essays.ts:6 \u2014 \u2026". Some models drop the brackets
+ * even when the system prompt asks for them. We still require a path-like
+ * `<file>:<line>` token immediately after the severity so we don't catch
+ * prose lines that happen to start with "error" / "warning" / "info".
+ *
+ * Captures:
+ *   1: severity
+ *   2: the rest of the line, starting with the path:line token
+ */
+const LOOSE_FINDING_LINE =
+  /^\s*(?:\d+[.)\]]\s+)?(error|warning|info)\s+(\S+[\/.]\S*:\d+\s.*)$/i;
 
 /**
  * Split on runs of em-dash / en-dash / double-hyphen / ASCII hyphen that
@@ -75,35 +92,79 @@ const FIELD_SEPARATOR = /\s+[\u2014\u2013\-]{1,3}\s+/;
 const HEADER_LINE = /^\s*FINDINGS\s*\((\d+)\)\s*$/i;
 
 /**
+ * One slice of parsed output between (or before) `FINDINGS (N)` headers.
+ * Block-based parsing exists so a stray trailing `FINDINGS (0)` summary
+ * line can't silently overwrite the real findings the model just emitted.
+ */
+interface ParsedBlock {
+  /** The header's claimed count, or null for the implicit pre-header block. */
+  claimed: number | null;
+  findings: Finding[];
+}
+
+/**
  * Parse the final transcript of an audit run into a structured report.
  * `text` is the full concatenated assistant response. `meta` supplies
  * scope + model which the parser can't recover from the text.
+ *
+ * The parser slices the transcript into blocks, where each `FINDINGS (N)`
+ * header starts a new block. The chosen block is the **last one that
+ * actually contains parseable finding lines**, which means:
+ *   - A trailing `FINDINGS (0)` summary after a real finding list does
+ *     NOT clobber the findings.
+ *   - A model that emits findings without any header still works (they
+ *     land in the implicit pre-header block).
+ *   - When the model emits multiple non-empty blocks (a re-do, a delta),
+ *     the most recent one wins.
  */
 export function parseAuditTranscript(
   text: string,
   meta: { model: string; scope: string | null },
 ): AuditReport {
-  const findings: Finding[] = [];
-  let claimedTotal: number | null = null;
+  const blocks: ParsedBlock[] = [{ claimed: null, findings: [] }];
+  let runningIndex = 0;
 
   const lines = text.split(/\r?\n/);
   for (const raw of lines) {
     const headerMatch = HEADER_LINE.exec(raw);
     if (headerMatch) {
-      claimedTotal = parseInt(headerMatch[1], 10);
+      blocks.push({
+        claimed: parseInt(headerMatch[1], 10),
+        findings: [],
+      });
       continue;
     }
-    const finding = parseFindingLine(raw, findings.length);
-    if (finding) findings.push(finding);
+    const finding = parseFindingLine(raw, runningIndex);
+    if (finding) {
+      blocks[blocks.length - 1].findings.push(finding);
+      runningIndex++;
+    }
   }
+
+  // Last non-empty block wins. If every block is empty (model genuinely
+  // found nothing), fall back to the trailing block so the claimed count
+  // \u2014 typically zero \u2014 is preserved for the (mismatch-detection) check below.
+  let chosen: ParsedBlock = blocks[blocks.length - 1];
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].findings.length > 0) {
+      chosen = blocks[i];
+      break;
+    }
+  }
+
+  // Renumber ids deterministically against the chosen block so they
+  // stay 1..N regardless of how many blocks were dropped.
+  const findings: Finding[] = chosen.findings.map((f, i) => ({
+    ...f,
+    id: `F${i + 1}`,
+  }));
 
   const summary = summarize(findings);
   // Surface mismatch between what the model claimed and what we could
-  // parse, but don't treat it as a hard error \u2014 surfacing it in the
-  // report is enough.
-  if (claimedTotal !== null && claimedTotal !== summary.total) {
-    // We don't mutate anything; consumers can look at raw_transcript if
-    // they want to investigate the discrepancy.
+  // parse, but don't treat it as a hard error \u2014 the raw transcript is
+  // always preserved in the report so consumers can investigate.
+  if (chosen.claimed !== null && chosen.claimed !== summary.total) {
+    // intentionally silent; see comment above.
   }
 
   return {
@@ -119,7 +180,8 @@ export function parseAuditTranscript(
 }
 
 function parseFindingLine(raw: string, indexHint: number): Finding | null {
-  const m = FINDING_LINE.exec(raw);
+  let m = STRICT_FINDING_LINE.exec(raw);
+  if (!m) m = LOOSE_FINDING_LINE.exec(raw);
   if (!m) return null;
   const severity = m[1].toLowerCase() as Severity;
   const rest = m[2].trim();

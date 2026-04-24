@@ -274,12 +274,20 @@ export class AgentController {
    * only (e.g. 'audit' → Second Pass persona). `options.modelOverride`
    * forces a specific OpenRouter slug for the turn, bypassing the
    * auto-preset router and the session default.
+   *
+   * `options.maxToolRounds`, if set, overrides the Rust-side tool-round
+   * cap for THIS call only — useful for very large audits without
+   * permanently raising the user's `agent.max_tool_rounds` config.
    */
   async query(
     prompt: string,
     extraFiles: AgentFileContext[] = [],
     images: AgentImageContext[] = [],
-    options: { mode?: string; modelOverride?: string } = {},
+    options: {
+      mode?: string;
+      modelOverride?: string;
+      maxToolRounds?: number;
+    } = {},
   ): Promise<void> {
     if (!this.hasApiKey) {
       this.writeLineToTerm(
@@ -379,6 +387,11 @@ export class AgentController {
         context,
         model: resolvedModel,
         mode: options.mode ?? null,
+        // Tauri rewrites camelCase keys to snake_case for the Rust side,
+        // so this lands as `max_tool_rounds: Option<usize>` on agent_query.
+        // null → None, which means "use the Rust-side default (config
+        // value, or audit-mode boost when in audit mode)".
+        maxToolRounds: options.maxToolRounds ?? null,
       });
     } catch (err) {
       this.writeLineToTerm(`${PREFIX_OPEN}[agent error]${RESET} ${String(err)}`);

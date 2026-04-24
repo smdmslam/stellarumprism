@@ -43,17 +43,19 @@ export const MODES: Mode[] = [
   {
     name: "audit",
     aliases: ["/audit", "/second-pass"],
-    description: "Audit code for refactor incompleteness (read-only)",
+    description: "Verify code via the diagnostic substrate (read-only)",
     info:
-      "Read-only investigation that catches wiring gaps AI editors miss: " +
-      "renamed symbols still referenced, dead imports, callers passing old " +
-      "shapes to updated callees, half-applied renames. Outputs a structured " +
-      "findings list \u2014 no edits. " +
+      "Read-only verification that catches build and wiring failures editors miss. " +
+      "Runs the project's actual typecheck/build (tsc / cargo check / pyright / " +
+      "go build) FIRST, then cross-references compiler output with grep + " +
+      "git_diff to surface stale barrels, dead imports, half-applied renames, " +
+      "and call sites passing the wrong shape. Outputs a structured findings " +
+      "list \u2014 no edits. " +
       "Scope: '/audit' alone audits the working tree vs HEAD. Pass a ref " +
       "('/audit HEAD~3') to audit the last N commits as one refactor, a " +
       "range ('/audit HEAD~5..HEAD'), or a path ('/audit @src/pages') to " +
-      "scope to one file or directory. Uses grok-4-fast (2M context) by " +
-      "default.",
+      "scope to one file or directory. Pass --max-rounds=N for big audits. " +
+      "Uses grok-4-fast (2M context) by default.",
     preferredModel: "x-ai/grok-4-fast",
   },
 ];

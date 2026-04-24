@@ -35,6 +35,29 @@ pub struct AgentConfig {
     pub system_prompt: String,
     #[serde(default = "default_max_context_blocks")]
     pub max_context_blocks: usize,
+    /// Hard cap on tool-call rounds per agent turn.
+    ///
+    /// Each round is one upstream completion call: the model emits tool
+    /// calls, we execute them, and feed results back in another round.
+    /// Hitting this cap prints `[tool loop limit reached]` and stops the
+    /// turn. The default is sized for non-trivial audits (a 10-commit /
+    /// 8-file diff legitimately needs ~30 rounds when the model is
+    /// disciplined). Drop it for tighter feedback during development;
+    /// raise it for very large refactors.
+    #[serde(default = "default_max_tool_rounds")]
+    pub max_tool_rounds: usize,
+    /// Per-call timeout for the `typecheck` substrate tool, in seconds.
+    /// Audits run this first, so set high enough to cover a cold `tsc`
+    /// or `cargo check` on a large repo. Default 60.
+    #[serde(default = "default_typecheck_timeout_secs")]
+    pub typecheck_timeout_secs: u64,
+    /// Optional override for the typecheck command, as an argv array
+    /// (NOT a shell string). When set, this wins over the auto-detect
+    /// branches in `diagnostics::detect_typecheck_command`. Useful for
+    /// pinning a specific config-aware invocation, e.g.
+    /// `["pnpm", "-w", "run", "typecheck"]` in a monorepo.
+    #[serde(default)]
+    pub typecheck_command: Option<Vec<String>>,
     #[serde(default)]
     pub verifier: VerifierConfig,
 }
@@ -44,6 +67,9 @@ impl Default for AgentConfig {
         Self {
             system_prompt: default_system_prompt(),
             max_context_blocks: default_max_context_blocks(),
+            max_tool_rounds: default_max_tool_rounds(),
+            typecheck_timeout_secs: default_typecheck_timeout_secs(),
+            typecheck_command: None,
             verifier: VerifierConfig::default(),
         }
     }
@@ -215,6 +241,18 @@ question. Hard rules:\n\
 }
 fn default_max_context_blocks() -> usize {
     5
+}
+/// 40 rounds is enough for an 8-file / 10-commit refactor audit when the
+/// model is disciplined about grep-first / read-only-on-hit. The previous
+/// 8-round cap was too tight: a single audit run regularly burned the
+/// budget on bulk_read calls before reaching the findings list.
+fn default_max_tool_rounds() -> usize {
+    40
+}
+/// 60 seconds is enough for a cold `tsc --noEmit` or `cargo check` on a
+/// medium repo without making fast projects feel laggy.
+fn default_typecheck_timeout_secs() -> u64 {
+    60
 }
 
 /// Location of the config file: `$HOME/.config/prism/config.toml`.

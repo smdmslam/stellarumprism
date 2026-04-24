@@ -432,17 +432,26 @@ export class Workspace {
       return;
     }
 
-    // /audit [scope] — Second Pass mode. Scope (optional) is appended to
-    // the user message as context the auditor can use to narrow focus,
-    // e.g. '/audit HEAD~3' → 'Audit the diff HEAD~3..HEAD.'
+    // /audit [scope] [--max-rounds=N] — Second Pass mode. Scope (optional)
+    // is appended to the user message as context the auditor can use to
+    // narrow focus, e.g. '/audit HEAD~3' → 'Audit the diff HEAD~3..HEAD.'
+    // --max-rounds=N raises the tool-call ceiling for THIS turn only,
+    // without touching `agent.max_tool_rounds` in config.toml.
     const auditMatch = /^\s*\/(audit|second-pass)(?:\s+(.*))?$/i.exec(text);
     if (auditMatch) {
-      const scope = (auditMatch[2] ?? "").trim();
+      const rawArgs = (auditMatch[2] ?? "").trim();
       const mode = findMode("/audit");
       if (!mode) {
         // Shouldn't happen — audit is in the registry. Defensive fallback.
         this.term.write(
           `\r\n\x1b[1;31m[audit]\x1b[0m mode registry misconfigured\r\n`,
+        );
+        return;
+      }
+      const { scope, maxToolRounds, error } = parseAuditArgs(rawArgs);
+      if (error) {
+        this.term.write(
+          `\r\n\x1b[1;31m[audit]\x1b[0m ${sanitize(error)}\r\n`,
         );
         return;
       }
@@ -453,6 +462,7 @@ export class Workspace {
       void this.dispatchAgentQuery(auditPrompt, {
         mode: mode.name,
         modelOverride: mode.preferredModel,
+        maxToolRounds,
       });
       return;
     }
@@ -508,12 +518,17 @@ export class Workspace {
    * summary in xterm, and hand the result to the agent along with any
    * pending image attachments.
    *
-   * `options.mode` + `options.modelOverride` are forwarded straight to
-   * agent.query() for mode-based turns (e.g. /audit).
+   * `options.mode` + `options.modelOverride` + `options.maxToolRounds`
+   * are forwarded straight to agent.query() for mode-based turns
+   * (e.g. /audit, optionally with --max-rounds).
    */
   private async dispatchAgentQuery(
     prompt: string,
-    options: { mode?: string; modelOverride?: string } = {},
+    options: {
+      mode?: string;
+      modelOverride?: string;
+      maxToolRounds?: number;
+    } = {},
   ): Promise<void> {
     const refs = extractFileRefs(prompt);
     const { resolved, errors } =
@@ -955,6 +970,61 @@ function buildAuditPrompt(scope: string): string {
   }
   // Single ref — treat as "this commit vs its parent."
   return `Audit commit ${scope} (diff against ${scope}~1) for refactor incompleteness and wiring gaps. Start with git_diff on that range, then cross-reference touched symbols across the repo. Output only the findings list.`;
+}
+
+/**
+ * Parse the argument tail of `/audit ...`. Supports an optional
+ * `--max-rounds=N` (or `--max-rounds N`) flag that raises the tool-call
+ * cap for this turn only; everything else is treated as the audit scope.
+ *
+ * Returns one of:
+ *   - { scope, maxToolRounds }            — success; either or both may be empty
+ *   - { scope: "", error: "…" }           — malformed flag value (NaN, < 1)
+ *
+ * The flag form is intentionally narrow: we don't try to cover every
+ * possible CLI-style permutation. If users want a specific rounds value
+ * they pass `--max-rounds=80` and we honor it; everything else is scope.
+ */
+function parseAuditArgs(raw: string): {
+  scope: string;
+  maxToolRounds?: number;
+  error?: string;
+} {
+  if (!raw) return { scope: "" };
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  let maxToolRounds: number | undefined;
+  const scopeTokens: string[] = [];
+
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    // --max-rounds=N
+    const eqMatch = /^--max-rounds=(.+)$/.exec(t);
+    if (eqMatch) {
+      const n = Number(eqMatch[1]);
+      if (!Number.isFinite(n) || n < 1) {
+        return { scope: "", error: `--max-rounds expects a positive integer, got "${eqMatch[1]}"` };
+      }
+      maxToolRounds = Math.floor(n);
+      continue;
+    }
+    // --max-rounds N (space-separated)
+    if (t === "--max-rounds") {
+      const next = tokens[i + 1];
+      if (next === undefined) {
+        return { scope: "", error: "--max-rounds expects a value (e.g. --max-rounds=80)" };
+      }
+      const n = Number(next);
+      if (!Number.isFinite(n) || n < 1) {
+        return { scope: "", error: `--max-rounds expects a positive integer, got "${next}"` };
+      }
+      maxToolRounds = Math.floor(n);
+      i++; // consume the value token
+      continue;
+    }
+    scopeTokens.push(t);
+  }
+
+  return { scope: scopeTokens.join(" "), maxToolRounds };
 }
 
 function shortModelName(model: string): string {

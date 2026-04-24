@@ -343,6 +343,28 @@ pub fn tool_schema() -> Value {
                     "required": ["paths"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "typecheck",
+                "description": "Run the project's typecheck/build command and return parsed compile diagnostics. This is the substrate's ground-truth check \u{2014} use it FIRST in any audit. Auto-detects the right command from the repo (tsc/cargo check/go build/pyright). Returns { command, exit_code, duration_ms, diagnostics: [{source, file, line, col, severity, code, message}], diagnostics_truncated, raw, raw_truncated, timed_out }. A non-zero exit_code with diagnostics is the typical 'project has errors' case \u{2014} not a tool failure. Empty diagnostics + exit 0 = the project compiles cleanly. Diagnostics are capped at 200 entries and raw output at 8 KB.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Optional argv-array override (e.g. [\"pnpm\", \"-w\", \"run\", \"typecheck\"]). Must be an array, not a shell string. Wins over auto-detection and config."
+                        },
+                        "timeout_secs": {
+                            "type": "integer",
+                            "description": "Per-call timeout in seconds. Defaults to the configured value (60)."
+                        }
+                    },
+                    "required": []
+                }
+            }
         }
     ])
 }
@@ -378,6 +400,13 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
         "git_log" => tool_git_log(args_json, cwd),
         "git_diff" => tool_git_diff(args_json, cwd),
         "bulk_read" => tool_bulk_read(args_json, cwd),
+        "typecheck" => {
+            // Without config-driven defaults, fall back to the substrate's
+            // built-in defaults. Production callers go through
+            // `execute_typecheck` instead, which threads through the
+            // user's `agent.typecheck_command` + `typecheck_timeout_secs`.
+            tool_typecheck(args_json, cwd, None, None)
+        }
         "web_search" => Err(
             "web_search is async; dispatch via execute_web_search instead of execute".into(),
         ),
@@ -396,13 +425,48 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
     }
 }
 
+/// Like `execute` but threads through the user's typecheck-command and
+/// timeout config so the tool's substrate call uses the right defaults.
+/// Argument-level overrides on the call itself still win.
+pub fn execute_typecheck(
+    args_json: &str,
+    cwd: &str,
+    config_command: Option<&[String]>,
+    config_timeout_secs: u64,
+) -> ToolInvocation {
+    let result = tool_typecheck(
+        args_json,
+        cwd,
+        config_command,
+        Some(config_timeout_secs),
+    );
+    match result {
+        Ok((summary, payload)) => ToolInvocation { ok: true, summary, payload },
+        Err(e) => {
+            let payload = json!({ "error": e }).to_string();
+            ToolInvocation {
+                ok: false,
+                summary: format!("error: {}", e),
+                payload,
+            }
+        }
+    }
+}
+
 /// True iff the tool must be dispatched through the async entry point.
 pub fn is_async_tool(name: &str) -> bool {
     matches!(name, "web_search")
 }
 
+/// True iff the tool needs config-driven defaults that the generic
+/// `execute()` doesn't have. The agent loop dispatches these through a
+/// dedicated entry point so per-user defaults are honored.
+pub fn needs_config_dispatch(name: &str) -> bool {
+    matches!(name, "typecheck")
+}
+
 // ---------------------------------------------------------------------------
-// web_search (async \u2014 network-backed)
+// web_search (async \u{2014} network-backed)
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -444,7 +508,7 @@ struct SonarResponseMessage {
 /// OpenRouter. Returns a ToolInvocation whose payload is the prose answer
 /// (including whatever inline citations Sonar chose to emit).
 ///
-/// Intentionally does NOT send the full conversation history \u2014 Sonar is
+/// Intentionally does NOT send the full conversation history \u{2014} Sonar is
 /// a one-shot search backend, not a chat participant. The primary agent
 /// model handles synthesis across multiple searches.
 pub async fn execute_web_search(
@@ -1492,6 +1556,69 @@ fn format_bytes(n: u64) -> String {
     } else {
         format!("{:.1} MB", n as f64 / (1024.0 * 1024.0))
     }
+}
+
+// ---------------------------------------------------------------------------
+// typecheck (substrate v1)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Default)]
+struct TypecheckArgs {
+    /// argv-array override. Wins over auto-detect AND config when present.
+    #[serde(default)]
+    command: Option<Vec<String>>,
+    /// Per-call timeout in seconds. Wins over the configured default.
+    #[serde(default)]
+    timeout_secs: Option<u64>,
+}
+
+/// Wrapper that delegates the heavy lifting to the diagnostics module.
+/// Returns a (summary, payload) pair shaped like every other tool.
+fn tool_typecheck(
+    args_json: &str,
+    cwd: &str,
+    config_command: Option<&[String]>,
+    config_timeout_secs: Option<u64>,
+) -> Result<(String, String), String> {
+    let args: TypecheckArgs = if args_json.trim().is_empty() {
+        TypecheckArgs::default()
+    } else {
+        serde_json::from_str(args_json).map_err(|e| format!("invalid arguments: {}", e))?
+    };
+
+    // Override priority: per-call args > config > auto-detect (handled by
+    // diagnostics::run_typecheck when override_argv is None).
+    let override_argv: Option<Vec<String>> = args
+        .command
+        .clone()
+        .or_else(|| config_command.map(|s| s.to_vec()));
+    let timeout = args
+        .timeout_secs
+        .or(config_timeout_secs)
+        .map(std::time::Duration::from_secs);
+
+    let run = crate::diagnostics::run_typecheck(cwd, override_argv.as_deref(), timeout)?;
+
+    let n = run.diagnostics.len();
+    let errs = run.diagnostics.iter().filter(|d| matches!(d.severity, crate::diagnostics::Severity::Error)).count();
+    let warns = run.diagnostics.iter().filter(|d| matches!(d.severity, crate::diagnostics::Severity::Warning)).count();
+    let exit_part = match run.exit_code {
+        Some(c) => format!("exit {}", c),
+        None => "no exit".to_string(),
+    };
+    let summary = format!(
+        "typecheck \u{2192} {} \u{2014} {} diag{} ({} error, {} warning){}{}",
+        run.command.first().map(|s| s.as_str()).unwrap_or(""),
+        n,
+        if n == 1 { "" } else { "s" },
+        errs,
+        warns,
+        if run.timed_out { ", timed out" } else { "" },
+        format!(" [{}]", exit_part),
+    );
+
+    let payload = crate::diagnostics::to_finding_payload(&run).to_string();
+    Ok((summary, payload))
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 mod agent;
 mod approval;
 mod config;
+mod diagnostics;
 mod file_ref;
 mod pty;
 mod save_chat;

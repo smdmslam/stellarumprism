@@ -30,63 +30,100 @@ const MAX_HISTORY_MESSAGES: usize = 40;
 /// files at once. User can still override via /model before calling /audit.
 const AUDIT_DEFAULT_MODEL: &str = "x-ai/grok-4-fast";
 
+/// Tool-round cap for audit turns when no per-call override and no config
+/// override is in play. Audits cross-reference symbols across the whole
+/// repo, so they need a higher ceiling than chat turns. This is what the
+/// `/audit` slash command effectively gets unless the user has tuned
+/// `agent.max_tool_rounds` upward already.
+const AUDIT_MODE_MAX_TOOL_ROUNDS: usize = 60;
+
 /// System prompt used only when the frontend passes mode="audit". Replaces
 /// the general persona for a single turn; session history is unchanged.
-const AUDIT_SYSTEM_PROMPT: &str = "You are Second Pass, a refactor auditor. \
-Your job is to find the things an AI-powered editor missed when it \
-refactored this codebase. You MUST NOT edit, create, or delete files. \
-You produce one artifact: a numbered list of findings.\n\
+///
+/// This prompt is **compiler-first**: the diagnostic substrate (typecheck,
+/// future LSP, future runtime probes) is the source of correctness truth,
+/// and the LLM's job is to interpret and prioritize substrate output, not
+/// to re-derive correctness from source text.
+const AUDIT_SYSTEM_PROMPT: &str = "You are Second Pass, the verifier that \
+catches what AI-powered editors missed. You sit on top of a diagnostic \
+substrate: deterministic checks (compiler, cross-reference, soon LSP and \
+runtime probes) that ground every finding in real evidence. Your job is \
+to run the substrate, interpret what it surfaces, and produce a \
+structured findings list. You MUST NOT edit, create, or delete files.\n\
 \n\
-WHAT TO LOOK FOR:\n\
-  - Renamed symbols: old name still referenced somewhere in the repo\n\
-  - Signature changes: callers still pass the old shape to callees that \
-    now expect the new shape\n\
-  - Removed exports that are still imported\n\
-  - Dead imports left over from the refactor\n\
-  - Tests / fixtures still targeting the old API or old schema\n\
-  - Routes, config keys, CSS selectors, env vars that were renamed \
-    but not fully propagated\n\
-  - Half-applied find-and-replace (N matches, only N-1 updated)\n\
-  - TypeScript/Rust compile errors hiding behind type-safety holes \
-    (any, unsafe, unchecked casts)\n\
+GROUND TRUTH HIERARCHY (most authoritative first):\n\
+  1. typecheck output \u{2014} the project's actual compiler. If typecheck \
+     reports an error, it IS an error.\n\
+  2. grep / read_file evidence in the repo \u{2014} used to confirm and \
+     localize problems the substrate surfaces.\n\
+  3. git_diff / git_log \u{2014} prioritization signal only. They tell you \
+     WHICH issues likely matter most (recently touched code), not \
+     WHETHER something is real.\n\
+  4. Your training-era knowledge \u{2014} LAST resort, frequently wrong about \
+     this specific codebase.\n\
 \n\
-HOW TO WORK:\n\
-  1. Start with git_diff (or git_log + git_diff) to see what actually \
-     changed. Don't skip this. The diff is your ground truth for \
-     'what was touched'.\n\
-  2. For every symbol added, renamed, removed, or changed in the diff, \
-     use grep across the whole repo to verify its uses are consistent.\n\
-  3. Use find to enumerate likely follow-up files (tests, fixtures, \
-     docs) that might reference the changed symbols.\n\
-  4. Use bulk_read to pull in many related files in one call when \
-     you need context across several.\n\
-  5. Do not rely on your training-era knowledge of this codebase. The \
-     tool results are the only source of truth.\n\
+INVESTIGATION ORDER (mandatory):\n\
+  1. CALL typecheck FIRST. This is non-optional. Use the tool with no \
+     arguments to run the project's auto-detected build/typecheck \
+     command. Read every diagnostic. Each one is a likely Finding with \
+     severity=error.\n\
+  2. For each compiler diagnostic, cross-reference with grep / \
+     read_file to confirm and write a precise suggested fix. Report it \
+     as: '[error] path:line \u{2014} <compiler message, condensed> \u{2014} \
+     <concrete fix>'.\n\
+  3. After the compiler-backed pass, look for non-compiler wiring gaps \
+     the type system can't see:\n\
+        - stale barrel re-exports in index files\n\
+        - dynamic require/import with string literals pointing at \
+          renamed/moved files\n\
+        - removed-but-still-referenced symbols (compile passes only \
+          because a wildcard re-export hides the gap)\n\
+        - half-applied renames in routes, config keys, CSS selectors, \
+          i18n, env vars, docs\n\
+        - call sites passing the old shape to callees that now expect \
+          the new shape, when the type-system was permissive enough to \
+          let it through\n\
+     Use grep + git_diff + git_log to scope these. Report each as \
+     '[warning]' or '[error]' depending on whether you can prove it \
+     will break at runtime.\n\
+  4. If typecheck reports zero diagnostics AND step 3 surfaces nothing, \
+     output FINDINGS (0). Don't manufacture warnings to look thorough.\n\
+\n\
+ANTI-FALSE-POSITIVE RULES (strict):\n\
+  - Do NOT flag '.js' vs '.ts' import-extension issues unless typecheck \
+     reported them. Modern TS configs (NodeNext, bundler) accept both.\n\
+  - Do NOT flag 'looks-broken-in-source-but-compiles-fine' issues of \
+     any kind. If the compiler is happy, the burden of proof is on you \
+     to show why the runtime behavior is wrong.\n\
+  - Do NOT speculate. If grep didn't return a hit, the symbol isn't \
+     used; do not suggest 'might be used somewhere not searched'.\n\
+  - Do NOT report a finding twice (once from compiler output, once \
+     from grep). Dedupe before emitting.\n\
 \n\
 OUTPUT CONTRACT (mandatory format):\n\
-  - After you've finished investigating, produce a single report.\n\
+  - After investigating, produce one report. No prose preamble.\n\
   - Start with 'FINDINGS (N)' where N is the total count.\n\
   - Then one line per finding, in this exact shape:\n\
       [severity] path/to/file.ext:line \u{2014} description \u{2014} suggested fix\n\
   - Valid severities: error, warning, info.\n\
-  - 'error' = definitely broken or will break at runtime.\n\
-  - 'warning' = likely bug, smell, or inconsistency worth fixing.\n\
-  - 'info' = observation the user should know about but isn't a bug.\n\
-  - Use the 7-character short line-format; one finding per line. \
-    Keep the description to a single sentence.\n\
-  - If there's genuinely nothing wrong, output 'FINDINGS (0)' and a \
-    one-sentence reason you checked but found nothing.\n\
+  - 'error' = compiler-confirmed OR provably runtime-broken.\n\
+  - 'warning' = likely bug or wiring gap with strong but not absolute \
+     evidence.\n\
+  - 'info' = observation the user should know about; not a bug.\n\
+  - One finding per line. Keep description to a single sentence.\n\
+  - If genuinely nothing is wrong, output exactly 'FINDINGS (0)' and a \
+     one-sentence summary of what you checked. Do NOT emit both a \
+     non-zero block and a trailing 'FINDINGS (0)' summary; the parser \
+     treats the last non-empty block as canonical.\n\
 \n\
 WHAT NOT TO DO:\n\
-  - Do not propose or call edit_file / write_file. Your job is to \
-     report, not to fix.\n\
-  - Do not emit a 'Summary', 'Timeline', 'Next steps', or 'Here are \
-     some commands to run' section. The findings list is the entire \
-     deliverable.\n\
-  - Do not wrap the list in prose explaining the methodology. The \
+  - Do not call edit_file / write_file. You report, you don't fix.\n\
+  - Do not emit 'Summary', 'Timeline', 'Next steps', 'Recommendations', \
+     or any other section beyond the findings list.\n\
+  - Do not wrap findings in prose explaining your methodology. The \
      tool-call log already shows what you did.\n\
-  - Do not speculate about problems you couldn't verify from tool \
-     output. If you can't prove it, don't list it.";
+  - Do not skip typecheck because 'the diff looks small'. The compiler \
+     is fast and definitive; running it is always the right first step.";
 
 // ---------------------------------------------------------------------------
 // Request types
@@ -428,6 +465,12 @@ pub async fn agent_query(
     context: Option<AgentContext>,
     model: Option<String>,
     mode: Option<String>,
+    // Per-call override for the tool-round cap. Takes precedence over
+    // the audit-mode default and the user's `agent.max_tool_rounds`
+    // config setting. Surface this from the frontend (slash commands,
+    // /audit --max-rounds N syntax) when one specific turn needs more
+    // headroom without permanently raising the global cap.
+    max_tool_rounds: Option<usize>,
 ) -> Result<String, String> {
     let snapshot = cfg.snapshot();
     if snapshot.openrouter.api_key.is_empty() {
@@ -484,6 +527,21 @@ pub async fn agent_query(
     // Clone the prompt into an owned String so the spawned task can use it.
     let mode_system_prompt = mode_system_prompt.map(|s| s.to_string());
 
+    // Tool-round cap priority: explicit caller override > audit mode default
+    // (when in audit mode) > the user's config setting. This keeps the
+    // common case (audit needs more rounds than chat) self-tuning while
+    // letting power users dial it any direction without recompiling.
+    let max_tool_rounds = max_tool_rounds
+        .or_else(|| {
+            if matches!(mode.as_deref(), Some("audit")) {
+                Some(AUDIT_MODE_MAX_TOOL_ROUNDS.max(snapshot.agent.max_tool_rounds))
+            } else {
+                None
+            }
+        })
+        .unwrap_or(snapshot.agent.max_tool_rounds)
+        .max(1);
+
     // Capture cwd for tool execution (kept outside the session so tools can
     // always resolve relative paths regardless of conversation history).
     let cwd_for_tools = context
@@ -495,6 +553,11 @@ pub async fn agent_query(
     // pass (run after the primary completes) sees them.
     let verifier_cfg = snapshot.agent.verifier.clone();
     let original_prompt = prompt.clone();
+
+    // Capture typecheck-substrate config so the spawned task can dispatch
+    // `typecheck` tool calls with the user's project-specific defaults.
+    let typecheck_command = snapshot.agent.typecheck_command.clone();
+    let typecheck_timeout_secs = snapshot.agent.typecheck_timeout_secs;
 
     // Clone the approval maps (Arc bumps) so the spawned task can gate
     // write tool calls on user consent without holding Tauri State.
@@ -511,7 +574,7 @@ pub async fn agent_query(
         let done_event = format!("agent-done-{}", id_for_task);
         let error_event = format!("agent-error-{}", id_for_task);
 
-        const MAX_TOOL_ROUNDS: usize = 8;
+        let max_rounds = max_tool_rounds;
         let mut total_chars_all = 0usize;
         let mut final_assistant_text = String::new();
         let mut final_cancelled = false;
@@ -520,7 +583,7 @@ pub async fn agent_query(
 
         // Tool-use loop: stream → if tools requested, execute & continue; else break.
         let mut attach_images_this_turn = !pending_images.is_empty();
-        for round in 0..MAX_TOOL_ROUNDS {
+        for round in 0..max_rounds {
             let snapshot = session_for_task.snapshot();
             let images_for_turn: &[AgentImage] = if attach_images_this_turn {
                 &pending_images
@@ -631,6 +694,19 @@ pub async fn agent_query(
                                             .to_string(),
                                         },
                                     }
+                                } else if crate::tools::needs_config_dispatch(
+                                    &call.function.name,
+                                ) {
+                                    // Tools that depend on user config
+                                    // (currently just `typecheck`) get the
+                                    // dedicated entry point so per-user
+                                    // defaults are honored.
+                                    crate::tools::execute_typecheck(
+                                        &call.function.arguments,
+                                        &cwd_for_tools,
+                                        typecheck_command.as_deref(),
+                                        typecheck_timeout_secs,
+                                    )
                                 } else {
                                     crate::tools::execute(
                                         &call.function.name,
@@ -683,12 +759,16 @@ pub async fn agent_query(
                 }
             }
 
-            if round + 1 == MAX_TOOL_ROUNDS {
+            if round + 1 == max_rounds {
                 // Cap reached — emit a gentle note into the stream so the
-                // user sees we stopped iterating on purpose.
+                // user sees we stopped iterating on purpose, with a hint
+                // toward the knob they can turn.
                 let _ = app_handle.emit(
                     &token_event,
-                    "\n\n[tool loop limit reached]\n".to_string(),
+                    format!(
+                        "\n\n[tool loop limit reached after {} rounds \u{2014} raise `agent.max_tool_rounds` in config.toml or pass max_tool_rounds on this call]\n",
+                        max_rounds,
+                    ),
                 );
             }
         }

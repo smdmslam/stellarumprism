@@ -8,9 +8,11 @@
 
 AI coding tools (Cursor, Antigravity, Copilot) are now good enough to execute large refactors. They are **not** good enough to execute them completely. Every meaningful refactor ships with incomplete renames, dangling references, half-rewired call sites, and dead imports — and the very tool that made the refactor is the wrong tool to audit it.
 
-**Prism Second Pass** is a terminal-native AI verifier whose entire job is to catch what the editor missed. It reads the whole repo (or the specific diff), cross-references every symbol touched by the refactor, and produces a structured findings report: *what's broken, where, and how to fix it*.
+**Prism Second Pass** is a terminal-native AI verifier whose entire job is to catch what the editor missed. It reads the whole repo (or the specific diff), runs the actual compiler, cross-references every symbol touched by the refactor, and produces a structured findings report: *what's broken, where, and how to fix it*.
 
-It's not an IDE. It's the tool you run **after** your IDE.
+Underneath, it's something more durable than a verifier. Prism is a **diagnostic substrate** — a stack of deterministic checks (compile, cross-reference, type-shape match, runtime probe) that any consumer can query. Today the consumer is `/audit`. Tomorrow it's `/fix`, a pre-commit hook, an in-editor problems panel. Same checks, different surfaces. That's the substrate the IDE phase will be built on.
+
+It's not an IDE today. It's the tool you run **after** your IDE — and the foundation on which our IDE, when it ships, will be the only one where every edit is verified before it's accepted.
 
 ---
 
@@ -37,9 +39,11 @@ The result: every major AI-assisted refactor carries hidden debt. The industry h
 
 ## The solution
 
-Prism Second Pass is a dedicated verification agent with three things the editor doesn't have:
+Prism Second Pass is a *diagnostic substrate* with a thin LLM consumer on top. The substrate runs deterministic checks the LLM can't fake: compile the project, walk imports, diff against any ref, query the filesystem. The consumer ranks, dedupes, and writes the findings report. Pushing the deterministic work below the LLM is what makes the output trustworthy — the model can only flag what the substrate confirms.
 
-1. **Audit-tuned tooling.** `grep`, `find`, `git_diff`, `bulk_read` over the real filesystem — not an in-editor proxy. The agent can enumerate every caller of a symbol, diff against any git reference, and read dozens of files in a single pass.
+It pairs that substrate with three things the editor doesn't have:
+
+1. **Audit-tuned tooling and a build runner.** `grep`, `find`, `git_diff`, `bulk_read`, plus a `typecheck` tool that runs the project's actual `tsc` / `cargo check` / `pyright` / `go build` and parses real diagnostics. Cursor and Antigravity can't afford to do this on every edit — their UX optimizes for inline-completion latency. We can, because terminal users already accept a per-turn budget.
 2. **Long-context routing by default.** Audits route to 1M–2M context models (Grok 4 Fast, GPT-5.4) so the whole repo fits. No chunking, no progressive-rediscovery tax.
 3. **A review persona, not an edit persona.** The system prompt explicitly forbids edits and instructs the agent to produce a structured findings list: `[severity] file:line — description — suggested fix`. The output isn't prose; it's a checklist you work through.
 
@@ -105,6 +109,7 @@ Three market conditions make this the right wedge, right now.
 Against the general AI-coding market:
 
 - **Dedicated reviewer persona.** Not an afterthought in a generalist agent.
+- **Compiler-grounded.** The substrate runs the project's actual build. Findings the LLM emits are confirmed by deterministic checks, not inferred from source text. False positives drop accordingly.
 - **Scanning tools, not just edit tools.** grep / find / git_diff are first-class.
 - **Long-context by default for audits.** Routes to 1M–2M ctx models automatically.
 - **Structured output.** Findings are a checklist, not a paragraph.
@@ -170,14 +175,16 @@ Each is the same agent + tool set + structured output pattern, specialized by sy
 
 **Editor surface** (months):
 
-Once users live in Prism for verification-adjacent work, extending them into editing is a much smaller leap than landing them cold against Cursor. The IDE phase adds:
+Once users live in Prism for verification-adjacent work, extending them into editing is a much smaller leap than landing them cold against Cursor. And critically: the IDE phase doesn't add a new product. It adds a new *renderer* on top of the diagnostic substrate that already exists. Squiggles, problems panel, pre-commit verification, and inline `Cmd+K` edits that won't apply unless they pass the substrate's checks. Same Findings schema. Same checks. New surface.
+
+The IDE phase adds:
 
 - CodeMirror editor pane
 - File tree
-- Inline `Cmd+K` agent edit on selection
-- Git UI, diff viewer, LSP diagnostics (which render as the same findings schema from Second Pass)
+- Inline `Cmd+K` agent edit on selection — gated on the substrate
+- Git UI, diff viewer, LSP diagnostics rendered through the same Findings schema
 
-This is the classic Cursor play run in reverse: Cursor started as an editor and grew into a reviewer. Prism starts as a reviewer and grows into an editor. In a crowded editor market, the reviewer wedge is the cheaper door in.
+This is the classic Cursor play run in reverse, but with a structural advantage. Cursor started as an editor and bolted reviewing on top — where reviewing has to fight the editor's speed-first architecture for every CPU cycle. Prism starts as a reviewer and grows an editor that *inherits* the reviewer's correctness floor. In a crowded editor market, "every edit is verified before it's accepted" is a position no one currently holds.
 
 ## Opportunity
 
