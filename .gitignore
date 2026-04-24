@@ -25,7 +25,7 @@ dist-ssr
 
 # Rust / Tauri build output
 src-tauri/target/
-src-tauri/gen/schemas/
+src-tauri/gen/
 **/*.rs.bk
 *.pdb
 
