@@ -9,8 +9,15 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+
+/// OpenRouter slug for the backing web search model. Hardcoded here since
+/// web_search is an internal tool, not a user-facing model choice.
+const WEB_SEARCH_MODEL: &str = "perplexity/sonar";
+/// Cap what we send back to the primary model so a single web_search call
+/// can't blow the context window.
+const MAX_WEB_SEARCH_BYTES: usize = 8 * 1024;
 
 /// Maximum bytes returned from a single read_file call. Must be consistent
 /// with file_ref.rs's cap so the agent sees the same truncation semantics.
@@ -176,6 +183,23 @@ pub fn tool_schema() -> Value {
                     "required": ["path", "old_string", "new_string"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "web_search",
+                "description": "Perform a live web search via Perplexity Sonar. Use this for questions that require up-to-date information \u{2014} current events, release dates, prices, news, versions of software announced after your training cutoff, pop-up events, schedules, etc. Returns a prose answer grounded in web sources, with inline citations where Sonar provides them. You can call this multiple times in a single turn to refine or cross-reference (e.g. first a broad query, then a narrower follow-up). Do NOT use this for questions about local files or the user's project \u{2014} use read_file / list_directory for those.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Natural-language search query. Be specific; treat it like a Google-style search rather than a chat question."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
         }
     ])
 }
@@ -195,6 +219,10 @@ pub struct ToolInvocation {
 ///
 /// The returned `payload` is what we send back to the LLM as the tool result.
 /// `summary` is a short human-readable line we print in xterm.
+///
+/// This is synchronous and covers every filesystem tool. Network-backed
+/// tools (currently just `web_search`) have their own async entry point
+/// (`execute_web_search`) dispatched by the agent loop.
 pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
     let result: Result<(String, String), String> = match name {
         "read_file" => tool_read_file(args_json, cwd),
@@ -202,6 +230,9 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
         "get_cwd" => Ok((format!("{}", cwd), json!({ "cwd": cwd }).to_string())),
         "write_file" => tool_write_file(args_json, cwd),
         "edit_file" => tool_edit_file(args_json, cwd),
+        "web_search" => Err(
+            "web_search is async; dispatch via execute_web_search instead of execute".into(),
+        ),
         other => Err(format!("unknown tool: {}", other)),
     };
     match result {
@@ -214,6 +245,155 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
                 payload,
             }
         }
+    }
+}
+
+/// True iff the tool must be dispatched through the async entry point.
+pub fn is_async_tool(name: &str) -> bool {
+    matches!(name, "web_search")
+}
+
+// ---------------------------------------------------------------------------
+// web_search (async \u2014 network-backed)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct WebSearchArgs {
+    query: String,
+}
+
+#[derive(Serialize)]
+struct SonarRequest<'a> {
+    model: &'a str,
+    messages: Vec<SonarMessage<'a>>,
+    stream: bool,
+}
+
+#[derive(Serialize)]
+struct SonarMessage<'a> {
+    role: &'a str,
+    content: &'a str,
+}
+
+#[derive(Deserialize)]
+struct SonarResponse {
+    #[serde(default)]
+    choices: Vec<SonarChoice>,
+}
+
+#[derive(Deserialize)]
+struct SonarChoice {
+    message: SonarResponseMessage,
+}
+
+#[derive(Deserialize)]
+struct SonarResponseMessage {
+    #[serde(default)]
+    content: String,
+}
+
+/// Execute `web_search` by posting the query to perplexity/sonar via
+/// OpenRouter. Returns a ToolInvocation whose payload is the prose answer
+/// (including whatever inline citations Sonar chose to emit).
+///
+/// Intentionally does NOT send the full conversation history \u2014 Sonar is
+/// a one-shot search backend, not a chat participant. The primary agent
+/// model handles synthesis across multiple searches.
+pub async fn execute_web_search(
+    args_json: &str,
+    api_key: &str,
+    base_url: &str,
+) -> ToolInvocation {
+    let args: WebSearchArgs = match serde_json::from_str(args_json) {
+        Ok(a) => a,
+        Err(e) => return err_invocation(format!("invalid arguments: {}", e)),
+    };
+    let query = args.query.trim();
+    if query.is_empty() {
+        return err_invocation("empty query".into());
+    }
+
+    let client = match reqwest::Client::builder().build() {
+        Ok(c) => c,
+        Err(e) => return err_invocation(format!("http client: {}", e)),
+    };
+
+    let body = SonarRequest {
+        model: WEB_SEARCH_MODEL,
+        messages: vec![SonarMessage {
+            role: "user",
+            content: query,
+        }],
+        stream: false,
+    };
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+
+    let resp = match client
+        .post(&url)
+        .bearer_auth(api_key)
+        .header("HTTP-Referer", "https://prism.local")
+        .header("X-Title", "Prism")
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return err_invocation(format!("network: {}", e)),
+    };
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return err_invocation(format!(
+            "Sonar {}: {}",
+            status,
+            truncate_preview(&text, 400)
+        ));
+    }
+
+    let parsed: SonarResponse = match resp.json().await {
+        Ok(p) => p,
+        Err(e) => return err_invocation(format!("parse sonar response: {}", e)),
+    };
+    let Some(choice) = parsed.choices.into_iter().next() else {
+        return err_invocation("sonar returned no choices".into());
+    };
+    let mut answer = choice.message.content;
+    if answer.trim().is_empty() {
+        return err_invocation("sonar returned empty answer".into());
+    }
+    let mut truncated = false;
+    if answer.len() > MAX_WEB_SEARCH_BYTES {
+        truncated = true;
+        answer.truncate(MAX_WEB_SEARCH_BYTES);
+        answer.push_str("\n\n[\u{2026} truncated]");
+    }
+    let summary = format!(
+        "searched \"{}\" ({}{})",
+        truncate_preview(query, 60),
+        format_bytes(answer.len() as u64),
+        if truncated { ", truncated" } else { "" }
+    );
+    let payload = json!({
+        "query": query,
+        "model": WEB_SEARCH_MODEL,
+        "truncated": truncated,
+        "answer": answer,
+    })
+    .to_string();
+    ToolInvocation {
+        ok: true,
+        summary,
+        payload,
+    }
+}
+
+fn err_invocation(msg: String) -> ToolInvocation {
+    let payload = json!({ "error": msg }).to_string();
+    ToolInvocation {
+        ok: false,
+        summary: format!("error: {}", msg),
+        payload,
     }
 }
 

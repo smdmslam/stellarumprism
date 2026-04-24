@@ -15,9 +15,12 @@
 
 import { modelSupportsToolUse } from "./models";
 
+// Note: there is intentionally no "web" category here. Web lookups are
+// handled by the primary agent calling the `web_search` tool, which the
+// Rust backend dispatches to Perplexity Sonar. The router never swaps
+// models for web questions.
 export type RouteCategory =
   | "vision"
-  | "web"
   | "code-gen"
   | "code-review"
   | "default";
@@ -50,7 +53,6 @@ export type RoutePreset = "frontier" | "agentic" | "thrifty";
 
 interface PresetTable {
   vision: string;
-  web: string;
   codeGen: string;
   codeReview: string;
   default: string;
@@ -60,7 +62,6 @@ export const PRESETS: Record<RoutePreset, PresetTable> = {
   // Auto 1 — Frontier. Quality > cost. Best models across the board.
   frontier: {
     vision: "openai/gpt-5.4",
-    web: "perplexity/sonar",
     codeGen: "openai/gpt-5.4",
     codeReview: "x-ai/grok-4-fast", // 2M ctx — great for whole-repo reads
     default: "openai/gpt-5.4",
@@ -68,7 +69,6 @@ export const PRESETS: Record<RoutePreset, PresetTable> = {
   // Auto 2 — Agentic. Tool-use specialists, open-leaning. DEFAULT preset.
   agentic: {
     vision: "moonshotai/kimi-k2.5",
-    web: "perplexity/sonar",
     codeGen: "qwen/qwen3.6-plus",
     codeReview: "z-ai/glm-5",
     default: "moonshotai/kimi-k2.5",
@@ -76,7 +76,6 @@ export const PRESETS: Record<RoutePreset, PresetTable> = {
   // Auto 3 — Thrifty. Cheap + fast, still thoughtful (no Flash).
   thrifty: {
     vision: "moonshotai/kimi-k2.5",
-    web: "perplexity/sonar",
     codeGen: "deepseek/deepseek-v3.2",
     codeReview: "stepfun/step-3.5-flash",
     default: "openai/gpt-oss-120b:exacto",
@@ -105,13 +104,7 @@ export function parseAutoSlug(model: string): RoutePreset | null {
   }
 }
 
-// Time-sensitive / external-lookup signals. Intentionally does NOT include
-// "current" — "current directory / file / branch / status" is local context,
-// not a web query, and routing those to Sonar (no tool-use) returns 404.
-const WEB_SIGNALS =
-  /\b(latest|newest|today|this (week|month|year)|recent(ly)?|news|updated?|docs? for|changelog|release[d]?|202[4-9]|what's new|whats new)\b/i;
-
-// Pure code GENERATION verbs — the user wants the model to produce NEW
+// Pure code GENERATION verbs
 // code from scratch rather than understand and modify an existing
 // codebase. These route to Devstral (cheap code-specialist). Existing-
 // code modifications (change/update/edit/refactor) go to Haiku instead,
@@ -173,9 +166,8 @@ function softPick(
   if (signals.hasImages) {
     return { slug: table.vision, reason: "vision input", category: "vision" };
   }
-  if (WEB_SIGNALS.test(text)) {
-    return { slug: table.web, reason: "web lookup", category: "web" };
-  }
+  // Web lookups are no longer a routing category — the primary model
+  // decides whether to call the web_search tool itself.
   if (CODE_GEN_SIGNALS.test(text)) {
     return {
       slug: table.codeGen,

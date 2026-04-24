@@ -520,11 +520,34 @@ pub async fn agent_query(
 
                         let inv = match decision {
                             ApprovalDecision::Approve | ApprovalDecision::ApproveSession => {
-                                crate::tools::execute(
-                                    &call.function.name,
-                                    &call.function.arguments,
-                                    &cwd_for_tools,
-                                )
+                                if crate::tools::is_async_tool(&call.function.name) {
+                                    // Currently just web_search — network-
+                                    // backed, needs the async entry point.
+                                    match call.function.name.as_str() {
+                                        "web_search" => {
+                                            crate::tools::execute_web_search(
+                                                &call.function.arguments,
+                                                &api_key,
+                                                &base_url,
+                                            )
+                                            .await
+                                        }
+                                        other => crate::tools::ToolInvocation {
+                                            ok: false,
+                                            summary: format!("unknown async tool: {}", other),
+                                            payload: serde_json::json!({
+                                                "error": format!("unknown async tool: {}", other),
+                                            })
+                                            .to_string(),
+                                        },
+                                    }
+                                } else {
+                                    crate::tools::execute(
+                                        &call.function.name,
+                                        &call.function.arguments,
+                                        &cwd_for_tools,
+                                    )
+                                }
                             }
                             ApprovalDecision::Reject => crate::tools::ToolInvocation {
                                 ok: false,

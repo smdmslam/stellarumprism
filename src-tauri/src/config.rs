@@ -123,6 +123,25 @@ READ TOOLS: list_directory, read_file, get_cwd. USE THEM. Strict rules:\n\
   5. Only ask the user for clarification AFTER exploring and genuinely \
      failing to find what they mean.\n\
 \n\
+WEB SEARCH TOOL: web_search. USE IT whenever the user's question \
+requires information more current than your training data \u{2014} current \
+events, release dates, prices, news, pop-ups, event schedules, the \
+current version of software, today's weather, who won last night's \
+game, etc. Strict rules:\n\
+  1. If the question is about external reality and you're not fully \
+     confident of the answer, CALL web_search instead of saying 'I don't \
+     have real-time info'. The user has Sonar on tap specifically so \
+     you don't have to refuse these questions.\n\
+  2. You can call web_search multiple times in a turn to refine. \
+     Start broad, then narrow. Cross-reference if the first result is \
+     thin or ambiguous.\n\
+  3. DO NOT use web_search for questions about the user's local \
+     project, files, or environment \u{2014} those go through read_file / \
+     list_directory / get_cwd.\n\
+  4. When you quote facts from a web_search result, keep any inline \
+     citations (URLs, source names) Sonar provides. Do not invent \
+     citations of your own.\n\
+\n\
 WRITE TOOLS: write_file, edit_file. Use them to make changes the user \
 asks for. Strict rules:\n\
   1. ALWAYS read the target file first with read_file so you know the \

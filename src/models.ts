@@ -15,8 +15,12 @@ export interface ModelEntry {
   slug: string;
   /** One-line description shown by `/models`. */
   description: string;
-  /** Mark as "auto" (preset router), "main" (featured), or "explore". */
-  tier: "auto" | "main" | "explore";
+  /**
+   * Mark as "auto" (preset router), "main" (featured), "explore"
+   * (less-common alternates), or "backend" (internal tool provider, not
+   * shown in /models and not user-selectable as a primary model).
+   */
+  tier: "auto" | "main" | "explore" | "backend";
   /** Does this model accept image inputs (multimodal)? */
   vision?: boolean;
   /** Rough cost tier: 1 = cheap, 2 = mid, 3 = premium. */
@@ -49,7 +53,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     aliases: ["auto", "auto-agentic", "agentic", "genius"],
     slug: "auto-agentic",
     description:
-      "Auto-Agentic (DEFAULT) \u2014 kimi / qwen3.6-plus / glm-5 / sonar. Tool-use specialists; best fit for PRISM's iterative tool loop.",
+      "Auto-Agentic (DEFAULT) \u2014 kimi / qwen3.6-plus / glm-5. Tool-use specialists; best fit for PRISM's iterative tool loop. Web lookups go through the web_search tool.",
     tier: "auto",
     vision: true,
     cost: 2,
@@ -59,7 +63,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     aliases: ["auto-frontier", "frontier"],
     slug: "auto-frontier",
     description:
-      "Auto-Frontier \u2014 gpt-5.4 / grok-4-fast (2M ctx) / sonar. Quality > cost; use when the bill doesn't matter.",
+      "Auto-Frontier \u2014 gpt-5.4 / grok-4-fast (2M ctx). Quality > cost; use when the bill doesn't matter. Web lookups go through the web_search tool.",
     tier: "auto",
     vision: true,
     cost: 3,
@@ -69,7 +73,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     aliases: ["auto-thrifty", "thrifty"],
     slug: "auto-thrifty",
     description:
-      "Auto-Thrifty \u2014 gpt-oss-120b / deepseek-v3.2 / step-3.5-flash / kimi / sonar. Cheap + fast, still thoughtful.",
+      "Auto-Thrifty \u2014 gpt-oss-120b / deepseek-v3.2 / step-3.5-flash / kimi. Cheap + fast, still thoughtful. Web lookups go through the web_search tool.",
     tier: "auto",
     vision: true,
     cost: 1,
@@ -189,13 +193,17 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     maxContext: 128000,
   },
   {
-    // Sonar is web-search-only on OpenRouter: no tool/function calling
-    // support. Marked toolUse: false so the router refuses to send it
-    // tool schemas — we'll eventually expose it via a web_search tool.
+    // Sonar is the backend for the `web_search` tool (see
+    // src-tauri/src/tools.rs). It's not a model users pick directly — the
+    // primary tool-capable model decides when to search. Marked as
+    // "backend" tier so it's filtered out of /models and the auto
+    // presets. toolUse: false keeps the hard gate honest in case anyone
+    // ever tries to set it as primary by full slug.
     aliases: ["sonar", "perplexity"],
     slug: "perplexity/sonar",
-    description: "Perplexity Sonar \u2014 built-in web search",
-    tier: "main",
+    description:
+      "Perplexity Sonar \u2014 internal backend for the web_search tool (not user-selectable as a primary model).",
+    tier: "backend",
     cost: 3,
     toolUse: false,
     webSearch: true,
@@ -346,6 +354,8 @@ export function resolveModel(input: string): string | null {
 
 /** Human-readable list for the `/models` command (renders inside xterm). */
 export function renderModelListAnsi(current: string): string {
+  // `tier === "backend"` entries are intentionally excluded — they back
+  // internal tools (e.g. web_search → Sonar) and aren't user-selectable.
   const sections: { title: string; entries: ModelEntry[] }[] = [
     { title: "Auto presets", entries: MODEL_LIBRARY.filter((m) => m.tier === "auto") },
     { title: "Main", entries: MODEL_LIBRARY.filter((m) => m.tier === "main") },
