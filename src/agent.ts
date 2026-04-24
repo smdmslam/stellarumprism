@@ -100,6 +100,13 @@ export interface AgentControllerOptions {
    * the busy pill. Does NOT cancel the request — the user chooses.
    */
   onStall?: () => void;
+  /**
+   * Fires exactly once per audit-mode turn after the final assistant
+   * response has been assembled. The workspace uses this to parse the
+   * structured findings and persist the markdown report. Not fired for
+   * cancelled or errored turns.
+   */
+  onAuditComplete?: (info: { responseText: string; model: string }) => void;
 }
 
 /**
@@ -127,6 +134,14 @@ export class AgentController {
   private busy = false;
   /** Stall-detection timer id (window.setTimeout return value). */
   private stallTimer: number | null = null;
+  /**
+   * Mode name for the in-flight request (e.g. "audit"), if any. Set at
+   * query start, cleared on any terminal state. Used by onDone() to
+   * decide whether to fire onAuditComplete.
+   */
+  private currentMode: string | null = null;
+  /** Resolved model slug for the in-flight request. Used for onAuditComplete metadata. */
+  private currentResolvedModel: string | null = null;
 
   constructor(opts: AgentControllerOptions) {
     this.opts = opts;
@@ -284,6 +299,9 @@ export class AgentController {
     // Enter busy state now. Anything that short-circuits below must call
     // setBusy(false) before returning.
     this.setBusy(true);
+    // Track mode for this turn so onDone() can fire mode-specific
+    // completion callbacks (e.g. onAuditComplete for the audit persona).
+    this.currentMode = options.mode ?? null;
 
     // Echo the user's prompt in the terminal so the dialogue is visible.
     // Cyan `you:` header, then the prompt in normal weight. Newlines in the
@@ -337,6 +355,8 @@ export class AgentController {
       );
       resolvedModel = fallback;
     }
+    // Stash the model we're actually using so onAuditComplete can report it.
+    this.currentResolvedModel = resolvedModel;
 
     // Announce in the terminal so the user sees something happening immediately.
     this.opts.term.write(
@@ -535,6 +555,25 @@ export class AgentController {
     this.setBusy(false);
     this.renderActionBar(extractCodeBlocks(this.responseBuffer));
     this.clearListeners();
+    // Fire mode-specific completion hook for audit turns. We capture the
+    // mode/model/response BEFORE clearing currentMode so the handler can
+    // use them.
+    const audit =
+      this.currentMode === "audit" && this.responseBuffer.trim().length > 0;
+    const respText = this.responseBuffer;
+    const modelForHook = this.currentResolvedModel ?? this.model;
+    this.currentMode = null;
+    this.currentResolvedModel = null;
+    if (audit) {
+      try {
+        this.opts.onAuditComplete?.({
+          responseText: respText,
+          model: modelForHook,
+        });
+      } catch (e) {
+        console.error("onAuditComplete threw", e);
+      }
+    }
     // Refresh session count so the UI badge stays accurate.
     void this.refreshSessionInfo();
   }
@@ -544,6 +583,10 @@ export class AgentController {
     this.inflightId = null;
     this.setBusy(false);
     this.clearListeners();
+    // Errored / cancelled turns don't fire onAuditComplete; clear the
+    // mode markers so the next turn starts clean.
+    this.currentMode = null;
+    this.currentResolvedModel = null;
   }
 
   // -- busy-state plumbing --------------------------------------------------

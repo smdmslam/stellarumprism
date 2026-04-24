@@ -33,3 +33,12 @@ src-tauri/gen/
 .env
 .env.local
 .env.*.local
+
+# Prism per-project artifacts.
+# second-pass/ holds generated audit reports — can contain sensitive
+#   code snippets + findings, not meant to be tracked.
+# skills/auto/ holds agent-auto-captured notes pending user review;
+#   once promoted, users can move them to skills/ (which IS tracked
+#   when the user chooses).
+.prism/second-pass/
+.prism/skills/auto/

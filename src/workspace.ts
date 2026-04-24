@@ -19,6 +19,12 @@ import { resolveModel, renderModelListAnsi, modelSupportsVision } from "./models
 import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { findMode } from "./modes";
+import {
+  auditReportFilename,
+  parseAuditTranscript,
+  renderAnsiFindings,
+  renderMarkdownReport,
+} from "./findings";
 
 /**
  * Pixels of breathing room to reserve on the right of the terminal so the
@@ -71,6 +77,13 @@ export class Workspace {
   private cwd = ""; // populated by OSC 7 from the shell integration
   /** Pending image attachments for the next agent query. */
   private pendingImages: PendingImage[] = [];
+  /**
+   * Scope string for the currently in-flight audit (e.g. "HEAD~3",
+   * "@src/pages", or "" for working tree vs HEAD). Used by
+   * handleAuditComplete to tag the generated report. Cleared on
+   * completion or error.
+   */
+  private activeAuditScope: string | null = null;
   private readonly cb: WorkspaceCallbacks;
 
   private term!: Terminal;
@@ -246,6 +259,7 @@ export class Workspace {
       onSessionChange: () => this.updateModelBadge(),
       onBusyChange: (busy) => this.setBusyState(busy),
       onStall: () => this.setStalledState(true),
+      onAuditComplete: (info) => this.handleAuditComplete(info),
     });
     this.setupEditor();
     this.setupAttachments();
@@ -434,6 +448,8 @@ export class Workspace {
       }
       const auditPrompt = buildAuditPrompt(scope);
       this.setTitleFromText(`audit ${scope || "(working tree)"}`);
+      // Remember the scope so handleAuditComplete can tag the report.
+      this.activeAuditScope = scope || null;
       void this.dispatchAgentQuery(auditPrompt, {
         mode: mode.name,
         modelOverride: mode.preferredModel,
@@ -632,6 +648,62 @@ export class Workspace {
       pill.classList.add("stalled");
     } else {
       pill.classList.remove("stalled");
+    }
+  }
+
+  // -- audit completion → structured findings + markdown report --------
+
+  /**
+   * Fired by the agent when a /audit turn finishes successfully. Parses
+   * the raw transcript into structured findings, renders both an ANSI
+   * summary (for xterm) and a full markdown report (for the durable
+   * handoff), and asks the Rust side to persist the markdown under
+   * `<cwd>/.prism/second-pass/`.
+   */
+  private async handleAuditComplete(info: {
+    responseText: string;
+    model: string;
+  }): Promise<void> {
+    const scope = this.activeAuditScope;
+    this.activeAuditScope = null;
+
+    const report = parseAuditTranscript(info.responseText, {
+      model: info.model,
+      scope,
+    });
+
+    // ANSI summary in xterm — even if we fail to write the file, the
+    // user gets the parsed view inline. Pads the raw model output with
+    // a structured list so copy/paste works cleanly.
+    this.term.write(renderAnsiFindings(report));
+
+    if (!this.cwd) {
+      this.term.write(
+        `\r\n\x1b[1;33m[audit]\x1b[0m \x1b[2mcwd unknown; skipping report write (markdown report only persists when a shell is started with OSC 7)\x1b[0m\r\n`,
+      );
+      return;
+    }
+
+    const markdown = renderMarkdownReport(report);
+    const filename = auditReportFilename(report.generated_at);
+
+    try {
+      const result = await invoke<{ path: string; bytes_written: number }>(
+        "write_audit_report",
+        {
+          cwd: this.cwd,
+          filename,
+          content: markdown,
+        },
+      );
+      const pretty = prettyPath(result.path);
+      this.term.write(
+        `\r\n\x1b[1;32m[audit]\x1b[0m \x1b[2mreport saved \u2192 \x1b[36m${sanitize(pretty)}\x1b[0m\x1b[2m (${formatBytesShort(result.bytes_written)})\x1b[0m\r\n`,
+      );
+    } catch (e) {
+      this.term.write(
+        `\r\n\x1b[1;31m[audit]\x1b[0m report write failed: ${sanitize(String(e))}\r\n`,
+      );
     }
   }
 
@@ -954,6 +1026,13 @@ function shortStamp(): string {
   const d = new Date();
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+/** Compact byte formatter for status lines. */
+function formatBytesShort(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 /** Parse an OSC 7 data payload ("file://HOST/PATH") into a plain absolute
