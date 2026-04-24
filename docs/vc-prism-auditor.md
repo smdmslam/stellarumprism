@@ -135,9 +135,25 @@ Three investor-relevant consequences follow:
 
 1. **Elastic cost structure.** Premium per-turn quality is available when a task needs it (frontier models for long-context audits, vision tasks, gnarly reasoning). Day-to-day workflows run on cheap open-weights models with near-equivalent outcomes. That's a defensible unit-economic story at both the individual and team tier.
 2. **Vendor risk is diffused.** A single provider's outage, price change, or model deprecation doesn't break the product — we route to another capable model from the 20+ supported. Prism inherits the aggregate quality of the open model ecosystem rather than being pinned to one lab.
-3. **The moat compounds with open-weights progress.** Every time an open model improves at tool use, Prism automatically gets more capable *and* cheaper to operate — without us shipping anything. Competitors locked to proprietary models don't get that lift.
+3. **Open-weights progress is trivially adoptable.** Adding a new model to the router is a single-file config change (one `ModelEntry` in `src/models.ts`, ~10 lines). There's no architecture work, no retraining, no integration project. When a better open-weights model drops — Qwen 4, DeepSeek V4, Llama next — slotting it into the agentic and thrifty presets is minutes of work, and Prism's cost-per-audit drops on the next release. Competitors with deep single-model integration cannot take that trade at anything like the same speed.
 
 The historical parallel is cloud infrastructure. AWS didn't win because Intel made the best CPUs; it won because virtualization was the real product and the CPU was the commodity underneath. Prism is making the same bet at the tool-loop layer, above LLMs.
+
+### The real compounding moat: accumulated knowledge
+
+The stronger claim under the durability umbrella isn't about LLMs at all — it's about the fact that **Prism accumulates project- and user-specific knowledge as a side effect of being used.**
+
+Every workflow in Prism produces markdown artifacts in a well-known folder structure:
+
+- `./.prism/second-pass/audit-<ts>.md` — every audit report, archived automatically.
+- `./.prism/skills/*.md` — project-specific knowledge (auto-captured learnings, user corrections, patterns the agent has noticed in this codebase).
+- `~/.prism/skills/*.md` — user-level preferences across all projects ("we use snake_case here," "always run prettier after an edit," "prefer Vitest over Jest").
+
+The agent both *reads* these on session start (as context) and *writes* to them as it works (when the user corrects it, when an audit finishes, when it notices a stable pattern). Over weeks of use, the tool develops a real model of **your** codebase and **your** preferences. None of that transfers when a user switches to Cursor, Antigravity, or anything else.
+
+This is the moat Cursor, Windsurf, and Claude Code all independently converged on in 2026 — for good reason. It turns usage into compounding value. Switching cost stops being hypothetical and becomes "three months of institutional memory I'd have to rebuild."
+
+Prism's markdown-as-format + filesystem-as-database choice is what enables this. Proprietary-schema competitors cannot offer the same file-portable, inspectable memory layer even if they wanted to.
 
 ## Expansion path
 
