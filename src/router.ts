@@ -90,8 +90,11 @@ export function parseAutoSlug(model: string): RoutePreset | null {
   }
 }
 
+// Time-sensitive / external-lookup signals. Intentionally does NOT include
+// "current" — "current directory / file / branch / status" is local context,
+// not a web query, and routing those to Sonar (no tool-use) returns 404.
 const WEB_SIGNALS =
-  /\b(latest|newest|current|today|this (week|month|year)|recent(ly)?|news|updated?|docs? for|changelog|release[d]?|202[4-9]|what's new|whats new)\b/i;
+  /\b(latest|newest|today|this (week|month|year)|recent(ly)?|news|updated?|docs? for|changelog|release[d]?|202[4-9]|what's new|whats new)\b/i;
 
 // Pure code GENERATION verbs — the user wants the model to produce NEW
 // code from scratch rather than understand and modify an existing
@@ -112,9 +115,11 @@ const CODE_REVIEW_SIGNALS =
 // Broad set of terms that imply the user is talking about code / a UI /
 // a project, even without an explicit verb. Includes common web/UI nouns
 // ("landing page", "button", "header") because those are almost always
-// about code that needs editing.
+// about code that needs editing. Also includes local-filesystem nouns
+// ("directory", "folder", "cwd") so "what's in this directory?" routes
+// to a tool-capable code model rather than Sonar.
 const CODE_CONTEXT =
-  /\b(code|file|function|class|module|component|package|project|repo|repository|app|script|type|interface|page|pages|site|website|webapp|landing|ui|button|header|footer|nav|navbar|menu|form|heading|title|label|copy|text|string|route|endpoint|api|schema|config|test|spec|bug|error|exception|stack trace|traceback|styling|style|css|html)\b/i;
+  /\b(code|file|files|function|class|module|component|package|project|repo|repository|app|script|type|interface|page|pages|site|website|webapp|landing|ui|button|header|footer|nav|navbar|menu|form|heading|title|label|copy|text|string|route|endpoint|api|schema|config|test|spec|bug|error|exception|stack trace|traceback|styling|style|css|html|directory|directories|folder|folders|dir|cwd|pwd|filesystem|tree|structure)\b/i;
 
 export function route(
   prompt: string,
