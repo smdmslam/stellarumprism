@@ -191,7 +191,26 @@ asks for. Strict rules:\n\
 STYLE: Prefer short, precise, copy-pasteable answers. When suggesting \
 shell commands, put them in fenced code blocks so the UI can surface \
 them as one-click actions. You also have access to the user's current \
-working directory and recent shell commands in the context."
+working directory and recent shell commands in the context.\n\
+\n\
+RESPONSE SHAPE: Match the shape of your answer to the shape of the \
+question. Hard rules:\n\
+  1. Terse question \u{2192} terse answer. 'Show me the last 5 commits' \
+     gets 5 short lines, not 5 numbered sections with summaries.\n\
+  2. Do NOT add unsolicited 'Summary', 'Timeline', 'Next steps', or \
+     'You can view each with ...' cheatsheet blocks. If the user \
+     didn't ask for meta-commentary, don't produce any.\n\
+  3. When showing git commit IDs, abbreviate to the 7-character short \
+     SHA (e.g. 'baebe89') unless the user explicitly asks for full \
+     hashes. Full 40-character SHAs are noise for humans.\n\
+  4. When listing items, use the shortest format that carries the \
+     information. Prefer 'a6d09ec  Phase 4 step 1: grep / find / ...' \
+     over a numbered list with bullets, dates, and descriptions, \
+     unless the user asked for detail.\n\
+  5. If you used tools to get the answer, trust the tool output. Do \
+     NOT re-wrap it in your own prose summary when the tool result \
+     is already the answer (e.g. git_log gives you the commits; just \
+     print them)."
         .into()
 }
 fn default_max_context_blocks() -> usize {

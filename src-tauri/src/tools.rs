@@ -41,6 +41,8 @@ const FIND_MAX_RESULTS_CAP: usize = 2000;
 const GIT_DIFF_MAX_BYTES: usize = 64 * 1024;
 const BULK_READ_MAX_FILES: usize = 20;
 const BULK_READ_MAX_TOTAL_BYTES: usize = 256 * 1024;
+const GIT_LOG_LIMIT_DEFAULT: usize = 10;
+const GIT_LOG_LIMIT_CAP: usize = 100;
 
 /// Tools that must NOT auto-execute. Consulted by the tool loop in
 /// `agent.rs` before each call. Wired to the approval UI.
@@ -277,6 +279,31 @@ pub fn tool_schema() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "git_log",
+                "description": "List recent git commits. Returns [{short_sha, sha, author, date, relative_date, subject}]. Use this when the user asks 'what are the last N commits?' or similar. Short SHAs are 7 characters (the standard git abbreviation). Defaults to the last 10 commits on the current branch.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {
+                            "type": "integer",
+                            "description": "How many commits to return. Default 10. Capped at 100."
+                        },
+                        "ref": {
+                            "type": "string",
+                            "description": "Branch, tag, or commit to start from. Default 'HEAD'."
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional pathspec to scope the log (e.g. 'src/pages'). Only commits that touched this path are returned."
+                        }
+                    },
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "git_diff",
                 "description": "Show a unified diff between two git references within the user's cwd. Great for auditing a recent refactor: pass ref_a and ref_b to see exactly what changed. No args defaults to 'HEAD~1..HEAD' (the last commit). Truncates output at 64 KB.",
                 "parameters": {
@@ -348,6 +375,7 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
         "edit_file" => tool_edit_file(args_json, cwd),
         "grep" => tool_grep(args_json, cwd),
         "find" => tool_find(args_json, cwd),
+        "git_log" => tool_git_log(args_json, cwd),
         "git_diff" => tool_git_diff(args_json, cwd),
         "bulk_read" => tool_bulk_read(args_json, cwd),
         "web_search" => Err(
@@ -1026,6 +1054,109 @@ fn tool_find(args_json: &str, cwd: &str) -> Result<(String, String), String> {
         "root": root.to_string_lossy(),
         "truncated": truncated,
         "paths": paths,
+    })
+    .to_string();
+    Ok((summary, payload))
+}
+
+// ---------------------------------------------------------------------------
+// git_log (Phase 4)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct GitLogArgs {
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    #[serde(rename = "ref")]
+    git_ref: Option<String>,
+    #[serde(default)]
+    path: Option<String>,
+}
+
+fn tool_git_log(args_json: &str, cwd: &str) -> Result<(String, String), String> {
+    let args: GitLogArgs = if args_json.trim().is_empty() {
+        GitLogArgs {
+            limit: None,
+            git_ref: None,
+            path: None,
+        }
+    } else {
+        serde_json::from_str(args_json).map_err(|e| format!("invalid arguments: {}", e))?
+    };
+    if cwd.is_empty() {
+        return Err("cwd is unknown (shell integration may not be started)".into());
+    }
+
+    let limit = args
+        .limit
+        .map(|n| n.clamp(1, GIT_LOG_LIMIT_CAP))
+        .unwrap_or(GIT_LOG_LIMIT_DEFAULT);
+    let git_ref = args.git_ref.as_deref().unwrap_or("HEAD");
+
+    // Use ASCII Unit Separator (0x1F) between fields. Cannot embed a
+    // literal NUL in argv (Rust's Command::arg rejects it), so we ask git
+    // itself to emit the separator byte via its %x1f format escape. The
+    // resulting stdout lines are parseable with split('\x1f').
+    let format = "%h%x1f%H%x1f%an%x1f%ad%x1f%ar%x1f%s";
+
+    let mut cmd = Command::new("git");
+    cmd.current_dir(cwd)
+        .arg("--no-pager")
+        .arg("log")
+        .arg(format!("--pretty=format:{}", format))
+        .arg("--date=iso")
+        .arg(format!("-{}", limit))
+        .arg(git_ref);
+    if let Some(p) = args.path.as_deref() {
+        if !p.trim().is_empty() {
+            cmd.arg("--").arg(p);
+        }
+    }
+
+    let output = cmd
+        .output()
+        .map_err(|e| format!("failed to run git: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        return Err(format!(
+            "git log failed: {}",
+            stderr.trim().lines().next().unwrap_or("(no stderr)")
+        ));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+
+    // Each commit is one line. Fields within a commit are 0x1F-separated.
+    let mut commits: Vec<Value> = Vec::new();
+    for line in stdout.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('\x1f').collect();
+        if parts.len() < 6 {
+            continue;
+        }
+        commits.push(json!({
+            "short_sha": parts[0],
+            "sha": parts[1],
+            "author": parts[2],
+            "date": parts[3],
+            "relative_date": parts[4],
+            "subject": parts[5],
+        }));
+    }
+
+    let summary = format!(
+        "git log {} \u{2192} {} commit{}",
+        git_ref,
+        commits.len(),
+        if commits.len() == 1 { "" } else { "s" }
+    );
+    let payload = json!({
+        "ref": git_ref,
+        "limit": limit,
+        "path": args.path,
+        "commits": commits,
     })
     .to_string();
     Ok((summary, payload))
@@ -1728,5 +1859,84 @@ mod tests {
         assert!(!is_async_tool("find"));
         assert!(!is_async_tool("git_diff"));
         assert!(!is_async_tool("bulk_read"));
+        assert!(!is_async_tool("git_log"));
+    }
+
+    /// Run `git` with the given args in `dir`, panicking on failure. Used
+    /// to build tiny fixture repos for the git_log tests.
+    fn git(dir: &Path, args: &[&str]) {
+        let status = std::process::Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .status()
+            .unwrap_or_else(|e| panic!("failed to run git {:?}: {}", args, e));
+        assert!(status.success(), "git {:?} failed", args);
+    }
+
+    #[test]
+    fn git_log_returns_commits_with_short_sha() {
+        let dir = fresh_tmp();
+        // Bootstrap a git repo with three commits. -c to avoid global
+        // config requirements that may or may not be set on CI.
+        git(&dir, &["init", "-q", "-b", "main"]);
+        git(&dir, &["config", "user.email", "test@example.com"]);
+        git(&dir, &["config", "user.name", "Test"]);
+        fs::write(dir.join("a.txt"), "one").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-q", "-m", "first"]);
+        fs::write(dir.join("a.txt"), "two").unwrap();
+        git(&dir, &["commit", "-aq", "-m", "second"]);
+        fs::write(dir.join("a.txt"), "three").unwrap();
+        git(&dir, &["commit", "-aq", "-m", "third"]);
+
+        let inv = execute("git_log", "{}", &cwd_of(&dir));
+        assert!(inv.ok, "failed: {}", inv.summary);
+        let payload: Value = serde_json::from_str(&inv.payload).unwrap();
+        let commits = payload["commits"].as_array().unwrap();
+        assert_eq!(commits.len(), 3);
+
+        // Newest-first: subjects in reverse commit order.
+        assert_eq!(commits[0]["subject"], "third");
+        assert_eq!(commits[1]["subject"], "second");
+        assert_eq!(commits[2]["subject"], "first");
+
+        // short_sha should be 7 chars, sha should be 40.
+        let short = commits[0]["short_sha"].as_str().unwrap();
+        let full = commits[0]["sha"].as_str().unwrap();
+        assert_eq!(short.len(), 7, "short_sha not 7 chars: {}", short);
+        assert_eq!(full.len(), 40, "sha not 40 chars: {}", full);
+        assert!(full.starts_with(short));
+    }
+
+    #[test]
+    fn git_log_respects_limit() {
+        let dir = fresh_tmp();
+        git(&dir, &["init", "-q", "-b", "main"]);
+        git(&dir, &["config", "user.email", "test@example.com"]);
+        git(&dir, &["config", "user.name", "Test"]);
+        for i in 0..5 {
+            fs::write(dir.join("a.txt"), format!("{}", i)).unwrap();
+            git(&dir, &["add", "."]);
+            git(&dir, &["commit", "-q", "-m", &format!("c{}", i)]);
+        }
+        let inv = execute(
+            "git_log",
+            &json!({ "limit": 2 }).to_string(),
+            &cwd_of(&dir),
+        );
+        assert!(inv.ok);
+        let payload: Value = serde_json::from_str(&inv.payload).unwrap();
+        let commits = payload["commits"].as_array().unwrap();
+        assert_eq!(commits.len(), 2);
+        assert_eq!(commits[0]["subject"], "c4");
+        assert_eq!(commits[1]["subject"], "c3");
+    }
+
+    #[test]
+    fn git_log_errors_in_non_repo() {
+        let dir = fresh_tmp();
+        // No `git init` — should fail cleanly, not panic.
+        let inv = execute("git_log", "{}", &cwd_of(&dir));
+        assert!(!inv.ok);
     }
 }
