@@ -36,6 +36,10 @@ export interface AgentImageContext {
 
 interface AgentContext {
   cwd: string;
+  /** Today's date from the user's system clock (YYYY-MM-DD). Piped
+   * through to the Rust side so build_user_message can tell the model
+   * what year/day it is without relying on training-era priors. */
+  today: string;
   recent_blocks: AgentBlockContext[];
   files: AgentFileContext[];
   images: AgentImageContext[];
@@ -500,7 +504,11 @@ export class AgentController {
         output: "", // block output capture is a future improvement
       }));
 
-    return { cwd, recent_blocks: recent, files: [], images: [] };
+    // ISO date (YYYY-MM-DD) from the user's local clock. Cheap ground
+    // truth for the model so it stops anchoring to its training cutoff.
+    const today = new Date().toISOString().slice(0, 10);
+
+    return { cwd, today, recent_blocks: recent, files: [], images: [] };
   }
 
   // -- action bar (Run/Copy for suggested commands) -------------------------

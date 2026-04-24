@@ -16,8 +16,9 @@ use serde_json::{json, Value};
 /// web_search is an internal tool, not a user-facing model choice.
 const WEB_SEARCH_MODEL: &str = "perplexity/sonar";
 /// Cap what we send back to the primary model so a single web_search call
-/// can't blow the context window.
-const MAX_WEB_SEARCH_BYTES: usize = 8 * 1024;
+/// can't blow the context window. Sized so Sonar's typical prose answer
+/// plus its tail citations fit comfortably without truncation.
+const MAX_WEB_SEARCH_BYTES: usize = 24 * 1024;
 
 /// Maximum bytes returned from a single read_file call. Must be consistent
 /// with file_ref.rs's cap so the agent sees the same truncation semantics.

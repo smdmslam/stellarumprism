@@ -41,6 +41,12 @@ pub struct AgentBlock {
 pub struct AgentContext {
     #[serde(default)]
     pub cwd: String,
+    /// Today's date as seen by the user's system clock (YYYY-MM-DD).
+    /// Populated by the frontend on every turn so the model has a
+    /// ground truth for "the current date" that overrides its
+    /// training cutoff.
+    #[serde(default)]
+    pub today: String,
     #[serde(default)]
     pub recent_blocks: Vec<AgentBlock>,
     #[serde(default)]
@@ -1024,6 +1030,15 @@ fn build_user_message(prompt: &str, context: Option<&AgentContext>) -> String {
     };
 
     let mut out = String::new();
+    if !ctx.today.is_empty() {
+        // Emphasized so the model notices it over its training prior. The
+        // phrasing matters: models anchor on "today is <year>" more reliably
+        // than on a bare date line.
+        out.push_str(&format!(
+            "Current real-world date: {}. Treat this as authoritative; it is NEWER than your training cutoff.\n\n",
+            ctx.today
+        ));
+    }
     if !ctx.cwd.is_empty() {
         out.push_str(&format!("Current working directory: {}\n\n", ctx.cwd));
     }
