@@ -19,6 +19,14 @@ import { resolveModel, renderModelListAnsi, modelSupportsVision } from "./models
 import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 
+/**
+ * Pixels of breathing room to reserve on the right of the terminal so the
+ * xterm scrollbar never sits on top of glyphs. We translate this into a
+ * column count in fitTerminalWithGutter() — CSS padding alone wouldn't
+ * work because FitAddon would just re-fit more columns into the padded box.
+ */
+const SCROLLBAR_GUTTER_PX = 24;
+
 const TERM_THEME = {
   background: "#0d0f14",
   foreground: "#e6e6e6",
@@ -126,7 +134,7 @@ export class Workspace {
 
   activate(): void {
     this.root.classList.add("active");
-    this.fit?.fit();
+    this.fitTerminalWithGutter();
     queueMicrotask(() => this.input?.focus());
   }
 
@@ -218,7 +226,10 @@ export class Workspace {
       void invoke("resize_shell", { sessionId: this.id, cols, rows });
     });
 
-    this.resizeObserver = new ResizeObserver(() => this.fit?.fit());
+    this.resizeObserver = new ResizeObserver(() => {
+      // rAF so layout has settled before proposeDimensions() reads widths.
+      requestAnimationFrame(() => this.fitTerminalWithGutter());
+    });
     this.resizeObserver.observe(host);
 
     // Agent + editor.
@@ -236,6 +247,45 @@ export class Workspace {
     this.setupAttachments();
     this.setupSlashFocusHijack();
     this.updateModelBadge();
+  }
+
+  /**
+   * Fit xterm to the host, then shave a few columns off the right so a real
+   * breathing-room gutter exists between the last glyph and the scrollbar.
+   * CSS padding alone can't achieve this: FitAddon just re-fits more columns
+   * into whatever width you give it, so the last column always lands under
+   * the scrollbar thumb.
+   *
+   * Strictly non-recursive: if the host isn't laid out yet (tab hidden,
+   * window minimized, initial mount) we bail out and wait for the next
+   * ResizeObserver tick.
+   */
+  private fitTerminalWithGutter(): void {
+    if (!this.fit || !this.term) return;
+    const host = this.root.querySelector<HTMLDivElement>(".terminal-host");
+    if (!host) return;
+    if (host.clientWidth <= 0 || host.clientHeight <= 0) return;
+
+    const dims = this.fit.proposeDimensions();
+    if (
+      !dims ||
+      !Number.isFinite(dims.cols) ||
+      !Number.isFinite(dims.rows) ||
+      dims.cols < 2 ||
+      dims.rows < 2
+    ) {
+      return;
+    }
+
+    // Ratio math keeps us off xterm's internal _core / _renderService APIs.
+    const pxPerCol = host.clientWidth / dims.cols;
+    const gutterCols = pxPerCol > 0
+      ? Math.max(1, Math.ceil(SCROLLBAR_GUTTER_PX / pxPerCol))
+      : 3;
+    const cols = Math.max(2, dims.cols - gutterCols);
+    if (cols !== this.term.cols || dims.rows !== this.term.rows) {
+      this.term.resize(cols, dims.rows);
+    }
   }
 
   // -- editor + slash commands ---------------------------------------------

@@ -296,15 +296,18 @@ body {
 .terminal-host {
   flex: 1 1 auto;
   min-height: 0;
-  /* Extra right padding so xterm's scrollbar has its own lane and doesn't
-   * overlay the last characters of each line. Symmetric left padding keeps
-   * the text visually centered away from the sidebar border. */
-  padding: 10px 22px 10px 16px;
+  /* Right-side breathing room is provided by fitTerminalWithGutter() in
+   * workspace.ts, which reserves columns so the last glyph never lands
+   * under the scrollbar thumb. We keep a small vertical + left padding so
+   * text isn't flush against the pane edges. */
+  padding: 10px 0 10px 14px;
   background-color: #0d0f14;
+  box-sizing: border-box;
 }
 .terminal-host .xterm { height: 100%; }
 .terminal-host .xterm-viewport {
   background-color: transparent !important;
+  scrollbar-gutter: stable;
 }
 
 /* macOS WebKit defaults to overlay scrollbars that hover on top of content.
@@ -319,7 +322,7 @@ body {
 }
 .terminal-host .xterm-viewport::-webkit-scrollbar-thumb {
   background: #2d3748;
-  border-radius: 5px;
+  border-radius: 999px;
   border: 2px solid #0d0f14;
 }
 .terminal-host .xterm-viewport::-webkit-scrollbar-thumb:hover {
