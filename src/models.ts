@@ -21,10 +21,30 @@ export interface ModelEntry {
   vision?: boolean;
   /** Rough cost tier: 1 = cheap, 2 = mid, 3 = premium. */
   cost?: 1 | 2 | 3;
+
+  // -- capability flags for the capability-gated router -------------------
+  //
+  // Defaults intentionally generous (true) so only known-bad combos need to
+  // opt out. Router uses these as HARD gates: if a turn requires tool use
+  // and toolUse=false, that model is ineligible regardless of any keyword
+  // heuristics. Auto-preset slugs (auto-*) are virtual; their caps are
+  // irrelevant — they resolve through PRESETS in router.ts.
+
+  /** Does this model support OpenAI-style tool/function calling? */
+  toolUse?: boolean;
+  /** Does this model perform its own web search? (Sonar-style.) */
+  webSearch?: boolean;
+  /** Does this model reliably honor JSON/structured output? */
+  jsonMode?: boolean;
+  /** Max context window in tokens (ballpark; used as a soft lower bound). */
+  maxContext?: number;
 }
 
 export const MODEL_LIBRARY: ModelEntry[] = [
   // -------- Auto presets (router picks per-turn) -------------------------
+  //
+  // Capability flags on auto-* entries are informational only; the router
+  // resolves them to a concrete slug before dispatch.
   {
     aliases: ["auto", "auto-agentic", "agentic", "genius"],
     slug: "auto-agentic",
@@ -33,6 +53,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "auto",
     vision: true,
     cost: 2,
+    toolUse: true,
   },
   {
     aliases: ["auto-frontier", "frontier"],
@@ -42,6 +63,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "auto",
     vision: true,
     cost: 3,
+    toolUse: true,
   },
   {
     aliases: ["auto-thrifty", "thrifty"],
@@ -51,6 +73,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "auto",
     vision: true,
     cost: 1,
+    toolUse: true,
   },
 
   // -------- Main rotation -----------------------------------------------
@@ -73,6 +96,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "main",
     vision: true,
     cost: 3,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 1000000,
   },
   {
     aliases: ["grok-4-fast", "grok4"],
@@ -81,6 +107,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "xAI Grok 4 Fast \u2014 2M context, excels at whole-repo reading",
     tier: "main",
     cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 2000000,
   },
   {
     aliases: ["kimi", "kimi-k2.5", "kimi-k25"],
@@ -90,6 +119,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "main",
     vision: true,
     cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
   {
     aliases: ["qwen3.6", "qwen3.6-plus", "qwen-plus"],
@@ -98,6 +130,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "Qwen 3.6 Plus \u2014 78.8 SWE-bench Verified, hybrid MoE, strong code",
     tier: "main",
     cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
   {
     aliases: ["glm-5", "glm"],
@@ -106,6 +141,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "Z.ai GLM 5 \u2014 long-horizon coding, iterative self-correction",
     tier: "main",
     cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
   {
     aliases: ["deepseek", "deepseek-v3.2", "dsv3"],
@@ -113,6 +151,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "DeepSeek V3.2 \u2014 modern, cheap, solid at code",
     tier: "main",
     cost: 1,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
   {
     aliases: ["step", "step-flash", "step-3.5-flash"],
@@ -121,6 +162,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "StepFun Step 3.5 Flash \u2014 reasoning MoE, cheap, #2 in programming",
     tier: "main",
     cost: 1,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
   {
     aliases: ["haiku", "claude-haiku"],
@@ -129,6 +173,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "main",
     vision: true,
     cost: 3,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 200000,
   },
   {
     aliases: ["devstral"],
@@ -137,13 +184,23 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "Devstral Small \u2014 Mistral's agentic code model, cheap + proactive",
     tier: "main",
     cost: 1,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
   {
+    // Sonar is web-search-only on OpenRouter: no tool/function calling
+    // support. Marked toolUse: false so the router refuses to send it
+    // tool schemas — we'll eventually expose it via a web_search tool.
     aliases: ["sonar", "perplexity"],
     slug: "perplexity/sonar",
     description: "Perplexity Sonar \u2014 built-in web search",
     tier: "main",
     cost: 3,
+    toolUse: false,
+    webSearch: true,
+    jsonMode: false,
+    maxContext: 128000,
   },
   {
     aliases: ["qwen", "qwen3"],
@@ -151,6 +208,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "Qwen3 Next 80B A3B \u2014 strong open-weights instruct",
     tier: "main",
     cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
   {
     aliases: ["gpt-oss", "oss"],
@@ -159,6 +219,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "GPT OSS 120B Exacto \u2014 cheap fast reasoning (~77 tok/s, $0.04/$0.19)",
     tier: "main",
     cost: 1,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
 
   // Exploration
@@ -168,13 +231,20 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "Codestral 2508 \u2014 Mistral's code-focused model",
     tier: "explore",
     cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 256000,
   },
   {
+    // Diffusion-based LLM — doesn't support OpenAI tool-calling protocol.
     aliases: ["mercury", "inception"],
     slug: "inception/mercury-2",
     description: "Inception Mercury 2 \u2014 diffusion LLM, extremely fast",
     tier: "explore",
     cost: 2,
+    toolUse: false,
+    jsonMode: false,
+    maxContext: 32000,
   },
   {
     aliases: ["gpt5-mini", "gpt-5-mini"],
@@ -183,6 +253,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "explore",
     vision: true,
     cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 400000,
   },
   {
     aliases: ["qwen-235b", "qwen235"],
@@ -191,6 +264,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "Qwen3 235B A22B \u2014 big open-weights reasoning, very cheap",
     tier: "explore",
     cost: 1,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
   {
     aliases: ["scout", "llama-scout"],
@@ -200,6 +276,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "explore",
     vision: true,
     cost: 1,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
   {
     aliases: ["grok-fast", "grok"],
@@ -207,6 +286,9 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "Grok 4.1 Fast \u2014 xAI general-purpose alt",
     tier: "explore",
     cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
   {
     aliases: ["minimax"],
@@ -214,13 +296,32 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "MiniMax M2.5 \u2014 code-focused alternative to Codestral",
     tier: "explore",
     cost: 3,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
   },
 ];
 
+/** Look up a model entry by its full OpenRouter slug. Returns null for unknowns. */
+export function getModelEntry(slug: string): ModelEntry | null {
+  return MODEL_LIBRARY.find((m) => m.slug === slug) ?? null;
+}
+
 /** True if the given model slug supports images. Defaults to false for unknown. */
 export function modelSupportsVision(slug: string): boolean {
-  const entry = MODEL_LIBRARY.find((m) => m.slug === slug);
-  return Boolean(entry?.vision);
+  return Boolean(getModelEntry(slug)?.vision);
+}
+
+/**
+ * True if the model supports OpenAI-style tool/function calling. Defaults to
+ * true for unknown slugs so user-supplied custom slugs ("provider/model")
+ * don't get silently refused — the hard gate only kicks in for models we
+ * explicitly know DO NOT support tools.
+ */
+export function modelSupportsToolUse(slug: string): boolean {
+  const entry = getModelEntry(slug);
+  if (!entry) return true;
+  return entry.toolUse !== false;
 }
 
 /** Resolve an alias or full slug to a concrete model slug (case-insensitive).

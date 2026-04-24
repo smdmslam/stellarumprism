@@ -6,6 +6,14 @@
 // string matching that runs in < 1ms.
 //
 // Order matters: rules higher up take precedence. The first match wins.
+//
+// HARD GATE: keyword heuristics are SOFT preferences. The caller passes
+// requirements (see RouteSignals.requireToolUse) and the router will
+// override any slot choice whose model can't satisfy them, falling back
+// to the preset's default slug. Regex picking Sonar for a tool-using
+// turn must never actually send tool schemas to Sonar.
+
+import { modelSupportsToolUse } from "./models";
 
 export type RouteCategory =
   | "vision"
@@ -23,6 +31,13 @@ export interface RouteDecision {
 export interface RouteSignals {
   hasImages: boolean;
   hasAtRefs: boolean;
+  /**
+   * True when the caller will attach tool schemas to the request. Prism's
+   * agent loop always does, so this is effectively always true today.
+   * Kept explicit so a future non-tool agent path (e.g. pure Q&A) can opt
+   * out and legitimately reach Sonar et al.
+   */
+  requireToolUse?: boolean;
 }
 
 // Three curated auto presets. Each fills the same five routing slots
@@ -128,7 +143,33 @@ export function route(
 ): RouteDecision {
   const table = PRESETS[preset];
   const text = prompt.trim();
+  const requireToolUse = signals.requireToolUse ?? true;
 
+  // Soft pick from keyword heuristics.
+  const soft = softPick(text, signals, table);
+
+  // Hard gate: if the turn needs tool use and the softly-picked slug is
+  // known not to support it, override to preset.default (which is always
+  // the curated tool-capable baseline for that preset).
+  if (requireToolUse && !modelSupportsToolUse(soft.slug)) {
+    return {
+      slug: table.default,
+      reason: `${soft.reason} \u2192 default (${soft.slug.split("/").pop()} lacks tool use)`,
+      category: "default",
+    };
+  }
+  return soft;
+}
+
+/**
+ * The original keyword-heuristic routing logic, extracted so the outer
+ * `route()` can apply capability gates on top of its result.
+ */
+function softPick(
+  text: string,
+  signals: RouteSignals,
+  table: PresetTable,
+): RouteDecision {
   if (signals.hasImages) {
     return { slug: table.vision, reason: "vision input", category: "vision" };
   }

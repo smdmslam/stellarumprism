@@ -3,7 +3,15 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type { BlockManager } from "./blocks";
-import { route as routeModel, parseAutoSlug } from "./router";
+import { route as routeModel, parseAutoSlug, PRESETS } from "./router";
+import { modelSupportsToolUse } from "./models";
+
+/**
+ * Universal tool-capable fallback used when the resolved model can't do
+ * tool calling AND we're not in an auto preset (so no preset.default to
+ * fall back to). Kimi is in every preset's pool and supports tools.
+ */
+const UNIVERSAL_TOOL_FALLBACK = "moonshotai/kimi-k2.5";
 
 // ---------------------------------------------------------------------------
 // Types shared with the Rust side
@@ -244,6 +252,8 @@ export class AgentController {
         {
           hasImages: images.length > 0,
           hasAtRefs: /(?:^|\s)@[A-Za-z0-9._~/+-]/.test(prompt),
+          // Prism's agent loop always attaches tool schemas.
+          requireToolUse: true,
         },
         preset,
       );
@@ -251,6 +261,19 @@ export class AgentController {
       this.opts.term.write(
         `${PREFIX_DIM}\u2192 [auto/${preset}] ${shortSlug(resolvedModel)} (${decision.reason})${RESET}`,
       );
+    }
+
+    // Hard-gate (belt-and-braces): even when the router didn't run
+    // (user explicitly set `/model sonar`, say), never send tool schemas
+    // to a non-tool-capable model. Swap to a safe fallback and warn.
+    if (!modelSupportsToolUse(resolvedModel)) {
+      const fallback = preset
+        ? PRESETS[preset].default
+        : UNIVERSAL_TOOL_FALLBACK;
+      this.opts.term.write(
+        `\r\n\x1b[1;33m[router]\x1b[0m ${PREFIX_DIM}${shortSlug(resolvedModel)} doesn't support tool use; using ${shortSlug(fallback)} for this turn${RESET}`,
+      );
+      resolvedModel = fallback;
     }
 
     // Announce in the terminal so the user sees something happening immediately.
