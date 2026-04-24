@@ -20,8 +20,17 @@ export interface Mode {
   name: string;
   /** Slash-command aliases the user can type to invoke this mode. */
   aliases: string[];
-  /** Short description shown in /help and the autocomplete popup. */
+  /**
+   * Short, punchy description shown as the top line of the autocomplete
+   * popup and in /help. Keep under ~50 chars so it doesn't truncate.
+   */
   description: string;
+  /**
+   * Longer expandable description shown when the popup entry is focused.
+   * Should cover what the mode does for the user (not how it works
+   * internally), the default behavior, and scope/argument examples.
+   */
+  info?: string;
   /**
    * Model slug this mode prefers when the user hasn't pinned a specific
    * model. Rust also knows the default; this is here so the frontend can
@@ -34,8 +43,17 @@ export const MODES: Mode[] = [
   {
     name: "audit",
     aliases: ["/audit", "/second-pass"],
-    description:
-      "Second Pass \u2014 audit the repo (or a git range) for refactor incompleteness. Read-only; produces a structured findings list.",
+    description: "Audit code for refactor incompleteness (read-only)",
+    info:
+      "Read-only investigation that catches wiring gaps AI editors miss: " +
+      "renamed symbols still referenced, dead imports, callers passing old " +
+      "shapes to updated callees, half-applied renames. Outputs a structured " +
+      "findings list \u2014 no edits. " +
+      "Scope: '/audit' alone audits the working tree vs HEAD. Pass a ref " +
+      "('/audit HEAD~3') to audit the last N commits as one refactor, a " +
+      "range ('/audit HEAD~5..HEAD'), or a path ('/audit @src/pages') to " +
+      "scope to one file or directory. Uses grok-4-fast (2M context) by " +
+      "default.",
     preferredModel: "x-ai/grok-4-fast",
   },
 ];

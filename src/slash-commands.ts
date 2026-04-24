@@ -84,7 +84,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   ...MODES.map<SlashCommand>((m) => ({
     label: m.aliases[0],
     detail: m.description,
-    info: `Runs this turn in '${m.name}' mode \u2014 swaps in a dedicated system prompt and defaults to ${m.preferredModel}. Pass an optional scope: ${m.aliases[0]} HEAD~3, ${m.aliases[0]} HEAD~5..HEAD, or ${m.aliases[0]} @src/pages.`,
+    info:
+      m.info ??
+      `Runs this turn in '${m.name}' mode. Defaults to ${m.preferredModel}.`,
     takesArg: true,
   })),
 ];
