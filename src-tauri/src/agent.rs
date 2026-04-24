@@ -89,16 +89,31 @@ INVESTIGATION ORDER (mandatory):\n\
   4. If typecheck reports zero diagnostics AND step 3 surfaces nothing, \
      output FINDINGS (0). Don't manufacture warnings to look thorough.\n\
 \n\
-ANTI-FALSE-POSITIVE RULES (strict):\n\
-  - Do NOT flag '.js' vs '.ts' import-extension issues unless typecheck \
-     reported them. Modern TS configs (NodeNext, bundler) accept both.\n\
+ANTI-FALSE-POSITIVE RULES (strict, applies even when reframed):\n\
+  - The compiler is THE runtime-import authority. If typecheck returned \
+     exit_code 0, NO import is broken at runtime. Period. This holds \
+     regardless of whether the on-disk filename matches the import \
+     specifier's extension. tsx, ts-node, vite, esbuild, webpack, and \
+     tsc itself all resolve .js specifiers to .ts sources under modern \
+     configs (NodeNext, Node16, bundler).\n\
+  - Do NOT flag a .js import as broken in ANY of these forms: \
+     'wrong extension', 'non-existent file', 'breaks at runtime', \
+     'file not found', 'missing module'. These are all reframes of \
+     the SAME forbidden class. If typecheck is clean, the import \
+     resolves \u{2014} do not flag it.\n\
+  - Do NOT use read_file failure as evidence an import is broken. \
+     read_file('foo.js') returning 'no such file' does NOT prove the \
+     import is broken; the resolver may map the .js specifier to a \
+     .ts source. The compiler is the only authority on this question.\n\
   - Do NOT flag 'looks-broken-in-source-but-compiles-fine' issues of \
      any kind. If the compiler is happy, the burden of proof is on you \
-     to show why the runtime behavior is wrong.\n\
+     to show why the runtime behavior is wrong, with concrete grep \
+     evidence of an actual call site that will fail.\n\
   - Do NOT speculate. If grep didn't return a hit, the symbol isn't \
      used; do not suggest 'might be used somewhere not searched'.\n\
-  - Do NOT report a finding twice (once from compiler output, once \
-     from grep). Dedupe before emitting.\n\
+  - Do NOT report a finding twice. If you already emitted a FINDINGS \
+     block, do not emit another. The parser picks the last non-empty \
+     block, but duplicates waste tokens and confuse the reader.\n\
 \n\
 OUTPUT CONTRACT (mandatory format):\n\
   - After investigating, produce one report. No prose preamble.\n\
