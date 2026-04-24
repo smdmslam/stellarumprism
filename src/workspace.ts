@@ -18,6 +18,7 @@ import { AgentController, type AgentImageContext } from "./agent";
 import { resolveModel, renderModelListAnsi, modelSupportsVision } from "./models";
 import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
+import { findMode } from "./modes";
 
 /**
  * Pixels of breathing room to reserve on the right of the terminal so the
@@ -417,6 +418,29 @@ export class Workspace {
       return;
     }
 
+    // /audit [scope] — Second Pass mode. Scope (optional) is appended to
+    // the user message as context the auditor can use to narrow focus,
+    // e.g. '/audit HEAD~3' → 'Audit the diff HEAD~3..HEAD.'
+    const auditMatch = /^\s*\/(audit|second-pass)(?:\s+(.*))?$/i.exec(text);
+    if (auditMatch) {
+      const scope = (auditMatch[2] ?? "").trim();
+      const mode = findMode("/audit");
+      if (!mode) {
+        // Shouldn't happen — audit is in the registry. Defensive fallback.
+        this.term.write(
+          `\r\n\x1b[1;31m[audit]\x1b[0m mode registry misconfigured\r\n`,
+        );
+        return;
+      }
+      const auditPrompt = buildAuditPrompt(scope);
+      this.setTitleFromText(`audit ${scope || "(working tree)"}`);
+      void this.dispatchAgentQuery(auditPrompt, {
+        mode: mode.name,
+        modelOverride: mode.preferredModel,
+      });
+      return;
+    }
+
     if (intent.intent === "agent") {
       this.setTitleFromText(intent.payload);
       void this.dispatchAgentQuery(intent.payload);
@@ -467,8 +491,14 @@ export class Workspace {
    * Resolve any `@path` file references in the prompt, print a status
    * summary in xterm, and hand the result to the agent along with any
    * pending image attachments.
+   *
+   * `options.mode` + `options.modelOverride` are forwarded straight to
+   * agent.query() for mode-based turns (e.g. /audit).
    */
-  private async dispatchAgentQuery(prompt: string): Promise<void> {
+  private async dispatchAgentQuery(
+    prompt: string,
+    options: { mode?: string; modelOverride?: string } = {},
+  ): Promise<void> {
     const refs = extractFileRefs(prompt);
     const { resolved, errors } =
       refs.length > 0
@@ -517,6 +547,7 @@ export class Workspace {
         truncated: r.truncated,
       })),
       imagePayload,
+      options,
     );
   }
 
@@ -828,6 +859,30 @@ function cryptoRandomId(): string {
   } catch {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   }
+}
+
+/**
+ * Turn an optional scope string (from `/audit <scope>`) into a user-role
+ * prompt the Second Pass system prompt can work with. Scope can be:
+ *   - empty         → audit the working tree against HEAD
+ *   - a single ref  → audit that commit against its parent (e.g. HEAD~3)
+ *   - a range       → audit the explicit range (e.g. HEAD~3..HEAD)
+ *   - a @-path      → audit scoped to a particular file or directory
+ * The actual interpretation is left to the audit persona — we just tell
+ * it what the user asked for.
+ */
+function buildAuditPrompt(scope: string): string {
+  if (!scope) {
+    return "Audit the current working tree against HEAD. Look for refactor incompleteness and wiring gaps. Use git_diff, git_log, grep, find, and bulk_read to investigate before reporting. Output only the findings list.";
+  }
+  if (scope.startsWith("@")) {
+    return `Audit ${scope} for refactor incompleteness and wiring gaps. Start by reading the file, then grep the repo for references to every symbol it exports or consumes. Output only the findings list.`;
+  }
+  if (scope.includes("..")) {
+    return `Audit the git range ${scope} for refactor incompleteness. Start with git_diff on that range, then cross-reference touched symbols across the repo. Output only the findings list.`;
+  }
+  // Single ref — treat as "this commit vs its parent."
+  return `Audit commit ${scope} (diff against ${scope}~1) for refactor incompleteness and wiring gaps. Start with git_diff on that range, then cross-reference touched symbols across the repo. Output only the findings list.`;
 }
 
 function shortModelName(model: string): string {

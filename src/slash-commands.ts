@@ -3,6 +3,7 @@
 // in `workspace.ts`.
 
 import { MODEL_LIBRARY } from "./models";
+import { MODES } from "./modes";
 
 export interface SlashCommand {
   /** The full command typed, including the leading slash. */
@@ -75,6 +76,17 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: "/help",
     detail: "Show this list",
   },
+
+  // -- Modes (persona-switched agent turns) -------------------------------
+  // Each mode contributes its primary alias as a slash command. Additional
+  // aliases are still accepted by the handler in workspace.ts; they're
+  // just not duplicated in the popup to keep it tidy.
+  ...MODES.map<SlashCommand>((m) => ({
+    label: m.aliases[0],
+    detail: m.description,
+    info: `Runs this turn in '${m.name}' mode \u2014 swaps in a dedicated system prompt and defaults to ${m.preferredModel}. Pass an optional scope: ${m.aliases[0]} HEAD~3, ${m.aliases[0]} HEAD~5..HEAD, or ${m.aliases[0]} @src/pages.`,
+    takesArg: true,
+  })),
 ];
 
 /** Render the help listing as an ANSI-colored block for the xterm output. */

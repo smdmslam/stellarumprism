@@ -25,6 +25,69 @@ use crate::config::ConfigState;
 /// don't blow past OpenRouter's context window.
 const MAX_HISTORY_MESSAGES: usize = 40;
 
+/// OpenRouter slug the audit mode routes to by default. 2M-context Grok
+/// is the right fit — audits need to hold the full diff + cross-referenced
+/// files at once. User can still override via /model before calling /audit.
+const AUDIT_DEFAULT_MODEL: &str = "x-ai/grok-4-fast";
+
+/// System prompt used only when the frontend passes mode="audit". Replaces
+/// the general persona for a single turn; session history is unchanged.
+const AUDIT_SYSTEM_PROMPT: &str = "You are Second Pass, a refactor auditor. \
+Your job is to find the things an AI-powered editor missed when it \
+refactored this codebase. You MUST NOT edit, create, or delete files. \
+You produce one artifact: a numbered list of findings.\n\
+\n\
+WHAT TO LOOK FOR:\n\
+  - Renamed symbols: old name still referenced somewhere in the repo\n\
+  - Signature changes: callers still pass the old shape to callees that \
+    now expect the new shape\n\
+  - Removed exports that are still imported\n\
+  - Dead imports left over from the refactor\n\
+  - Tests / fixtures still targeting the old API or old schema\n\
+  - Routes, config keys, CSS selectors, env vars that were renamed \
+    but not fully propagated\n\
+  - Half-applied find-and-replace (N matches, only N-1 updated)\n\
+  - TypeScript/Rust compile errors hiding behind type-safety holes \
+    (any, unsafe, unchecked casts)\n\
+\n\
+HOW TO WORK:\n\
+  1. Start with git_diff (or git_log + git_diff) to see what actually \
+     changed. Don't skip this. The diff is your ground truth for \
+     'what was touched'.\n\
+  2. For every symbol added, renamed, removed, or changed in the diff, \
+     use grep across the whole repo to verify its uses are consistent.\n\
+  3. Use find to enumerate likely follow-up files (tests, fixtures, \
+     docs) that might reference the changed symbols.\n\
+  4. Use bulk_read to pull in many related files in one call when \
+     you need context across several.\n\
+  5. Do not rely on your training-era knowledge of this codebase. The \
+     tool results are the only source of truth.\n\
+\n\
+OUTPUT CONTRACT (mandatory format):\n\
+  - After you've finished investigating, produce a single report.\n\
+  - Start with 'FINDINGS (N)' where N is the total count.\n\
+  - Then one line per finding, in this exact shape:\n\
+      [severity] path/to/file.ext:line \u{2014} description \u{2014} suggested fix\n\
+  - Valid severities: error, warning, info.\n\
+  - 'error' = definitely broken or will break at runtime.\n\
+  - 'warning' = likely bug, smell, or inconsistency worth fixing.\n\
+  - 'info' = observation the user should know about but isn't a bug.\n\
+  - Use the 7-character short line-format; one finding per line. \
+    Keep the description to a single sentence.\n\
+  - If there's genuinely nothing wrong, output 'FINDINGS (0)' and a \
+    one-sentence reason you checked but found nothing.\n\
+\n\
+WHAT NOT TO DO:\n\
+  - Do not propose or call edit_file / write_file. Your job is to \
+     report, not to fix.\n\
+  - Do not emit a 'Summary', 'Timeline', 'Next steps', or 'Here are \
+     some commands to run' section. The findings list is the entire \
+     deliverable.\n\
+  - Do not wrap the list in prose explaining the methodology. The \
+     tool-call log already shows what you did.\n\
+  - Do not speculate about problems you couldn't verify from tool \
+     output. If you can't prove it, don't list it.";
+
 // ---------------------------------------------------------------------------
 // Request types
 // ---------------------------------------------------------------------------
@@ -364,6 +427,7 @@ pub async fn agent_query(
     prompt: String,
     context: Option<AgentContext>,
     model: Option<String>,
+    mode: Option<String>,
 ) -> Result<String, String> {
     let snapshot = cfg.snapshot();
     if snapshot.openrouter.api_key.is_empty() {
@@ -397,9 +461,28 @@ pub async fn agent_query(
     let inflight_map = Arc::clone(&state.inflight);
     let id_for_task = request_id.clone();
 
-    let chosen_model = model.unwrap_or_else(|| snapshot.openrouter.default_model.clone());
+    // Mode lookup: pick the system-prompt override and the default model
+    // for this call. Modes are a first-class abstraction so future /explain,
+    // /review-pr, /test-gen modes all flow through the same plumbing.
+    let (mode_system_prompt, mode_default_model): (Option<&str>, Option<&str>) =
+        match mode.as_deref() {
+            Some("audit") => (Some(AUDIT_SYSTEM_PROMPT), Some(AUDIT_DEFAULT_MODEL)),
+            Some(other) => {
+                // Unknown mode: log and fall through to normal flow.
+                eprintln!("agent_query: unknown mode '{}'; ignoring", other);
+                (None, None)
+            }
+            None => (None, None),
+        };
+
+    // Model priority: explicit caller-passed model > mode default > config default.
+    let chosen_model = model
+        .or_else(|| mode_default_model.map(|s| s.to_string()))
+        .unwrap_or_else(|| snapshot.openrouter.default_model.clone());
     let api_key = snapshot.openrouter.api_key.clone();
     let base_url = snapshot.openrouter.base_url.clone();
+    // Clone the prompt into an owned String so the spawned task can use it.
+    let mode_system_prompt = mode_system_prompt.map(|s| s.to_string());
 
     // Capture cwd for tool execution (kept outside the session so tools can
     // always resolve relative paths regardless of conversation history).
@@ -454,6 +537,7 @@ pub async fn agent_query(
                 &snapshot,
                 images_for_turn,
                 true, // include tools schema every round
+                mode_system_prompt.as_deref(),
             )
             .await;
             // Images only attach to the first round; after that the model has
@@ -652,6 +736,7 @@ pub async fn agent_query(
                 &review_messages,
                 &[], // no images for review
                 false, // no tools for the reviewer
+                None, // no mode override for the reviewer
             )
             .await;
             let review_payload = match outcome {
@@ -750,12 +835,34 @@ async fn run_stream(
     messages: &[Message],
     pending_images: &[AgentImage],
     include_tools: bool,
+    system_override: Option<&str>,
 ) -> Result<StreamOutcome, String> {
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| e.to_string())?;
 
-    let out_messages = build_out_messages(messages, pending_images);
+    let mut out_messages = build_out_messages(messages, pending_images);
+    // If a mode override is set, replace the first system message on the
+    // wire for this turn. The session's stored history is unchanged — only
+    // what we send to OpenRouter this call differs. If there's no system
+    // message at all (shouldn't happen in practice; ensure_started always
+    // pushes one), prepend the override.
+    if let Some(override_prompt) = system_override {
+        if let Some(first) = out_messages.iter_mut().find(|m| m.role == "system") {
+            first.content = Some(OutContent::Text(override_prompt));
+        } else {
+            out_messages.insert(
+                0,
+                OutMessage {
+                    role: "system",
+                    content: Some(OutContent::Text(override_prompt)),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                },
+            );
+        }
+    }
     let body = OrRequest {
         model,
         messages: out_messages,

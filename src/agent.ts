@@ -252,11 +252,19 @@ export class AgentController {
     return this.busy;
   }
 
-  /** Kick off a streaming query. `prompt` is the user's raw message. */
+  /**
+   * Kick off a streaming query. `prompt` is the user's raw message.
+   *
+   * `options.mode` switches the Rust-side system prompt for this turn
+   * only (e.g. 'audit' → Second Pass persona). `options.modelOverride`
+   * forces a specific OpenRouter slug for the turn, bypassing the
+   * auto-preset router and the session default.
+   */
   async query(
     prompt: string,
     extraFiles: AgentFileContext[] = [],
     images: AgentImageContext[] = [],
+    options: { mode?: string; modelOverride?: string } = {},
   ): Promise<void> {
     if (!this.hasApiKey) {
       this.writeLineToTerm(
@@ -285,35 +293,44 @@ export class AgentController {
       `\r\n\x1b[1;36myou\x1b[0m \x1b[2m›\x1b[0m ${echoed}\r\n`,
     );
 
-    // Decide the actual model: if the user is in auto mode, run the
-    // rule-based router on the prompt + signals. The model string may
-    // be "auto" (legacy), "auto-agentic", "auto-frontier", or
-    // "auto-thrifty" — parseAutoSlug maps each to a preset.
+    // Decide the actual model. Priority:
+    //   1. options.modelOverride (e.g. a mode's preferred model)
+    //   2. Auto-preset router (when this.model is "auto-*" / "auto")
+    //   3. The session's explicit model (set via /model <slug>)
     let resolvedModel = this.model;
-    const preset = parseAutoSlug(this.model);
-    if (preset !== null) {
-      const decision = routeModel(
-        prompt,
-        {
-          hasImages: images.length > 0,
-          hasAtRefs: /(?:^|\s)@[A-Za-z0-9._~/+-]/.test(prompt),
-          // Prism's agent loop always attaches tool schemas.
-          requireToolUse: true,
-        },
-        preset,
-      );
-      resolvedModel = decision.slug;
+    if (options.modelOverride) {
+      resolvedModel = options.modelOverride;
+      const label = options.mode ?? "override";
       this.opts.term.write(
-        `${PREFIX_DIM}\u2192 [auto/${preset}] ${shortSlug(resolvedModel)} (${decision.reason})${RESET}`,
+        `${PREFIX_DIM}\u2192 [${label}] ${shortSlug(resolvedModel)}${RESET}`,
       );
+    } else {
+      const preset = parseAutoSlug(this.model);
+      if (preset !== null) {
+        const decision = routeModel(
+          prompt,
+          {
+            hasImages: images.length > 0,
+            hasAtRefs: /(?:^|\s)@[A-Za-z0-9._~/+-]/.test(prompt),
+            // Prism's agent loop always attaches tool schemas.
+            requireToolUse: true,
+          },
+          preset,
+        );
+        resolvedModel = decision.slug;
+        this.opts.term.write(
+          `${PREFIX_DIM}\u2192 [auto/${preset}] ${shortSlug(resolvedModel)} (${decision.reason})${RESET}`,
+        );
+      }
     }
 
     // Hard-gate (belt-and-braces): even when the router didn't run
     // (user explicitly set `/model sonar`, say), never send tool schemas
     // to a non-tool-capable model. Swap to a safe fallback and warn.
     if (!modelSupportsToolUse(resolvedModel)) {
-      const fallback = preset
-        ? PRESETS[preset].default
+      const presetForFallback = parseAutoSlug(this.model);
+      const fallback = presetForFallback
+        ? PRESETS[presetForFallback].default
         : UNIVERSAL_TOOL_FALLBACK;
       this.opts.term.write(
         `\r\n\x1b[1;33m[router]\x1b[0m ${PREFIX_DIM}${shortSlug(resolvedModel)} doesn't support tool use; using ${shortSlug(fallback)} for this turn${RESET}`,
@@ -341,6 +358,7 @@ export class AgentController {
         prompt,
         context,
         model: resolvedModel,
+        mode: options.mode ?? null,
       });
     } catch (err) {
       this.writeLineToTerm(`${PREFIX_OPEN}[agent error]${RESET} ${String(err)}`);
