@@ -1,0 +1,745 @@
+:root {
+  font-family:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  color: #e6e6e6;
+  background-color: #0d0f14;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background-color: #0d0f14;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+/* ---------- titlebar + tab strip ---------- */
+
+.titlebar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  background-color: #0b0d12;
+  border-bottom: 1px solid #1f2937;
+  user-select: none;
+  -webkit-app-region: drag;
+  height: 36px;
+}
+
+.titlebar-traffic-space {
+  flex: 0 0 80px; /* leaves room for macOS traffic-light buttons */
+}
+
+.tab-strip {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 0 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-app-region: drag;
+}
+.tab-strip::-webkit-scrollbar { height: 4px; }
+.tab-strip::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 2px; }
+
+.tab {
+  -webkit-app-region: no-drag;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px 0 12px;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #9ca3af;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  cursor: pointer;
+  max-width: 220px;
+  min-width: 80px;
+}
+.tab:hover {
+  background: #11141b;
+  color: #d1d5db;
+}
+.tab.active {
+  background: #0d0f14;
+  color: #e5e7eb;
+  border-color: #1f2937;
+}
+.tab-title {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-close {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  color: #6b7280;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 100ms ease, background-color 100ms ease;
+}
+.tab:hover .tab-close,
+.tab.active .tab-close {
+  opacity: 1;
+}
+.tab-close:hover {
+  background: #374151;
+  color: #f9fafb;
+}
+
+.new-tab-btn {
+  -webkit-app-region: no-drag;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin-top: 4px;
+  margin-left: 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #9ca3af;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+.new-tab-btn:hover {
+  background: #11141b;
+  color: #e5e7eb;
+}
+
+/* ---------- workspaces container ---------- */
+
+#workspaces {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  display: flex;
+}
+
+.workspace {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: none;
+  flex-direction: row;
+  gap: 12px;
+  padding: 12px 14px 14px 14px;
+  box-sizing: border-box;
+}
+.workspace.active {
+  display: flex;
+}
+
+/* ---------- blocks sidebar ---------- */
+
+.blocks-sidebar {
+  flex: 0 0 240px;
+  min-width: 180px;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  background-color: #0a0c11;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9ca3af;
+  border-bottom: 1px solid #1f2937;
+}
+
+.blocks-count {
+  font-variant-numeric: tabular-nums;
+  color: #6b7280;
+  background: #111827;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.blocks-list {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.blocks-list::-webkit-scrollbar {
+  width: 8px;
+}
+.blocks-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.blocks-list::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 4px;
+}
+.blocks-list::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+.block-item {
+  display: grid;
+  grid-template-columns: 8px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: #d1d5db;
+  font-size: 12px;
+  border-left: 2px solid transparent;
+  transition: background-color 80ms ease;
+}
+.block-item:hover { background-color: #111827; }
+.block-item .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.block-item.status-running .status-dot {
+  background: #eab308;
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.25);
+  animation: pulse 1.3s ease-in-out infinite;
+}
+.block-item.status-success .status-dot { background: #22c55e; }
+.block-item.status-error .status-dot { background: #ef4444; }
+.block-item .cmd {
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #e5e7eb;
+}
+.block-item .meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+}
+.block-item .ec {
+  min-width: 18px;
+  text-align: center;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: #1f2937;
+  color: #9ca3af;
+}
+.block-item.status-success .ec { color: #22c55e; }
+.block-item.status-error .ec {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* ---------- content column (terminal + input) ---------- */
+
+.content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: #0d0f14;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.terminal-host {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Extra right padding so xterm's scrollbar has its own lane and doesn't
+   * overlay the last characters of each line. Symmetric left padding keeps
+   * the text visually centered away from the sidebar border. */
+  padding: 10px 22px 10px 16px;
+  background-color: #0d0f14;
+}
+.terminal-host .xterm { height: 100%; }
+.terminal-host .xterm-viewport {
+  background-color: transparent !important;
+}
+
+/* macOS WebKit defaults to overlay scrollbars that hover on top of content.
+ * Override with always-visible scrollbars so the track reserves real space
+ * and the thumb never sits on top of the terminal text. */
+.terminal-host .xterm-viewport::-webkit-scrollbar {
+  width: 10px;
+  background: transparent;
+}
+.terminal-host .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+.terminal-host .xterm-viewport::-webkit-scrollbar-thumb {
+  background: #2d3748;
+  border-radius: 5px;
+  border: 2px solid #0d0f14;
+}
+.terminal-host .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* ---------- input bar ---------- */
+
+.input-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 16px;
+  background-color: #0a0c11;
+  border-top: 1px solid #1f2937;
+  min-height: 40px;
+  max-height: 40vh;
+}
+
+.input-prefix {
+  flex: 0 0 auto;
+  padding-top: 10px;
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: #22c55e;
+  user-select: none;
+}
+.input-prefix[data-intent="agent"] { color: #c084fc; }
+
+.cwd-badge {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  margin-right: 2px;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.08);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  max-width: 260px;
+  overflow: hidden;
+  white-space: nowrap;
+  user-select: none;
+  cursor: default;
+}
+
+.editor-host {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+  max-height: 40vh;
+}
+.editor-host .cm-editor { background: transparent; }
+
+.intent-badge {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  user-select: none;
+  cursor: default;
+}
+.intent-badge[data-intent="agent"] {
+  background: rgba(192, 132, 252, 0.12);
+  color: #c084fc;
+  border-color: rgba(192, 132, 252, 0.4);
+}
+
+.model-badge {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(125, 211, 252, 0.08);
+  color: #7dd3fc;
+  border: 1px solid rgba(125, 211, 252, 0.25);
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+  cursor: default;
+}
+
+/* ---------- agent actions bar ---------- */
+
+.agent-actions {
+  flex: 0 0 auto;
+  display: none;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 16px;
+  background: linear-gradient(180deg, #0a0c11 0%, #0b0e14 100%);
+  border-top: 1px solid rgba(192, 132, 252, 0.25);
+  max-height: 35vh;
+  overflow-y: auto;
+}
+.agent-actions.visible { display: flex; }
+
+.actions-label {
+  width: 100%;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #c084fc;
+  padding-bottom: 2px;
+}
+
+.action-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  max-width: 100%;
+}
+
+.action-cmd {
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  color: #e5e7eb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 420px;
+}
+
+.action-card .btn {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-run {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+.btn-run:hover { background: rgba(34, 197, 94, 0.28); }
+.btn-copy {
+  background: #1f2937;
+  color: #d1d5db;
+  border-color: #374151;
+}
+.btn-copy:hover { background: #374151; }
+
+/* ---------- approval card (gated write tool) ---------- */
+.approval-card {
+  width: 100%;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, #1a1420 0%, #14101b 100%);
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.approval-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.approval-label {
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #facc15;
+  letter-spacing: 0.04em;
+}
+.approval-hint {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #a1a1aa;
+}
+.approval-preview {
+  margin: 0;
+  padding: 8px 10px;
+  background: #080a0f;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #d1d5db;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.diff-marker-old { color: #fca5a5; font-weight: 700; }
+.diff-marker-new { color: #86efac; font-weight: 700; }
+
+.approval-buttons {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.approval-buttons .btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+.btn-approve {
+  background: rgba(34, 197, 94, 0.18);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.45);
+}
+.btn-approve:hover { background: rgba(34, 197, 94, 0.32); }
+.btn-approve-session {
+  background: rgba(125, 211, 252, 0.14);
+  color: #7dd3fc;
+  border-color: rgba(125, 211, 252, 0.4);
+}
+.btn-approve-session:hover { background: rgba(125, 211, 252, 0.24); }
+.btn-reject {
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+.btn-reject:hover { background: rgba(239, 68, 68, 0.26); }
+
+/* ---------- image attachments strip ---------- */
+
+.attachments {
+  flex: 0 0 auto;
+  display: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 16px;
+  background: #0a0c11;
+  border-top: 1px solid #1f2937;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.attachments.visible { display: flex; }
+
+.thumb {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #111827;
+  border: 1px solid #1f2937;
+  flex: 0 0 auto;
+}
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.thumb-close {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  background: rgba(0, 0, 0, 0.65);
+  color: #f9fafb;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+}
+.thumb-close:hover {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+
+/* Drop-target highlight on the active workspace content area. */
+.content.drop-target {
+  outline: 2px dashed rgba(125, 211, 252, 0.5);
+  outline-offset: -8px;
+  background: rgba(125, 211, 252, 0.04);
+}
+
+/* ---------- autocomplete popup (CodeMirror) ---------- */
+
+/* CodeMirror sets inline max-height on the tooltip container based on the
+ * space between the cursor and viewport edge. That's sensible in the
+ * abstract, but with our tall 2-line rows + the editor pinned to the
+ * bottom of the window, it ends up too small. Override with !important on
+ * both the outer tooltip and the inner ul. */
+.cm-tooltip.cm-tooltip-autocomplete {
+  background: #0f1218 !important;
+  border: 1px solid #1f2937 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+  padding: 4px;
+  max-width: 640px !important;
+  min-width: 420px !important;
+  max-height: min(600px, 78vh) !important;
+  /* CM sometimes sets "top" close to 0 when flipping; guard against the
+   * popup touching the window edge. */
+  margin-top: 4px;
+}
+
+.cm-tooltip.cm-tooltip-autocomplete > ul {
+  font-family:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  max-height: min(560px, 74vh) !important;
+}
+
+/* Each row is a 2x2 grid:
+ *   row 1: [ label ] [ detail            ]
+ *   row 2: [       subtitle (full width) ]
+ */
+.cm-tooltip.cm-tooltip-autocomplete > ul > li {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 3px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: #d1d5db;
+  line-height: 1.4;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background: rgba(125, 211, 252, 0.12);
+  color: #f9fafb;
+}
+
+/* Label = the slash command. Monospace + accent colored. */
+.cm-tooltip.cm-tooltip-autocomplete .cm-completionLabel {
+  grid-column: 1;
+  grid-row: 1;
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #7dd3fc;
+  min-width: 90px;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionLabel {
+  color: #bae6fd;
+}
+
+/* Fuzzy-match highlight. */
+.cm-tooltip.cm-tooltip-autocomplete .cm-completionMatchedText {
+  text-decoration: none;
+  color: #fde047;
+  font-weight: 700;
+}
+
+/* Detail = short description on the label row. */
+.cm-tooltip.cm-tooltip-autocomplete .cm-completionDetail {
+  grid-column: 2;
+  grid-row: 1;
+  color: #9ca3af;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Subtitle = long description, second line, spans both columns. */
+.cm-completionSubtitle {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  color: #6b7280;
+  font-size: 11.5px;
+  line-height: 1.45;
+  font-weight: 400;
+  white-space: normal;
+  word-wrap: break-word;
+  padding-left: 2px;
+}
+.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionSubtitle {
+  color: #9ca3af;
+}
+
+/* We don't use the floating info tooltip anymore — hide it if CM ever
+ * decides to render one (e.g. from a future third-party source). */
+.cm-tooltip.cm-completionInfo {
+  display: none !important;
+}
