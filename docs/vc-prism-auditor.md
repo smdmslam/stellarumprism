@@ -110,12 +110,34 @@ Against the general AI-coding market:
 - **Structured output.** Findings are a checklist, not a paragraph.
 - **Editor-agnostic.** Works alongside Cursor / Antigravity / VS Code / Vim — doesn't ask users to switch IDEs to benefit.
 - **Terminal-native.** Fits into existing developer workflows without a new UI paradigm to learn.
+- **Model-agnostic by design.** Works on any capable tool-using model from any provider. Not tied to Anthropic, OpenAI, or any single lab.
 
 Against Warp specifically (the closest existing thing):
 
 - Warp is a generalist AI terminal; audit capability is emergent, not targeted.
 - Prism Second Pass will ship audit-specific tools (grep / find / git_diff / bulk_read) and a dedicated mode with a structured findings schema.
 - Prism Second Pass will route audits to long-context models automatically; Warp doesn't distinguish.
+
+## Why this is durable
+
+Most AI coding tools on the market are **model bets**. Cursor's value is inseparable from Claude Sonnet or GPT-5.4's quality; Copilot is an OpenAI skin. If the underlying model provider has an outage, raises prices, or falls behind a competitor, the product suffers immediately.
+
+Prism is a **tool-loop bet**. The intelligence is distributed across four layers, not concentrated in one:
+
+- The system prompt + tool schemas teach the agent *when* to grep, *when* to read, *when* to diff.
+- The iterative loop orchestrates tool calls across rounds.
+- The tool results themselves ground every response in the user's real filesystem, not the model's training data.
+- Only the remaining share is the LLM's own reasoning.
+
+This ratio shows up in practice. In our own testing, a mid-tier model (DeepSeek V3.2, roughly $0.28 per million tokens) completed every tested audit workflow — iterative grep/find/git_diff/bulk_read loops, cross-referencing symbols across files, producing coherent reports — nearly as well as frontier models priced 10–30× higher. The primary model is a commodity underneath a thick, deliberately-designed tool surface.
+
+Three investor-relevant consequences follow:
+
+1. **Elastic cost structure.** Premium per-turn quality is available when a task needs it (frontier models for long-context audits, vision tasks, gnarly reasoning). Day-to-day workflows run on cheap open-weights models with near-equivalent outcomes. That's a defensible unit-economic story at both the individual and team tier.
+2. **Vendor risk is diffused.** A single provider's outage, price change, or model deprecation doesn't break the product — we route to another capable model from the 20+ supported. Prism inherits the aggregate quality of the open model ecosystem rather than being pinned to one lab.
+3. **The moat compounds with open-weights progress.** Every time an open model improves at tool use, Prism automatically gets more capable *and* cheaper to operate — without us shipping anything. Competitors locked to proprietary models don't get that lift.
+
+The historical parallel is cloud infrastructure. AWS didn't win because Intel made the best CPUs; it won because virtualization was the real product and the CPU was the commodity underneath. Prism is making the same bet at the tool-loop layer, above LLMs.
 
 ## Expansion path
 
@@ -154,6 +176,8 @@ This is the classic Cursor play run in reverse: Cursor started as an editor and 
 **Strategic moat:** the audit workflow generates a data asset competitors don't have — a growing corpus of "what kinds of wiring gaps are typical in AI-generated refactors." That dataset feeds better audit-specific fine-tuning, which compounds over time.
 
 There's a second, more immediate moat: the **self-reinforcing skills loop.** Every audit Prism runs can be archived as a markdown skill and re-loaded as context for the next audit. The tool learns your codebase as a side effect of being used. Switching to a competitor means throwing away accumulated institutional memory. Stickiness comes free with usage.
+
+And a third, macro-level: **model-agnosticism as a hedge.** Every AI coding tool today is implicitly betting on one or two model providers continuing to lead. Prism benefits from the opposite trend — whenever open-weights or commodity models close the gap with frontier, Prism's cost-per-audit drops and the moat widens. Competitors with deep single-model integration can't take that trade.
 
 ## Naming
 
