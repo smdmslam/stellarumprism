@@ -18,13 +18,16 @@ import { AgentController, type AgentImageContext } from "./agent";
 import { resolveModel, renderModelListAnsi, modelSupportsVision } from "./models";
 import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
-import { findMode } from "./modes";
+import { findMode, type Mode } from "./modes";
 import {
   auditReportFilename,
   parseAuditTranscript,
   renderAnsiFindings,
+  renderJsonReport,
   renderMarkdownReport,
+  type AuditReport,
 } from "./findings";
+import { buildFixPrompt, filterFindings, parseFixArgs } from "./fix";
 
 /**
  * Pixels of breathing room to reserve on the right of the terminal so the
@@ -432,6 +435,25 @@ export class Workspace {
       return;
     }
 
+    // /fix [selector] [--max-rounds=N] [--report=path] — Second Pass Fix.
+    // Reads the latest audit JSON sidecar (or the report at --report=path),
+    // filters findings by selector ('all', '1,3', '1-5', '#F2'), and
+    // dispatches a fix-mode agent that applies each one through the
+    // existing edit_file approval flow.
+    const fixMatch = /^\s*\/fix(?:\s+(.*))?$/i.exec(text);
+    if (fixMatch) {
+      const rawArgs = (fixMatch[1] ?? "").trim();
+      const mode = findMode("/fix");
+      if (!mode) {
+        this.term.write(
+          `\r\n\x1b[1;31m[fix]\x1b[0m mode registry misconfigured\r\n`,
+        );
+        return;
+      }
+      void this.handleFixCommand(rawArgs, mode);
+      return;
+    }
+
     // /audit [scope] [--max-rounds=N] — Second Pass mode. Scope (optional)
     // is appended to the user message as context the auditor can use to
     // narrow focus, e.g. '/audit HEAD~3' → 'Audit the diff HEAD~3..HEAD.'
@@ -511,6 +533,88 @@ export class Workspace {
     this.term.write(
       `\r\n\x1b[2m[verify] reviewer model = ${sanitize(resolved)}\x1b[0m\r\n`,
     );
+  }
+
+  /**
+   * Driver for `/fix [selector] [--max-rounds=N] [--report=path]`.
+   *
+   * Steps:
+   *   1. Parse args (selector + flags).
+   *   2. Load the audit JSON sidecar via the Rust side
+   *      (`read_latest_audit_report`).
+   *   3. Filter findings by selector. Bail out cleanly if the selector
+   *      matches nothing.
+   *   4. Build the fix-mode user prompt and dispatch with mode='fix'.
+   *
+   * The fix-mode system prompt + the existing `edit_file` approval flow
+   * handle the actual edits; this function is purely the substrate-to-
+   * consumer glue.
+   */
+  private async handleFixCommand(rawArgs: string, mode: Mode): Promise<void> {
+    const parsed = parseFixArgs(rawArgs);
+    if (parsed.error) {
+      this.term.write(
+        `\r\n\x1b[1;31m[fix]\x1b[0m ${sanitize(parsed.error)}\r\n`,
+      );
+      return;
+    }
+    if (!this.cwd) {
+      this.term.write(
+        `\r\n\x1b[1;33m[fix]\x1b[0m cwd unknown; cannot locate audit reports\r\n`,
+      );
+      return;
+    }
+
+    let lookup: { path: string; content: string; bytes: number };
+    try {
+      lookup = await invoke<{ path: string; content: string; bytes: number }>(
+        "read_latest_audit_report",
+        { cwd: this.cwd, path: parsed.reportPath ?? null },
+      );
+    } catch (e) {
+      this.term.write(
+        `\r\n\x1b[1;31m[fix]\x1b[0m ${sanitize(String(e))}\r\n`,
+      );
+      return;
+    }
+
+    let report: AuditReport;
+    try {
+      report = JSON.parse(lookup.content) as AuditReport;
+    } catch (e) {
+      this.term.write(
+        `\r\n\x1b[1;31m[fix]\x1b[0m failed to parse ${sanitize(prettyPath(lookup.path))}: ${sanitize(String(e))}\r\n`,
+      );
+      return;
+    }
+
+    const filterResult = filterFindings(report.findings, parsed.selector);
+    if (filterResult.error) {
+      this.term.write(
+        `\r\n\x1b[1;31m[fix]\x1b[0m ${sanitize(filterResult.error)} (report: ${sanitize(prettyPath(lookup.path))})\r\n`,
+      );
+      return;
+    }
+    const selected = filterResult.findings;
+    if (selected.length === 0) {
+      this.term.write(
+        `\r\n\x1b[2m[fix]\x1b[0m nothing to fix \u2014 ${sanitize(prettyPath(lookup.path))} has 0 findings\r\n`,
+      );
+      return;
+    }
+
+    const fixPrompt = buildFixPrompt(report, selected, lookup.path);
+    this.setTitleFromText(
+      `fix ${selected.length}/${report.findings.length} from latest audit`,
+    );
+    this.term.write(
+      `\r\n\x1b[2m[fix] applying \x1b[36m${selected.length}\x1b[0m\x1b[2m of \x1b[36m${report.findings.length}\x1b[0m\x1b[2m findings from \x1b[36m${sanitize(prettyPath(lookup.path))}\x1b[0m\r\n`,
+    );
+    void this.dispatchAgentQuery(fixPrompt, {
+      mode: mode.name,
+      modelOverride: mode.preferredModel,
+      maxToolRounds: parsed.maxToolRounds,
+    });
   }
 
   /**
@@ -700,21 +804,34 @@ export class Workspace {
     }
 
     const markdown = renderMarkdownReport(report);
+    const json = renderJsonReport(report);
     const filename = auditReportFilename(report.generated_at);
 
     try {
-      const result = await invoke<{ path: string; bytes_written: number }>(
-        "write_audit_report",
-        {
-          cwd: this.cwd,
-          filename,
-          content: markdown,
-        },
-      );
+      const result = await invoke<{
+        path: string;
+        bytes_written: number;
+        json_path?: string | null;
+        json_bytes_written?: number | null;
+      }>("write_audit_report", {
+        cwd: this.cwd,
+        filename,
+        content: markdown,
+        // The JSON sidecar is the machine-readable contract every future
+        // consumer (`/fix`, problems panel, CI) reads. Markdown is for
+        // humans; JSON is the API.
+        jsonContent: json,
+      });
       const pretty = prettyPath(result.path);
       this.term.write(
         `\r\n\x1b[1;32m[audit]\x1b[0m \x1b[2mreport saved \u2192 \x1b[36m${sanitize(pretty)}\x1b[0m\x1b[2m (${formatBytesShort(result.bytes_written)})\x1b[0m\r\n`,
       );
+      if (result.json_path) {
+        const prettyJson = prettyPath(result.json_path);
+        this.term.write(
+          `\x1b[2m[audit] sidecar     \u2192 \x1b[36m${sanitize(prettyJson)}\x1b[0m\x1b[2m (${formatBytesShort(result.json_bytes_written ?? 0)})\x1b[0m\r\n`,
+        );
+      }
     } catch (e) {
       this.term.write(
         `\r\n\x1b[1;31m[audit]\x1b[0m report write failed: ${sanitize(String(e))}\r\n`,

@@ -41,6 +41,20 @@ export interface Mode {
 
 export const MODES: Mode[] = [
   {
+    name: "fix",
+    aliases: ["/fix"],
+    description: "Apply findings from the latest audit report",
+    info:
+      "Reads the most recent .prism/second-pass/audit-*.json sidecar, lets " +
+      "you select which findings to apply, and dispatches a fix-mode agent " +
+      "that edits via the existing approval flow. Selectors: '/fix' or " +
+      "'/fix all' = every finding; '/fix 1,3' = specific 1-based indices; " +
+      "'/fix 1-5' = a range; '/fix #F2,#F4' = explicit Finding ids. Pass " +
+      "'--report=<path>' to target a specific report instead of the latest. " +
+      "Uses claude-haiku-4.5 by default for precise, surgical edits.",
+    preferredModel: "anthropic/claude-haiku-4.5",
+  },
+  {
     name: "audit",
     aliases: ["/audit", "/second-pass"],
     description: "Verify code via the diagnostic substrate (read-only)",

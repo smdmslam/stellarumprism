@@ -371,3 +371,23 @@ export function auditReportFilename(generated_at: string): string {
     .replace(/Z$/, "");
   return `audit-${stamp}.md`;
 }
+
+/**
+ * Render the structured AuditReport as pretty-printed JSON. This is the
+ * machine-readable sidecar to the markdown report \u2014 every consumer that
+ * isn't a human (`/fix`, future IDE problems panel, future CI integration)
+ * reads this instead of re-parsing the markdown body.
+ *
+ * The shape is identical to the in-memory `AuditReport`. We deliberately
+ * do NOT define a separate "on-disk" schema; the in-memory contract IS
+ * the on-disk contract, and that is the whole point of the substrate's
+ * Finding contract being unified.
+ */
+export function renderJsonReport(report: AuditReport): string {
+  return JSON.stringify(report, null, 2);
+}
+
+/** Build the JSON sidecar filename for the same generated_at timestamp. */
+export function auditReportJsonFilename(generated_at: string): string {
+  return auditReportFilename(generated_at).replace(/\.md$/, ".json");
+}

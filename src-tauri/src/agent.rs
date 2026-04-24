@@ -30,12 +30,18 @@ const MAX_HISTORY_MESSAGES: usize = 40;
 /// files at once. User can still override via /model before calling /audit.
 const AUDIT_DEFAULT_MODEL: &str = "x-ai/grok-4-fast";
 
-/// Tool-round cap for audit turns when no per-call override and no config
-/// override is in play. Audits cross-reference symbols across the whole
-/// repo, so they need a higher ceiling than chat turns. This is what the
-/// `/audit` slash command effectively gets unless the user has tuned
-/// `agent.max_tool_rounds` upward already.
-const AUDIT_MODE_MAX_TOOL_ROUNDS: usize = 60;
+/// OpenRouter slug the fix mode routes to by default. Fixes need precise,
+/// surgical edits over moderate context (just the touched files). A strong
+/// code-edit model that handles `edit_file` semantics well is the right
+/// fit. Haiku is cheap, fast, and disciplined about reading-before-editing.
+const FIX_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
+
+/// Tool-round cap for any "big work" mode (audit, fix) when no per-call
+/// override and no config override is in play. Both modes legitimately
+/// need a higher ceiling than chat turns: audit cross-references symbols
+/// across the whole repo, fix walks every selected finding's file. Used
+/// as a floor over the user's `agent.max_tool_rounds` setting.
+const BIG_WORK_MODE_MAX_TOOL_ROUNDS: usize = 60;
 
 /// System prompt used only when the frontend passes mode="audit". Replaces
 /// the general persona for a single turn; session history is unchanged.
@@ -139,6 +145,58 @@ WHAT NOT TO DO:\n\
      tool-call log already shows what you did.\n\
   - Do not skip typecheck because 'the diff looks small'. The compiler \
      is fast and definitive; running it is always the right first step.";
+
+/// System prompt used only when the frontend passes mode="fix". The fix
+/// consumer reads findings from a previously-written audit report (the
+/// JSON sidecar) and applies them via the existing `edit_file` /
+/// `write_file` approval flow. Same tools as audit, different persona
+/// and different output contract.
+const FIX_SYSTEM_PROMPT: &str = "You are Second Pass Fix, the consumer that \
+applies findings from a Prism audit report. The user's prompt contains \
+an authoritative list of findings; your job is to apply each one through \
+the `edit_file` (or, rarely, `write_file`) tool. The user retains \
+approval over every write \u{2014} you do NOT bypass that flow.\n\
+\n\
+GROUND RULES:\n\
+  - Treat the findings list in the user prompt as authoritative. The \
+     auditor that produced it ran the project's actual compiler. You do \
+     NOT need to re-investigate whether each finding is real.\n\
+  - Apply findings in the order given. Move on to the next only after \
+     the current one's edit_file call has been issued.\n\
+  - For every edit, FIRST call read_file on the target so you have the \
+     exact current contents (including whitespace). Only then call \
+     edit_file with an old_string that uniquely matches.\n\
+  - If you cannot safely apply a finding (e.g., the suggested fix is \
+     ambiguous, the file has changed since the audit, or the edit would \
+     conflict with another), SKIP that finding and report it in your \
+     final summary. Do not guess.\n\
+  - After applying all findings, optionally call typecheck to confirm \
+     the project still builds. If it does not, do NOT chase new \
+     diagnostics in the same turn \u{2014} surface them for the user.\n\
+  - You MAY use grep / git_diff / bulk_read for context, but bias \
+     toward minimum reads. The audit already did the investigation.\n\
+\n\
+OUTPUT CONTRACT:\n\
+  - After all edits are issued, produce a single short report block:\n\
+      APPLIED (n)\n\
+      <id-or-index> \u{2014} <one-line summary of what was changed>\n\
+      ...\n\
+      SKIPPED (m)\n\
+      <id-or-index> \u{2014} <one-line reason it was not applied>\n\
+      ...\n\
+      VERIFIED: typecheck <exit_code> [<diagnostics_count> diagnostics]\n\
+  - The verified line is optional but encouraged. Omit it if you did \
+     not run typecheck after the fixes.\n\
+  - One line per applied/skipped finding. Keep summaries terse.\n\
+\n\
+WHAT NOT TO DO:\n\
+  - Do not re-investigate the audit. Trust the findings list.\n\
+  - Do not apply changes outside the scope of the listed findings, \
+     even if you notice unrelated issues.\n\
+  - Do not produce a commit message, a PR description, or any other \
+     prose beyond the APPLIED/SKIPPED/VERIFIED block.\n\
+  - Do not call edit_file with replace_all=true unless the finding \
+     explicitly says 'every occurrence'. Default to single-match edits.";
 
 // ---------------------------------------------------------------------------
 // Request types
@@ -525,6 +583,7 @@ pub async fn agent_query(
     let (mode_system_prompt, mode_default_model): (Option<&str>, Option<&str>) =
         match mode.as_deref() {
             Some("audit") => (Some(AUDIT_SYSTEM_PROMPT), Some(AUDIT_DEFAULT_MODEL)),
+            Some("fix") => (Some(FIX_SYSTEM_PROMPT), Some(FIX_DEFAULT_MODEL)),
             Some(other) => {
                 // Unknown mode: log and fall through to normal flow.
                 eprintln!("agent_query: unknown mode '{}'; ignoring", other);
@@ -542,14 +601,16 @@ pub async fn agent_query(
     // Clone the prompt into an owned String so the spawned task can use it.
     let mode_system_prompt = mode_system_prompt.map(|s| s.to_string());
 
-    // Tool-round cap priority: explicit caller override > audit mode default
-    // (when in audit mode) > the user's config setting. This keeps the
-    // common case (audit needs more rounds than chat) self-tuning while
-    // letting power users dial it any direction without recompiling.
+    // Tool-round cap priority: explicit caller override > big-work mode
+    // floor (audit/fix) > the user's config setting. Big-work modes need
+    // a higher ceiling than chat: audit cross-references the whole repo,
+    // fix walks every selected finding's file. Power users can still dial
+    // up via config or per-call --max-rounds without recompiling.
+    let is_big_work_mode = matches!(mode.as_deref(), Some("audit") | Some("fix"));
     let max_tool_rounds = max_tool_rounds
         .or_else(|| {
-            if matches!(mode.as_deref(), Some("audit")) {
-                Some(AUDIT_MODE_MAX_TOOL_ROUNDS.max(snapshot.agent.max_tool_rounds))
+            if is_big_work_mode {
+                Some(BIG_WORK_MODE_MAX_TOOL_ROUNDS.max(snapshot.agent.max_tool_rounds))
             } else {
                 None
             }
