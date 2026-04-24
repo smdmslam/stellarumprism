@@ -108,6 +108,7 @@ export class Workspace {
           <span class="cwd-badge" title="Current working directory"></span>
           <div class="editor-host"></div>
           <span class="model-badge" title="Agent model">\u2026</span>
+          <button class="busy-pill" type="button" title="Cancel agent request" aria-label="cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
           <span class="intent-badge" data-intent="command">CMD</span>
         </div>
       </div>
@@ -242,10 +243,13 @@ export class Workspace {
       getCwd: () => this.cwd,
       onModelChange: () => this.updateModelBadge(),
       onSessionChange: () => this.updateModelBadge(),
+      onBusyChange: (busy) => this.setBusyState(busy),
+      onStall: () => this.setStalledState(true),
     });
     this.setupEditor();
     this.setupAttachments();
     this.setupSlashFocusHijack();
+    this.setupBusyPill();
     this.updateModelBadge();
   }
 
@@ -557,6 +561,47 @@ export class Workspace {
     if (!active) return false;
     const host = this.root.querySelector(".editor-host");
     return !!host && host.contains(active);
+  }
+
+  // -- busy pill (agent running indicator + cancel) ----------------------
+
+  /** Wire the cancel click handler on the busy pill. Visibility is driven
+   * by setBusyState() / setStalledState() via the agent's callbacks. */
+  private setupBusyPill(): void {
+    const pill = this.root.querySelector<HTMLButtonElement>(".busy-pill");
+    if (!pill) return;
+    pill.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Agent.cancel() is a no-op when nothing's in flight, so safe.
+      this.agent?.cancel();
+    });
+  }
+
+  /** Show/hide the busy pill and refocus the editor when going idle
+   * (so the next prompt is ready to type without clicking). */
+  private setBusyState(busy: boolean): void {
+    const pill = this.root.querySelector<HTMLButtonElement>(".busy-pill");
+    if (!pill) return;
+    if (busy) {
+      pill.classList.add("visible");
+      pill.classList.remove("stalled");
+    } else {
+      pill.classList.remove("visible");
+      pill.classList.remove("stalled");
+    }
+  }
+
+  /** Switch the pill into its red "stalled" variant without changing
+   * visibility. Triggered by the agent's 45s stall safety-net. */
+  private setStalledState(stalled: boolean): void {
+    const pill = this.root.querySelector<HTMLButtonElement>(".busy-pill");
+    if (!pill) return;
+    if (stalled) {
+      pill.classList.add("stalled");
+    } else {
+      pill.classList.remove("stalled");
+    }
   }
 
   private setupAttachments(): void {

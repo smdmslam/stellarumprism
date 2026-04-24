@@ -88,7 +88,27 @@ export interface AgentControllerOptions {
   onModelChange?: (model: string) => void;
   /** Called whenever the session's message count changes. */
   onSessionChange?: (messageCount: number) => void;
+  /**
+   * Fires `true` when an agent request goes in flight and `false` when it
+   * resolves (done / error / cancel / early-failure). Drives the busy pill
+   * + cancel button in the input bar.
+   */
+  onBusyChange?: (busy: boolean) => void;
+  /**
+   * Fires when a query has received its request id but no tokens, tool
+   * calls, or errors for STALL_TIMEOUT_MS. Drives the stalled variant of
+   * the busy pill. Does NOT cancel the request — the user chooses.
+   */
+  onStall?: () => void;
 }
+
+/**
+ * If the agent stream goes silent for this long after receiving the
+ * request id, surface a warning. Long enough to avoid false positives
+ * on slow upstream models but short enough that a true silent failure
+ * is visible within a human attention span.
+ */
+const STALL_TIMEOUT_MS = 45_000;
 
 export class AgentController {
   private readonly opts: AgentControllerOptions;
@@ -103,6 +123,10 @@ export class AgentController {
   private verifierModel = "anthropic/claude-haiku-4.5";
   /** True once the first review token has arrived for the current request. */
   private reviewHeaderPrinted = false;
+  /** Current busy-state broadcast value, so we don't double-fire callbacks. */
+  private busy = false;
+  /** Stall-detection timer id (window.setTimeout return value). */
+  private stallTimer: number | null = null;
 
   constructor(opts: AgentControllerOptions) {
     this.opts = opts;
@@ -213,6 +237,19 @@ export class AgentController {
   cancel(): void {
     if (!this.inflightId) return;
     void invoke("agent_cancel", { requestId: this.inflightId }).catch(() => {});
+    // Optimistically drop the busy state so the pill disappears immediately
+    // even if the backend takes a beat to emit its final done event. The
+    // subsequent onDone / onError will be a no-op because `busy` is already
+    // false (setBusy is idempotent).
+    this.setBusy(false);
+  }
+
+  /**
+   * Is the agent currently processing a request? Readable from the
+   * workspace so the pill state can be refreshed (e.g. on activate).
+   */
+  isBusy(): boolean {
+    return this.busy;
   }
 
   /** Kick off a streaming query. `prompt` is the user's raw message. */
@@ -235,6 +272,10 @@ export class AgentController {
     this.clearListeners();
     this.responseBuffer = "";
     this.clearActionBar();
+
+    // Enter busy state now. Anything that short-circuits below must call
+    // setBusy(false) before returning.
+    this.setBusy(true);
 
     // Echo the user's prompt in the terminal so the dialogue is visible.
     // Cyan `you:` header, then the prompt in normal weight. Newlines in the
@@ -303,6 +344,7 @@ export class AgentController {
       });
     } catch (err) {
       this.writeLineToTerm(`${PREFIX_OPEN}[agent error]${RESET} ${String(err)}`);
+      this.setBusy(false);
       return;
     }
     this.inflightId = requestId;
@@ -348,12 +390,14 @@ export class AgentController {
   destroy(): void {
     this.cancel();
     this.clearListeners();
+    this.clearStallTimer();
   }
 
   // -- streaming callbacks --------------------------------------------------
 
   private onToken(piece: string): void {
     this.responseBuffer += piece;
+    this.resetStallTimer();
     // xterm expects CRLF for newlines. Bare \n moves the cursor down without
     // returning to column 0, so lines stair-step. Normalize on write.
     const normalized = piece.replace(/\r?\n/g, "\r\n");
@@ -361,6 +405,7 @@ export class AgentController {
   }
 
   private onReviewToken(piece: string): void {
+    this.resetStallTimer();
     if (!this.reviewHeaderPrinted) {
       this.reviewHeaderPrinted = true;
       this.opts.term.write(
@@ -393,6 +438,9 @@ export class AgentController {
     preview: string;
     round: number;
   }): void {
+    // The agent is waiting on us — reset the stall timer so we don't
+    // prematurely scream "stalled" while a long approval is pending.
+    this.resetStallTimer();
     const bar = this.getActionsEl();
     if (!bar) return;
     bar.classList.add("visible");
@@ -445,6 +493,7 @@ export class AgentController {
     ok: boolean;
     round: number;
   }): void {
+    this.resetStallTimer();
     // Dim cyan arrow, tool name in bold cyan, args truncated so a huge file
     // content arg doesn't blow up the line. Result summary on a dim second
     // line so the user sees what actually happened.
@@ -465,6 +514,7 @@ export class AgentController {
   private onDone(): void {
     this.opts.term.write("\r\n");
     this.inflightId = null;
+    this.setBusy(false);
     this.renderActionBar(extractCodeBlocks(this.responseBuffer));
     this.clearListeners();
     // Refresh session count so the UI badge stays accurate.
@@ -474,7 +524,59 @@ export class AgentController {
   private onError(msg: string): void {
     this.writeLineToTerm(`${PREFIX_OPEN}[agent error]${RESET} ${msg}`);
     this.inflightId = null;
+    this.setBusy(false);
     this.clearListeners();
+  }
+
+  // -- busy-state plumbing --------------------------------------------------
+
+  /**
+   * Toggle the busy flag, fire the onBusyChange callback, and manage the
+   * stall timer. Idempotent: calling setBusy(true) while already busy, or
+   * setBusy(false) while already idle, does nothing. Always safe to call
+   * defensively at any exit point.
+   */
+  private setBusy(busy: boolean): void {
+    if (this.busy === busy) return;
+    this.busy = busy;
+    if (busy) {
+      this.startStallTimer();
+    } else {
+      this.clearStallTimer();
+    }
+    try {
+      this.opts.onBusyChange?.(busy);
+    } catch (e) {
+      console.error("onBusyChange threw", e);
+    }
+  }
+
+  private startStallTimer(): void {
+    this.clearStallTimer();
+    this.stallTimer = window.setTimeout(() => {
+      // Don't kill the stream — just surface that it looks stuck so the
+      // user can choose to cancel or keep waiting.
+      this.opts.term.write(
+        `\r\n\x1b[1;33m[agent]\x1b[0m ${PREFIX_DIM}stream silent for ${Math.round(STALL_TIMEOUT_MS / 1000)}s \u2014 click cancel or wait${RESET}\r\n`,
+      );
+      try {
+        this.opts.onStall?.();
+      } catch (e) {
+        console.error("onStall threw", e);
+      }
+    }, STALL_TIMEOUT_MS);
+  }
+
+  private resetStallTimer(): void {
+    if (!this.busy) return;
+    this.startStallTimer();
+  }
+
+  private clearStallTimer(): void {
+    if (this.stallTimer !== null) {
+      window.clearTimeout(this.stallTimer);
+      this.stallTimer = null;
+    }
   }
 
   // -- helpers --------------------------------------------------------------
