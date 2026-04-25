@@ -41,7 +41,7 @@ The result: every major AI-assisted refactor carries hidden debt. The industry h
 
 Prism is a *diagnostic substrate* with thin LLM consumers on top. The substrate runs deterministic checks the LLM can't fake: compile the project, resolve symbols, run tests, probe HTTP endpoints, walk migrations, query an LSP server, replay end-to-end flows. The consumers (audit, fix, build, refactor, test-gen, new) interpret those results, dedupe, and either write a findings report or generate code that's gated on the substrate. Pushing the deterministic work below the LLM is what makes the output trustworthy — the model can only emit findings or edits the substrate can confirm.
 
-**The substrate today (seven cells, all shipping):**
+**The substrate today (eight cells, all shipping):**
 
 1. `typecheck` — runs the project's actual `tsc` / `cargo check` / `pyright` / `go build` and parses real diagnostics. Compiler-grounded findings are the highest-confidence tier in the grader.
 2. `ast_query` — TypeScript-compiler-backed symbol resolution. The deterministic answer to "does this identifier exist in scope?" — the question grep cannot answer.
@@ -50,6 +50,7 @@ Prism is a *diagnostic substrate* with thin LLM consumers on top. The substrate 
 5. `http_fetch` — runtime probe against the dev server. Live response is runtime-tier evidence.
 6. `e2e_run` — multi-step stateful flows (login → action → assert), JSON-path extraction across requests. Strongest runtime signal Prism produces.
 7. `schema_inspect` — Prisma / Drizzle / SQLAlchemy / Django / Rails migration-state inspection. Catches the "works on my machine, broken in prod" class of bug.
+8. `run_shell` — shell-execution gated on approval. Argv-array only; hardcoded deny-list (rm -rf /, fork bomb, dd of=/dev/, etc.) rejects destructive patterns BEFORE the approval card and cannot be bypassed via session-approval; optional config allowlist on argv[0]; cwd scoped to the project root; 32 KB / stream + 60s default timeout. Closes the long-standing gap that forced consumers like `/new` to print 'next steps' instead of running them.
 
 **The consumers riding the substrate (six modes today):**
 
@@ -251,9 +252,9 @@ Recommendation: **Second Pass** as the product brand, `/audit` as the in-app com
 
 ## Current state
 
-The project has moved well past the original Phase 4 plan. As of 2026-04-25, the substrate, consumers, CLI, and IDE-shape phase 1 are all shipping. Test status: 172 cargo + 172 TypeScript + 9 prism-audit binary tests passing; tsc clean.
+The project has moved well past the original Phase 4 plan. As of 2026-04-25, the substrate, consumers, CLI, and IDE-shape phase 1 are all shipping. Test status: 186 cargo + 172 TypeScript + 9 prism-audit binary tests passing; tsc clean.
 
-**Substrate (seven cells, all shipping, Rust):** typecheck, ast_query, run_tests, http_fetch, e2e_run, lsp_diagnostics, schema_inspect. Each cell has its own argv-override + per-call timeout knobs in `~/.config/prism/config.toml`, returns a structured payload (not free text), and contributes to a deterministic confidence grader. The grader — not the LLM — decides confidence: `confirmed` (compiler / LSP / runtime / test / schema), `probable` (AST), `candidate` (grep- or LLM-only).
+**Substrate (eight cells, all shipping, Rust):** typecheck, ast_query, run_tests, http_fetch, e2e_run, lsp_diagnostics, schema_inspect, run_shell. Each cell has its own argv-override + per-call timeout knobs in `~/.config/prism/config.toml`, returns a structured payload (not free text), and contributes to a deterministic confidence grader. The grader — not the LLM — decides confidence: `confirmed` (compiler / LSP / runtime / test / schema), `probable` (AST), `candidate` (grep- or LLM-only). The `run_shell` cell is the one capability gap-fill among the eight: write tools (`write_file` / `edit_file`) and now `run_shell` are the only tools that hit the user-approval card; everything else is read-only or substrate-deterministic.
 
 **Consumers (six modes, all shipping):** `/audit`, `/fix`, `/build`, `/refactor`, `/test-gen`, `/new`. Each ships with its own system prompt + prompt-contract tests pinning the language so future copy-edits can't silently regress the discipline.
 
@@ -266,7 +267,7 @@ The project has moved well past the original Phase 4 plan. As of 2026-04-25, the
 
 **Workflow infrastructure:** filesystem-as-database (`./.prism/second-pass/audit-*.md` + JSON sidecar per run); skills loader (`~/.prism/skills/` global + `./.prism/skills/` per-project); approval flow on every write; runtime-probe URL auto-detection; LSP server auto-detection from project shape; ORM auto-detection for schema_inspect.
 
-**What's NOT built yet (deliberate):** in-editor inline squiggles (phase 3), run/debug surface (phase 4), telemetry / log probe (substrate v8), real multi-file refactor beyond rename, deploy/preview integration.
+**What's NOT built yet (deliberate):** in-editor inline squiggles (IDE phase 3), run/debug surface (IDE phase 4), telemetry / log probe (was queued as substrate v8 — now bumped to v9 since `run_shell` claimed v8), real multi-file refactor beyond rename, deploy/preview integration. System-prompt updates that teach `/new`, `/build`, and `/refactor` to use `run_shell` are queued as a separate review pass so the cell + plumbing PR stayed reviewable.
 
 ## The ask
 
