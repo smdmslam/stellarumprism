@@ -347,6 +347,36 @@ pub fn tool_schema() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "ast_query",
+                "description": "Ask the project's TypeScript compiler structural questions grep cannot answer reliably. v1 op: 'resolve' \u{2014} does a symbol exist in scope at file[:line]? Where is it declared? Use this BEFORE flagging any 'X is undefined / missing / not declared' finding. If ast_query says resolved=true, do NOT flag the finding. If resolved=false, attach the returned `evidence_detail` as evidence (source=ast) and the grader will graduate your finding to 'probable' confidence. Returns { ok, result: { resolved, declaration: { file, line, kind } | null, evidence_detail }, error }.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "op": {
+                            "type": "string",
+                            "enum": ["resolve"],
+                            "description": "Operation to perform. v1 supports 'resolve'."
+                        },
+                        "file": {
+                            "type": "string",
+                            "description": "Path of the source file the question is asked from. Relative to cwd or absolute."
+                        },
+                        "symbol": {
+                            "type": "string",
+                            "description": "Identifier to resolve in the lexical scope of `file[:line]`."
+                        },
+                        "line": {
+                            "type": "integer",
+                            "description": "Optional 1-based line number for scope disambiguation. Omit to resolve at file scope."
+                        }
+                    },
+                    "required": ["op", "file", "symbol"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "typecheck",
                 "description": "Run the project's typecheck/build command and return parsed compile diagnostics. This is the substrate's ground-truth check \u{2014} use it FIRST in any audit. Auto-detects the right command from the repo (tsc/cargo check/go build/pyright). Returns { command, exit_code, duration_ms, diagnostics: [{source, file, line, col, severity, code, message}], diagnostics_truncated, raw, raw_truncated, timed_out }. A non-zero exit_code with diagnostics is the typical 'project has errors' case \u{2014} not a tool failure. Empty diagnostics + exit 0 = the project compiles cleanly. Diagnostics are capped at 200 entries and raw output at 8 KB.",
                 "parameters": {
@@ -407,6 +437,7 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
             // user's `agent.typecheck_command` + `typecheck_timeout_secs`.
             tool_typecheck(args_json, cwd, None, None)
         }
+        "ast_query" => tool_ast_query(args_json, cwd),
         "web_search" => Err(
             "web_search is async; dispatch via execute_web_search instead of execute".into(),
         ),
@@ -1556,6 +1587,71 @@ fn format_bytes(n: u64) -> String {
     } else {
         format!("{:.1} MB", n as f64 / (1024.0 * 1024.0))
     }
+}
+
+// ---------------------------------------------------------------------------
+// ast_query (substrate v2)
+// ---------------------------------------------------------------------------
+
+/// Wrapper around `diagnostics::run_ast_query`. Returns a (summary,
+/// payload) pair shaped like every other tool.
+fn tool_ast_query(args_json: &str, cwd: &str) -> Result<(String, String), String> {
+    let query: serde_json::Value = if args_json.trim().is_empty() {
+        return Err("ast_query requires arguments (op, file, symbol)".into());
+    } else {
+        serde_json::from_str(args_json).map_err(|e| format!("invalid arguments: {}", e))?
+    };
+
+    let run = crate::diagnostics::run_ast_query(cwd, &query, None)?;
+    let payload = crate::diagnostics::to_ast_payload(&run).to_string();
+
+    let summary = if !run.ok {
+        format!(
+            "ast_query \u{2192} ERROR: {}{}",
+            if run.error.len() > 120 {
+                format!("{}\u{2026}", &run.error[..120])
+            } else {
+                run.error.clone()
+            },
+            if run.timed_out { " (timed out)" } else { "" },
+        )
+    } else {
+        // Distill the most useful one-liner from the result for xterm.
+        let op = run.result.get("op").and_then(|v| v.as_str()).unwrap_or("?");
+        match op {
+            "resolve" => {
+                let resolved = run
+                    .result
+                    .get("resolved")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let symbol = run
+                    .result
+                    .get("symbol")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                if resolved {
+                    let decl_loc = run
+                        .result
+                        .get("declaration")
+                        .and_then(|d| {
+                            let f = d.get("file").and_then(|v| v.as_str())?;
+                            let l = d.get("line").and_then(|v| v.as_u64())?;
+                            Some(format!("{}:{}", f, l))
+                        })
+                        .unwrap_or_else(|| "<no declaration>".into());
+                    format!(
+                        "ast_query resolve '{}' \u{2192} resolved at {}",
+                        symbol, decl_loc
+                    )
+                } else {
+                    format!("ast_query resolve '{}' \u{2192} NOT in scope", symbol)
+                }
+            }
+            other => format!("ast_query {} \u{2192} ok", other),
+        }
+    };
+    Ok((summary, payload))
 }
 
 // ---------------------------------------------------------------------------

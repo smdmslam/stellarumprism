@@ -77,7 +77,15 @@ INVESTIGATION ORDER (mandatory):\n\
      read_file to confirm and write a precise suggested fix. Report it \
      as: '[error] path:line \u{2014} <compiler message, condensed> \u{2014} \
      <concrete fix>'.\n\
-  3. After the compiler-backed pass, look for non-compiler wiring gaps \
+  3. BEFORE flagging any 'X is undefined / missing / not declared' \
+     claim that typecheck did NOT report, you MUST call ast_query with \
+     op='resolve' to confirm. Pass file + symbol; pass line if useful. \
+     If the result is `resolved: true`, DO NOT emit the finding \u{2014} the \
+     symbol is in scope and you were wrong. If `resolved: false`, \
+     include the returned `evidence_detail` in your finding's evidence \
+     line as `source=ast`. ast_query is the only deterministic way to \
+     answer 'does this symbol exist?' in TS/JS \u{2014} grep cannot.\n\
+  4. After the compiler-backed pass, look for non-compiler wiring gaps \
      the type system can't see:\n\
         - stale barrel re-exports in index files\n\
         - dynamic require/import with string literals pointing at \
@@ -92,7 +100,7 @@ INVESTIGATION ORDER (mandatory):\n\
      Use grep + git_diff + git_log to scope these. Report each as \
      '[warning]' or '[error]' depending on whether you can prove it \
      will break at runtime.\n\
-  4. If typecheck reports zero diagnostics AND step 3 surfaces nothing, \
+  5. If typecheck reports zero diagnostics AND step 4 surfaces nothing, \
      output FINDINGS (0). Don't manufacture warnings to look thorough.\n\
 \n\
 ANTI-FALSE-POSITIVE RULES (strict, applies even when reframed):\n\
@@ -134,17 +142,20 @@ OUTPUT CONTRACT (mandatory format):\n\
   - 'error' is only appropriate when at least one evidence source is in \
      {typecheck, lsp, runtime, test, ast}. The compiler is the substrate's \
      authority; runtime claims need substrate backing.\n\
-  - 'warning' similarly should not be used for grep-only or llm-only \
-     findings. A grader downstream will downgrade those to candidate \
-     status, capping severity at warning at most.\n\
+  - 'warning' is appropriate for ast-backed structural findings (the \
+     grader treats these as 'probable' confidence). Grep-only or \
+     llm-only findings will be downgraded to candidate.\n\
   - 'info' = observation the user should know about; not a bug. \
      Appropriate for grep- or llm-only structural observations.\n\
   - One finding per pair of lines. Keep description to a single sentence. \
      Keep evidence detail concise and specific (verbatim compiler line, \
-     'grep <pattern>: N hits @ file:line', etc.).\n\
+     ast_query evidence_detail, 'grep <pattern>: N hits @ file:line', etc.).\n\
   - Example shape (compiler-backed error):\n\
       [error] src/foo.ts:42 \u{2014} bar is undefined \u{2014} import bar from './bar'\n\
       evidence: source=typecheck; detail=\"src/foo.ts(42,7): error TS2304: Cannot find name 'bar'.\"\n\
+  - Example shape (ast-backed warning):\n\
+      [warning] src/App.tsx:42 \u{2014} handler 'foo' is not in scope \u{2014} define it or import it\n\
+      evidence: source=ast; detail=\"ast: 'foo' is NOT visible in scope at src/App.tsx:42 (tsc resolveName returned undefined under the project's tsconfig)\"\n\
   - Example shape (grep-only structural observation \u{2014} must be info):\n\
       [info] src/old.ts \u{2014} symbol foo no longer referenced anywhere \u{2014} consider removing\n\
       evidence: source=grep; detail=\"grep 'foo' = 0 hits across 142 files\"\n\

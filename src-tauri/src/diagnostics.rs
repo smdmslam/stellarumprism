@@ -22,12 +22,19 @@
 //!   - Caps protect the consumer's context window: caller decides what to
 //!     truncate, but the substrate flags `truncated` on output.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
+
+/// Embedded source of the AST helper (substrate v2). Written to a temp
+/// file once per process and re-used; spawned as `node <helper>` for
+/// every `ast_query` call. Single source of truth, no install step.
+const AST_HELPER_SOURCE: &str = include_str!("ast_helper.mjs");
 
 /// Maximum number of diagnostics returned to the LLM in one substrate
 /// call. Anything beyond this is dropped and `truncated=true` is set.
@@ -249,6 +256,196 @@ fn format_diagnostic_evidence(d: &Diagnostic) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// AST substrate (substrate v2)
+//
+// Spawns the embedded Node helper to answer structural questions about
+// the user's TypeScript project. The architectural payoff: findings that
+// the LLM might otherwise emit as `candidate` ("X looks undefined") can
+// be backed by a real type-checker answer, graduating them to `probable`
+// via the existing grader.
+// ---------------------------------------------------------------------------
+
+/// Default timeout for AST helper invocations. Cold tsc startup on a
+/// medium repo is ~1–2s; this gives headroom for big monorepos.
+const AST_DEFAULT_TIMEOUT_SECS: u64 = 30;
+
+/// Maximum bytes of helper stdout we accept. The helper emits a single
+/// JSON object; nothing reasonable should exceed this. A larger payload
+/// indicates either a runaway helper or a hostile project.
+const AST_MAX_STDOUT_BYTES: usize = 256 * 1024;
+
+/// Path of the helper script on disk, written once per process.
+static AST_HELPER_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+/// Lazy-initialize the helper script: write the embedded source into a
+/// stable per-process tempfile so spawns can reference it by path.
+/// Returns the resolved path or an error string suitable for a tool
+/// failure.
+fn ensure_ast_helper_path() -> Result<&'static Path, String> {
+    if let Some(p) = AST_HELPER_PATH.get() {
+        return Ok(p.as_path());
+    }
+    let dir = std::env::temp_dir().join(format!(
+        "prism-ast-helper-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("cannot create {}: {}", dir.display(), e))?;
+    let path = dir.join("ast_helper.mjs");
+    if !path.exists() {
+        let mut f = std::fs::File::create(&path)
+            .map_err(|e| format!("cannot create {}: {}", path.display(), e))?;
+        f.write_all(AST_HELPER_SOURCE.as_bytes())
+            .map_err(|e| format!("cannot write {}: {}", path.display(), e))?;
+    }
+    let _ = AST_HELPER_PATH.set(path.clone());
+    Ok(AST_HELPER_PATH.get().expect("just set").as_path())
+}
+
+/// Outcome of one AST query. The shape mirrors the helper's JSON so the
+/// caller does not have to re-translate. `evidence_detail` is what the
+/// LLM should paste verbatim into a Finding's `evidence: source=ast` line.
+#[derive(Debug, Clone, Serialize)]
+pub struct AstQueryRun {
+    pub command: Vec<String>,
+    pub exit_code: Option<i32>,
+    pub duration_ms: u128,
+    /// `ok=true` iff the helper produced a structured answer. `ok=false`
+    /// covers tsconfig errors, unknown ops, etc.
+    pub ok: bool,
+    /// Helper-emitted JSON, parsed. Empty when `ok=false`.
+    pub result: Value,
+    /// Helper error message when `ok=false`. Empty otherwise.
+    pub error: String,
+    pub raw_stdout: String,
+    pub raw_stderr: String,
+    pub timed_out: bool,
+}
+
+/// Spawn the embedded Node helper with a single JSON query. `cwd` is the
+/// user's project root (where tsconfig.json lives). The helper resolves
+/// `typescript` from `cwd/node_modules/typescript` via NODE_PATH.
+pub fn run_ast_query(
+    cwd: &str,
+    query: &Value,
+    timeout: Option<Duration>,
+) -> Result<AstQueryRun, String> {
+    if cwd.trim().is_empty() {
+        return Err("cwd is unknown (shell integration may not be started)".into());
+    }
+    let cwd_path = Path::new(cwd);
+    if !cwd_path.exists() {
+        return Err(format!("cwd does not exist: {}", cwd));
+    }
+    let helper = ensure_ast_helper_path()?;
+    let timeout = timeout.unwrap_or(Duration::from_secs(AST_DEFAULT_TIMEOUT_SECS));
+
+    let query_arg = format!(
+        "--query={}",
+        serde_json::to_string(query).map_err(|e| format!("serialize query: {}", e))?
+    );
+    let argv = vec![
+        "node".to_string(),
+        helper.to_string_lossy().into_owned(),
+        query_arg,
+    ];
+
+    // Set NODE_PATH so the helper's `import * as ts from "typescript"`
+    // resolves to the user's project install. We append rather than
+    // replace so any system-wide modules remain available.
+    let mut node_path = cwd_path.join("node_modules").to_string_lossy().into_owned();
+    if let Some(existing) = std::env::var_os("NODE_PATH") {
+        let sep = if cfg!(target_os = "windows") { ";" } else { ":" };
+        node_path.push_str(sep);
+        node_path.push_str(&existing.to_string_lossy());
+    }
+
+    let started = Instant::now();
+    let (output, timed_out) =
+        run_with_timeout_env(&argv, cwd_path, timeout, &[("NODE_PATH", node_path.as_str())])?;
+    let duration_ms = started.elapsed().as_millis();
+
+    let mut stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    if stdout.len() > AST_MAX_STDOUT_BYTES {
+        stdout.truncate(AST_MAX_STDOUT_BYTES);
+    }
+
+    // Parse the helper's JSON. Anything else (truncation, helper crash)
+    // collapses to a clean substrate failure with the raw output preserved.
+    let parsed: Value = match serde_json::from_str::<Value>(stdout.trim()) {
+        Ok(v) => v,
+        Err(e) => {
+            return Ok(AstQueryRun {
+                command: argv,
+                exit_code: output.status.code(),
+                duration_ms,
+                ok: false,
+                result: Value::Null,
+                error: format!(
+                    "ast helper produced non-JSON stdout ({} bytes): {}; stderr: {}",
+                    stdout.len(),
+                    e,
+                    truncate_for_log(&stderr, 400),
+                ),
+                raw_stdout: stdout,
+                raw_stderr: stderr,
+                timed_out,
+            });
+        }
+    };
+
+    let ok = parsed.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
+    let error = if ok {
+        String::new()
+    } else {
+        parsed
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ast helper returned ok=false without an error message")
+            .to_string()
+    };
+
+    Ok(AstQueryRun {
+        command: argv,
+        exit_code: output.status.code(),
+        duration_ms,
+        ok,
+        result: if ok { parsed } else { Value::Null },
+        error,
+        raw_stdout: stdout,
+        raw_stderr: stderr,
+        timed_out,
+    })
+}
+
+/// Translate an `AstQueryRun` into the JSON payload sent back to the LLM.
+/// Always exposes `ok` + `evidence_detail` (when present) so the model
+/// can lift the detail into a Finding's `evidence: source=ast; detail=...`
+/// line without inventing it.
+pub fn to_ast_payload(run: &AstQueryRun) -> Value {
+    json!({
+        "command": run.command,
+        "exit_code": run.exit_code,
+        "duration_ms": run.duration_ms,
+        "timed_out": run.timed_out,
+        "ok": run.ok,
+        "error": run.error,
+        "result": run.result,
+    })
+}
+
+fn truncate_for_log(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        let mut out: String = s.chars().take(max).collect();
+        out.push_str(" \u{2026}[truncated]");
+        out
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Auto-detection
 // ---------------------------------------------------------------------------
 
@@ -400,6 +597,15 @@ fn run_with_timeout(
     cwd: &Path,
     timeout: Duration,
 ) -> Result<(Output, bool), String> {
+    run_with_timeout_env(argv, cwd, timeout, &[])
+}
+
+fn run_with_timeout_env(
+    argv: &[String],
+    cwd: &Path,
+    timeout: Duration,
+    extra_env: &[(&str, &str)],
+) -> Result<(Output, bool), String> {
     use std::io::Read;
     use std::sync::mpsc;
     use std::thread;
@@ -407,6 +613,9 @@ fn run_with_timeout(
     let mut cmd = Command::new(&argv[0]);
     cmd.args(&argv[1..]);
     cmd.current_dir(cwd);
+    for (k, v) in extra_env {
+        cmd.env(k, v);
+    }
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
 
