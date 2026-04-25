@@ -236,6 +236,91 @@ pub fn to_finding_payload(run: &DiagnosticRun) -> Value {
     })
 }
 
+/// Aggregate every substrate run from a single `prism-audit` invocation
+/// into the same JSON shape `src/findings.ts::AuditReport` serializes,
+/// so the CLI's sidecar is interchangeable with the GUI's.
+///
+/// All inputs are optional: a CI run that doesn't have an LSP server on
+/// PATH still produces a coherent report from typecheck + run_tests. The
+/// substrate decides confidence: every diagnostic from a deterministic
+/// cell is `confirmed`, mirroring how the GUI's grader treats
+/// `source = typecheck/test/lsp`.
+pub fn aggregate_audit_report(
+    typecheck: Option<&DiagnosticRun>,
+    tests: Option<&crate::diagnostics::TestRun>,
+    lsp: Option<&crate::lsp::LspRun>,
+    scope: Option<&str>,
+    generated_at: &str,
+    tool_label: &str,
+) -> Value {
+    let mut findings: Vec<Value> = Vec::new();
+    let mut next_id: usize = 1;
+
+    let push_diag = |findings: &mut Vec<Value>, next_id: &mut usize, d: &Diagnostic, primary: &str| {
+        let id = format!("F{}", *next_id);
+        *next_id += 1;
+        findings.push(json!({
+            "id": id,
+            "severity": d.severity.as_str(),
+            "confidence": "confirmed",
+            "source": primary,
+            "file": d.file,
+            "line": d.line,
+            "description": d.message,
+            "suggested_fix": "",
+            "evidence": [
+                {
+                    "source": primary,
+                    "detail": format_diagnostic_evidence(d),
+                }
+            ],
+        }));
+    };
+
+    if let Some(run) = typecheck {
+        for d in &run.diagnostics {
+            push_diag(&mut findings, &mut next_id, d, "typecheck");
+        }
+    }
+    if let Some(run) = tests {
+        for d in &run.failures {
+            push_diag(&mut findings, &mut next_id, d, "test");
+        }
+    }
+    if let Some(run) = lsp {
+        for d in &run.diagnostics {
+            push_diag(&mut findings, &mut next_id, d, "lsp");
+        }
+    }
+
+    let mut errors = 0usize;
+    let mut warnings = 0usize;
+    let mut info = 0usize;
+    for f in &findings {
+        match f.get("severity").and_then(|v| v.as_str()).unwrap_or("info") {
+            "error" => errors += 1,
+            "warning" => warnings += 1,
+            _ => info += 1,
+        }
+    }
+    json!({
+        "schema_version": 1,
+        "tool": tool_label,
+        "generated_at": generated_at,
+        "scope": scope,
+        "model": "prism-audit-cli",
+        "summary": {
+            "errors": errors,
+            "warnings": warnings,
+            "info": info,
+            "total": findings.len(),
+        },
+        "findings": findings,
+        "runtime_probes": [],
+        "raw_transcript": "",
+    })
+}
+
 /// Format a Diagnostic into a single-line evidence detail string. Mirrors
 /// the canonical compiler output so the grader can match it back to a
 /// real substrate run when the LLM cites it.
@@ -2400,6 +2485,88 @@ FAILED tests/test_y.py::test_logout
     }
 
     // -- end detect_dev_server_url ---------------------------------------
+
+    #[test]
+    fn aggregate_audit_report_matches_audit_report_shape() {
+        let typecheck_run = DiagnosticRun {
+            command: vec!["tsc".into()],
+            exit_code: Some(2),
+            duration_ms: 100,
+            diagnostics: vec![Diagnostic {
+                source: "typecheck".into(),
+                file: "src/a.ts".into(),
+                line: 12,
+                col: 3,
+                severity: Severity::Error,
+                code: "TS2304".into(),
+                message: "Cannot find name 'foo'".into(),
+            }],
+            diagnostics_truncated: false,
+            raw: "raw".into(),
+            raw_truncated: false,
+            timed_out: false,
+        };
+        let test_run = TestRun {
+            command: vec!["cargo".into(), "test".into()],
+            exit_code: Some(101),
+            duration_ms: 250,
+            failures: vec![Diagnostic {
+                source: "test".into(),
+                file: "foo::bar".into(),
+                line: 0,
+                col: 0,
+                severity: Severity::Error,
+                code: String::new(),
+                message: "test foo::bar failed".into(),
+            }],
+            failures_truncated: false,
+            raw: "raw".into(),
+            raw_truncated: false,
+            timed_out: false,
+            passed: false,
+        };
+        let report = aggregate_audit_report(
+            Some(&typecheck_run),
+            Some(&test_run),
+            None,
+            Some("HEAD~1..HEAD"),
+            "2026-04-25T00:00:00Z",
+            "prism-second-pass",
+        );
+        assert_eq!(report["schema_version"], 1);
+        assert_eq!(report["tool"], "prism-second-pass");
+        assert_eq!(report["generated_at"], "2026-04-25T00:00:00Z");
+        assert_eq!(report["scope"], "HEAD~1..HEAD");
+        assert_eq!(report["summary"]["total"], 2);
+        assert_eq!(report["summary"]["errors"], 2);
+        assert_eq!(report["summary"]["warnings"], 0);
+        assert_eq!(report["findings"].as_array().unwrap().len(), 2);
+        assert_eq!(report["findings"][0]["id"], "F1");
+        assert_eq!(report["findings"][0]["source"], "typecheck");
+        assert_eq!(report["findings"][0]["confidence"], "confirmed");
+        assert_eq!(report["findings"][0]["file"], "src/a.ts");
+        assert_eq!(report["findings"][0]["line"], 12);
+        assert_eq!(report["findings"][0]["evidence"][0]["source"], "typecheck");
+        assert_eq!(report["findings"][1]["id"], "F2");
+        assert_eq!(report["findings"][1]["source"], "test");
+        assert!(report["runtime_probes"].is_array());
+        assert_eq!(report["runtime_probes"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn aggregate_audit_report_handles_all_inputs_none() {
+        let report = aggregate_audit_report(
+            None,
+            None,
+            None,
+            None,
+            "2026-04-25T00:00:00Z",
+            "prism-second-pass",
+        );
+        assert_eq!(report["summary"]["total"], 0);
+        assert_eq!(report["findings"].as_array().unwrap().len(), 0);
+        assert!(report["scope"].is_null());
+    }
 
     #[test]
     fn to_finding_payload_emits_expected_keys() {

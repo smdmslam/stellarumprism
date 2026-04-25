@@ -1,10 +1,13 @@
 mod agent;
 mod approval;
 mod config;
-mod diagnostics;
+// Substrate cells are exposed at the crate root so the `prism-audit`
+// CLI binary (and any future Rust consumer) can call them directly
+// without going through the Tauri command surface.
+pub mod diagnostics;
 mod e2e;
 mod file_ref;
-mod lsp;
+pub mod lsp;
 mod pty;
 mod save_chat;
 mod second_pass;
