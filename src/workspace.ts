@@ -27,6 +27,7 @@ import {
   renderMarkdownReport,
   type AuditReport,
   type Confidence,
+  type Finding,
   type RuntimeProbe,
   type Severity,
   type SubstrateRun,
@@ -59,7 +60,7 @@ import {
   renderSnippetError,
   type FileSnippet,
 } from "./snippet";
-import { FileEditor } from "./file-editor";
+import { FileEditor, type EditorDiagnostic } from "./file-editor";
 import {
   emptyTreeState,
   flattenVisibleRows,
@@ -1334,6 +1335,7 @@ export class Workspace {
     // Cache + auto-open the Problems panel so the user sees the
     // structured findings without running a separate command.
     this.lastAuditReport = report;
+    this.refreshEditorDiagnostics();
     this.showProblemsPanel();
 
     // ANSI summary in xterm — even if we fail to write the file, the
@@ -2244,11 +2246,33 @@ export class Workspace {
     this.fileEditor = new FileEditor(body, loaded.content, {
       onDirtyChange: (dirty) => this.reflectDirty(dirty),
     });
+    // If we already have an audit report cached, push the matching
+    // findings into the buffer so squiggles render immediately instead
+    // of waiting for the next /audit run.
+    this.refreshEditorDiagnostics();
     // Cmd+S only fires when the workspace is active AND the editor is
     // mounted; wired once in setupFileEditorKeybindings (called once
     // per workspace). Focus the buffer so the user can start typing
     // immediately.
     this.fileEditor.focus();
+  }
+
+  /**
+   * Push the relevant slice of `lastAuditReport` into the open editor
+   * as inline diagnostics. Findings are matched to the open file by
+   * suffix — the audit may emit relative or absolute paths, the editor
+   * may be holding a cwd-relative path, and we want both to line up
+   * without forcing the model to canonicalize.
+   */
+  private refreshEditorDiagnostics(): void {
+    if (!this.fileEditor || !this.openFilePath) return;
+    const report = this.lastAuditReport;
+    if (!report || report.findings.length === 0) {
+      this.fileEditor.setDiagnostics([]);
+      return;
+    }
+    const matches = findingsForOpenFile(this.openFilePath, report.findings);
+    this.fileEditor.setDiagnostics(matches);
   }
 
   /**
@@ -2847,6 +2871,54 @@ function countByConfidenceShim(
     else candidate++;
   }
   return { confirmed, probable, candidate };
+}
+
+/**
+ * Project an audit report's findings down to the editor-diagnostic
+ * shape, restricted to those matching the file the editor currently
+ * has open. Match is suffix-based: the audit may emit absolute or
+ * cwd-relative paths and the editor may hold either form, so as long
+ * as one path ends with the other (after stripping leading slashes)
+ * we treat it as the same file. Basename equality is the floor so a
+ * model that drops the directory prefix still produces useful
+ * squiggles.
+ */
+function findingsForOpenFile(
+  openPath: string,
+  findings: Finding[],
+): EditorDiagnostic[] {
+  const open = stripLeadingSlash(openPath);
+  const openBase = basename(open);
+  const out: EditorDiagnostic[] = [];
+  for (const f of findings) {
+    if (!f.file) continue;
+    const file = stripLeadingSlash(f.file);
+    const fileBase = basename(file);
+    const matches =
+      file === open ||
+      open.endsWith("/" + file) ||
+      file.endsWith("/" + open) ||
+      (fileBase.length > 0 && fileBase === openBase);
+    if (!matches) continue;
+    out.push({
+      line: f.line > 0 ? f.line : 1,
+      severity: f.severity,
+      message:
+        f.description +
+        (f.suggested_fix ? `  \u2014 fix: ${f.suggested_fix}` : ""),
+      source: "audit",
+    });
+  }
+  return out;
+}
+
+function stripLeadingSlash(p: string): string {
+  return p.startsWith("/") ? p.slice(1) : p;
+}
+
+function basename(p: string): string {
+  const i = p.lastIndexOf("/");
+  return i >= 0 ? p.slice(i + 1) : p;
 }
 
 /**

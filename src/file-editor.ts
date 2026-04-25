@@ -16,11 +16,189 @@
 // The workspace listens at the document level so the same shortcut
 // works whether or not the buffer has focus, and so we don't fight the
 // browser's native Save handler in surprising ways.
-import { EditorState, Compartment } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
+import {
+  EditorState,
+  Compartment,
+  StateEffect,
+  StateField,
+  RangeSetBuilder,
+} from "@codemirror/state";
+import {
+  Decoration,
+  DecorationSet,
+  EditorView,
+  GutterMarker,
+  gutter,
+  highlightActiveLine,
+  keymap,
+  lineNumbers,
+} from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { oneDark, oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
+
+/** Severity tier for an inline diagnostic. Same vocabulary as audit findings. */
+export type EditorDiagnosticSeverity = "error" | "warning" | "info";
+
+/** One inline diagnostic to render in the editor's gutter + body. */
+export interface EditorDiagnostic {
+  /** 1-based line number. Out-of-range lines are clamped to the file's bounds. */
+  line: number;
+  severity: EditorDiagnosticSeverity;
+  /** Human-readable message; surfaced as a `title` tooltip on hover. */
+  message: string;
+  /** Optional source label (e.g. "audit", "lsp") shown after the message in the tooltip. */
+  source?: string;
+}
+
+/**
+ * StateEffect carrying the next diagnostic set. Sent through the
+ * editor's transaction stream so the StateField below recomputes its
+ * decorations + gutter markers in lockstep with the document.
+ */
+const setDiagnosticsEffect = StateEffect.define<EditorDiagnostic[]>();
+
+/** Per-line gutter marker. Uses CSS classes to color by severity. */
+class DiagnosticGutterMarker extends GutterMarker {
+  constructor(
+    readonly severity: EditorDiagnosticSeverity,
+    readonly title: string,
+  ) {
+    super();
+  }
+  toDOM(): HTMLElement {
+    const el = document.createElement("span");
+    el.className = `cm-diag-gutter cm-diag-${this.severity}`;
+    el.title = this.title;
+    el.textContent = this.severity === "error" ? "\u25CF" : this.severity === "warning" ? "\u25B2" : "\u25CB";
+    return el;
+  }
+  eq(other: GutterMarker): boolean {
+    return (
+      other instanceof DiagnosticGutterMarker &&
+      other.severity === this.severity &&
+      other.title === this.title
+    );
+  }
+}
+
+/**
+ * State field that holds the current diagnostic set as both:
+ *   - the raw EditorDiagnostic[] (so consumers can re-derive whatever
+ *     they want), and
+ *   - a DecorationSet covering line backgrounds + wavy underlines.
+ * The corresponding gutter is wired separately via `gutter()` and reads
+ * the same field.
+ */
+const diagnosticsField = StateField.define<{
+  list: EditorDiagnostic[];
+  decos: DecorationSet;
+}>({
+  create: () => ({ list: [], decos: Decoration.none }),
+  update(value, tr) {
+    let next = value;
+    for (const e of tr.effects) {
+      if (e.is(setDiagnosticsEffect)) {
+        next = { list: e.value, decos: buildDecorations(tr.state, e.value) };
+      }
+    }
+    if (next === value && tr.docChanged) {
+      // Document mutated under us: rebuild decorations against the new
+      // line count so we don't paint into deleted territory. List is
+      // unchanged; the host can decide whether to re-fetch findings.
+      next = { list: value.list, decos: buildDecorations(tr.state, value.list) };
+    }
+    return next;
+  },
+  provide: (f) => EditorView.decorations.from(f, (v) => v.decos),
+});
+
+function buildDecorations(
+  state: EditorState,
+  diagnostics: EditorDiagnostic[],
+): DecorationSet {
+  if (diagnostics.length === 0) return Decoration.none;
+  // Sort ascending so the RangeSetBuilder receives positions in order;
+  // CodeMirror requires this and throws otherwise.
+  const sorted = diagnostics
+    .map((d) => ({ ...d, line: clampLine(state, d.line) }))
+    .sort((a, b) => a.line - b.line || severityRank(a.severity) - severityRank(b.severity));
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const d of sorted) {
+    const lineInfo = state.doc.line(d.line);
+    builder.add(
+      lineInfo.from,
+      lineInfo.from,
+      Decoration.line({
+        class: `cm-diag-line cm-diag-line-${d.severity}`,
+        attributes: { title: tooltipText(d) },
+      }),
+    );
+    // Mark decoration so the line text gets a wavy underline. Empty
+    // lines have from === to which CodeMirror treats as a no-op,
+    // so an audit pinned to a blank line produces only the gutter
+    // marker + line tint — acceptable.
+    if (lineInfo.from < lineInfo.to) {
+      builder.add(
+        lineInfo.from,
+        lineInfo.to,
+        Decoration.mark({
+          class: `cm-diag-mark cm-diag-mark-${d.severity}`,
+          attributes: { title: tooltipText(d) },
+        }),
+      );
+    }
+  }
+  return builder.finish();
+}
+
+function tooltipText(d: EditorDiagnostic): string {
+  const prefix = `[${d.severity}]`;
+  const suffix = d.source ? ` (${d.source})` : "";
+  return `${prefix} ${d.message}${suffix}`;
+}
+
+function clampLine(state: EditorState, line: number): number {
+  const max = state.doc.lines;
+  if (!Number.isFinite(line) || line < 1) return 1;
+  return Math.min(max, Math.floor(line));
+}
+
+function severityRank(s: EditorDiagnosticSeverity): number {
+  return s === "error" ? 0 : s === "warning" ? 1 : 2;
+}
+
+/**
+ * Gutter that renders one DiagnosticGutterMarker per affected line.
+ * Reads the diagnostics field directly so updates flow through the
+ * same transaction the decorations did.
+ */
+const diagnosticsGutter = gutter({
+  class: "cm-diag-gutter-col",
+  lineMarker(view, blockInfo) {
+    const field = view.state.field(diagnosticsField, false);
+    if (!field || field.list.length === 0) return null;
+    const lineNum = view.state.doc.lineAt(blockInfo.from).number;
+    // If multiple diagnostics share a line, pick the most severe one
+    // for the gutter marker; the line tint + tooltip still merge them.
+    let best: EditorDiagnostic | null = null;
+    const sameLine: EditorDiagnostic[] = [];
+    for (const d of field.list) {
+      if (d.line !== lineNum) continue;
+      sameLine.push(d);
+      if (!best || severityRank(d.severity) < severityRank(best.severity)) {
+        best = d;
+      }
+    }
+    if (!best) return null;
+    const title =
+      sameLine.length === 1
+        ? tooltipText(best)
+        : sameLine.map(tooltipText).join("\n");
+    return new DiagnosticGutterMarker(best.severity, title);
+  },
+  initialSpacer: () => new DiagnosticGutterMarker("info", ""),
+});
 
 /** Callbacks the FileEditor invokes back into its host. */
 export interface FileEditorCallbacks {
@@ -97,6 +275,8 @@ export class FileEditor {
       doc: content,
       extensions: [
         history(),
+        diagnosticsField,
+        diagnosticsGutter,
         lineNumbers(),
         highlightActiveLine(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
@@ -162,6 +342,15 @@ export class FileEditor {
   /** True iff the editor's DOM has focus. */
   hasFocus(): boolean {
     return this.view.hasFocus;
+  }
+
+  /**
+   * Replace the editor's diagnostic set. Pass [] to clear. The
+   * decorations re-render in lockstep with the buffer, so calling
+   * this with the same set in response to an edit is cheap.
+   */
+  setDiagnostics(diagnostics: EditorDiagnostic[]): void {
+    this.view.dispatch({ effects: setDiagnosticsEffect.of(diagnostics) });
   }
 
   /** Tear down the underlying CodeMirror view. Idempotent. */

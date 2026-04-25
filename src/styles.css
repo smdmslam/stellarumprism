@@ -1636,3 +1636,52 @@ body {
 .file-preview-body .file-tree-error {
   padding: 12px 14px;
 }
+
+/* ---------- editor diagnostics (squiggles + gutter markers) ---------- */
+
+/* Per-line tint for an audit finding. Severity-specific so the eye can
+ * tell a stale info note from a real error at a glance. Subtle to keep
+ * the body legible. */
+.cm-diag-line { box-shadow: inset 2px 0 0 transparent; }
+.cm-diag-line-error {
+  background: rgba(239, 68, 68, 0.08);
+  box-shadow: inset 2px 0 0 #ef4444;
+}
+.cm-diag-line-warning {
+  background: rgba(234, 179, 8, 0.08);
+  box-shadow: inset 2px 0 0 #eab308;
+}
+.cm-diag-line-info {
+  background: rgba(125, 211, 252, 0.06);
+  box-shadow: inset 2px 0 0 #7dd3fc;
+}
+
+/* Wavy underline on the affected text. text-decoration-style: wavy is
+ * widely supported now (Safari/Chrome/Firefox). */
+.cm-diag-mark {
+  text-decoration-line: underline;
+  text-decoration-style: wavy;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.cm-diag-mark-error { text-decoration-color: #ef4444; }
+.cm-diag-mark-warning { text-decoration-color: #eab308; }
+.cm-diag-mark-info { text-decoration-color: #7dd3fc; }
+
+/* Diagnostic gutter column — shows a glyph per affected line. */
+.cm-diag-gutter-col {
+  background: #0a0d13;
+  border-right: 1px solid #1f2937;
+  min-width: 14px;
+  padding: 0 2px;
+}
+.cm-diag-gutter {
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  font-size: 9px;
+  line-height: 1;
+}
+.cm-diag-gutter.cm-diag-error { color: #ef4444; }
+.cm-diag-gutter.cm-diag-warning { color: #eab308; }
+.cm-diag-gutter.cm-diag-info { color: #7dd3fc; }
