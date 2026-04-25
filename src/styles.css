@@ -6,6 +6,34 @@
   background-color: #0d0f14;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* ---------- Prism brand tokens ----------
+   * The grader's confidence tiers and severity buckets are the product's
+   * core grammar. Map them onto a single named palette so every surface
+   * (problems chips, editor squiggles, gutter markers, future affordances)
+   * speaks one color language. The deck uses these exact values — keep
+   * the two in sync.
+   *
+   *   confirmed   → emerald   substrate-backed; shippable
+   *   probable    → amber     AST/structural; defensible
+   *   candidate   → slate     grep/LLM-only; unverified (neutral, not bad)
+   *   error       → rose      something is broken; risk
+   *   warning     → amber     same band as probable
+   *   info        → cyan      neutral signal
+   *
+   * The -rgb companion tokens exist so translucent variants can be
+   * authored as `rgba(var(--prism-rose-rgb), 0.4)` without losing the
+   * single source of truth. */
+  --prism-emerald: #10b981;
+  --prism-emerald-rgb: 16, 185, 129;
+  --prism-amber: #f59e0b;
+  --prism-amber-rgb: 245, 158, 11;
+  --prism-rose: #f43f5e;
+  --prism-rose-rgb: 244, 63, 94;
+  --prism-cyan: #7dd3fc;
+  --prism-cyan-rgb: 125, 211, 252;
+  --prism-slate: #94a3b8;
+  --prism-slate-rgb: 148, 163, 184;
 }
 
 *,
@@ -41,6 +69,31 @@ body {
   user-select: none;
   -webkit-app-region: drag;
   height: 36px;
+  position: relative;
+}
+
+/* Spectrum signature stripe — the brand mark.
+ * 2px gradient ribbon hugging the bottom edge of the titlebar, riding
+ * across emerald → amber → rose so the product's confidence palette is
+ * visible at all times. First thing anyone sees in a screenshot or
+ * App Switcher thumbnail. Sits on top of the titlebar's 1px border so
+ * it reads as a deliberate accent rather than a misaligned divider. */
+.titlebar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    var(--prism-emerald) 0%,
+    var(--prism-cyan) 28%,
+    var(--prism-amber) 62%,
+    var(--prism-rose) 100%
+  );
+  pointer-events: none;
+  z-index: 3;
 }
 
 .titlebar-traffic-space {
@@ -641,12 +694,12 @@ body {
 .problems-chip .chip-count {
   font-variant-numeric: tabular-nums;
 }
-.problems-chip.sev-error.active { color: #ef4444; border-color: rgba(239, 68, 68, 0.4); }
-.problems-chip.sev-warning.active { color: #facc15; border-color: rgba(250, 204, 21, 0.45); }
-.problems-chip.sev-info.active { color: #7dd3fc; border-color: rgba(125, 211, 252, 0.4); }
-.problems-chip.conf-confirmed.active { color: #4ade80; border-color: rgba(74, 222, 128, 0.4); }
-.problems-chip.conf-probable.active { color: #fde047; border-color: rgba(253, 224, 71, 0.4); }
-.problems-chip.conf-candidate.active { color: #94a3b8; border-color: rgba(148, 163, 184, 0.32); }
+.problems-chip.sev-error.active { color: var(--prism-rose); border-color: rgba(var(--prism-rose-rgb), 0.4); }
+.problems-chip.sev-warning.active { color: var(--prism-amber); border-color: rgba(var(--prism-amber-rgb), 0.45); }
+.problems-chip.sev-info.active { color: var(--prism-cyan); border-color: rgba(var(--prism-cyan-rgb), 0.4); }
+.problems-chip.conf-confirmed.active { color: var(--prism-emerald); border-color: rgba(var(--prism-emerald-rgb), 0.4); }
+.problems-chip.conf-probable.active { color: var(--prism-amber); border-color: rgba(var(--prism-amber-rgb), 0.4); }
+.problems-chip.conf-candidate.active { color: var(--prism-slate); border-color: rgba(var(--prism-slate-rgb), 0.32); }
 
 .problems-list {
   flex: 1 1 auto;
@@ -711,9 +764,9 @@ body {
   background: rgba(31, 41, 55, 0.55);
   outline: none;
 }
-.problems-row.sev-error { border-left-color: rgba(239, 68, 68, 0.6); }
-.problems-row.sev-warning { border-left-color: rgba(250, 204, 21, 0.6); }
-.problems-row.sev-info { border-left-color: rgba(125, 211, 252, 0.45); }
+.problems-row.sev-error { border-left-color: rgba(var(--prism-rose-rgb), 0.6); }
+.problems-row.sev-warning { border-left-color: rgba(var(--prism-amber-rgb), 0.6); }
+.problems-row.sev-info { border-left-color: rgba(var(--prism-cyan-rgb), 0.45); }
 .problems-row[data-expanded="true"] {
   background: rgba(31, 41, 55, 0.4);
 }
@@ -1644,16 +1697,16 @@ body {
  * the body legible. */
 .cm-diag-line { box-shadow: inset 2px 0 0 transparent; }
 .cm-diag-line-error {
-  background: rgba(239, 68, 68, 0.08);
-  box-shadow: inset 2px 0 0 #ef4444;
+  background: rgba(var(--prism-rose-rgb), 0.08);
+  box-shadow: inset 2px 0 0 var(--prism-rose);
 }
 .cm-diag-line-warning {
-  background: rgba(234, 179, 8, 0.08);
-  box-shadow: inset 2px 0 0 #eab308;
+  background: rgba(var(--prism-amber-rgb), 0.08);
+  box-shadow: inset 2px 0 0 var(--prism-amber);
 }
 .cm-diag-line-info {
-  background: rgba(125, 211, 252, 0.06);
-  box-shadow: inset 2px 0 0 #7dd3fc;
+  background: rgba(var(--prism-cyan-rgb), 0.06);
+  box-shadow: inset 2px 0 0 var(--prism-cyan);
 }
 
 /* Wavy underline on the affected text. text-decoration-style: wavy is
@@ -1664,9 +1717,9 @@ body {
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
-.cm-diag-mark-error { text-decoration-color: #ef4444; }
-.cm-diag-mark-warning { text-decoration-color: #eab308; }
-.cm-diag-mark-info { text-decoration-color: #7dd3fc; }
+.cm-diag-mark-error { text-decoration-color: var(--prism-rose); }
+.cm-diag-mark-warning { text-decoration-color: var(--prism-amber); }
+.cm-diag-mark-info { text-decoration-color: var(--prism-cyan); }
 
 /* Diagnostic gutter column — shows a glyph per affected line. */
 .cm-diag-gutter-col {
@@ -1682,6 +1735,6 @@ body {
   font-size: 9px;
   line-height: 1;
 }
-.cm-diag-gutter.cm-diag-error { color: #ef4444; }
-.cm-diag-gutter.cm-diag-warning { color: #eab308; }
-.cm-diag-gutter.cm-diag-info { color: #7dd3fc; }
+.cm-diag-gutter.cm-diag-error { color: var(--prism-rose); }
+.cm-diag-gutter.cm-diag-warning { color: var(--prism-amber); }
+.cm-diag-gutter.cm-diag-info { color: var(--prism-cyan); }
