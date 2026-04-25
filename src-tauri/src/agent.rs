@@ -85,6 +85,13 @@ INVESTIGATION ORDER (mandatory):\n\
      include the returned `evidence_detail` in your finding's evidence \
      line as `source=ast`. ast_query is the only deterministic way to \
      answer 'does this symbol exist?' in TS/JS \u{2014} grep cannot.\n\
+  3a. OPTIONAL: when typecheck is clean but the diff is non-trivial \
+     (multiple files, behavioral changes), call run_tests for an \
+     additional confirmed-tier signal. Failing tests catch behavior \
+     regressions the compiler does not. Each failure becomes a \
+     [confirmed error] finding with source=test in evidence. Tests \
+     can be slow; budget rounds accordingly. Skip when the diff is \
+     pure docs / cosmetics.\n\
   4. After the compiler-backed pass, look for non-compiler wiring gaps \
      the type system can't see:\n\
         - stale barrel re-exports in index files\n\
@@ -156,6 +163,9 @@ OUTPUT CONTRACT (mandatory format):\n\
   - Example shape (ast-backed warning):\n\
       [warning] src/App.tsx:42 \u{2014} handler 'foo' is not in scope \u{2014} define it or import it\n\
       evidence: source=ast; detail=\"ast: 'foo' is NOT visible in scope at src/App.tsx:42 (tsc resolveName returned undefined under the project's tsconfig)\"\n\
+  - Example shape (test-backed error):\n\
+      [error] src/auth.ts \u{2014} login() rejects valid credentials after token-shape change \u{2014} restore the old shape or update the test fixture\n\
+      evidence: source=test; detail=\"FAIL src/auth.test.ts > login accepts valid creds: expected 200, got 401\"\n\
   - Example shape (grep-only structural observation \u{2014} must be info):\n\
       [info] src/old.ts \u{2014} symbol foo no longer referenced anywhere \u{2014} consider removing\n\
       evidence: source=grep; detail=\"grep 'foo' = 0 hits across 142 files\"\n\
@@ -666,6 +676,9 @@ pub async fn agent_query(
     // `typecheck` tool calls with the user's project-specific defaults.
     let typecheck_command = snapshot.agent.typecheck_command.clone();
     let typecheck_timeout_secs = snapshot.agent.typecheck_timeout_secs;
+    // Same for the test-runner substrate cell.
+    let test_command = snapshot.agent.test_command.clone();
+    let test_timeout_secs = snapshot.agent.test_timeout_secs;
 
     // Clone the approval maps (Arc bumps) so the spawned task can gate
     // write tool calls on user consent without holding Tauri State.
@@ -806,15 +819,34 @@ pub async fn agent_query(
                                     &call.function.name,
                                 ) {
                                     // Tools that depend on user config
-                                    // (currently just `typecheck`) get the
-                                    // dedicated entry point so per-user
-                                    // defaults are honored.
-                                    crate::tools::execute_typecheck(
-                                        &call.function.arguments,
-                                        &cwd_for_tools,
-                                        typecheck_command.as_deref(),
-                                        typecheck_timeout_secs,
-                                    )
+                                    // (typecheck, run_tests) get a dedicated
+                                    // entry point so per-user defaults are
+                                    // honored.
+                                    match call.function.name.as_str() {
+                                        "typecheck" => crate::tools::execute_typecheck(
+                                            &call.function.arguments,
+                                            &cwd_for_tools,
+                                            typecheck_command.as_deref(),
+                                            typecheck_timeout_secs,
+                                        ),
+                                        "run_tests" => crate::tools::execute_run_tests(
+                                            &call.function.arguments,
+                                            &cwd_for_tools,
+                                            test_command.as_deref(),
+                                            test_timeout_secs,
+                                        ),
+                                        other => crate::tools::ToolInvocation {
+                                            ok: false,
+                                            summary: format!(
+                                                "unknown config-dispatched tool: {}",
+                                                other
+                                            ),
+                                            payload: serde_json::json!({
+                                                "error": format!("unknown config-dispatched tool: {}", other),
+                                            })
+                                            .to_string(),
+                                        },
+                                    }
                                 } else {
                                     crate::tools::execute(
                                         &call.function.name,

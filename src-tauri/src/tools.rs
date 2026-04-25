@@ -347,6 +347,28 @@ pub fn tool_schema() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "run_tests",
+                "description": "Run the project's test suite. Substrate v3: the strongest runtime-correctness signal available without a full app probe. Auto-detects the runner from the repo (npm/pnpm/yarn 'test' script, cargo test, pytest, go test). Returns { passed, failures: [{file, severity, message, evidence: [...]}], raw, exit_code, duration_ms, timed_out }. A failing test \u{2192} source='test' \u{2192} grader graduates findings to 'confirmed' confidence. Use this OPTIONALLY when typecheck is clean but the diff is non-trivial \u{2014} tests catch behavior regressions the compiler does not. Tests can be slow; budget accordingly.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Optional argv-array override (e.g. [\"pnpm\", \"-w\", \"test\", \"--reporter=json\"]). Must be an array, not a shell string. Wins over auto-detection and config."
+                        },
+                        "timeout_secs": {
+                            "type": "integer",
+                            "description": "Per-call timeout in seconds. Defaults to the configured value (120)."
+                        }
+                    },
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "ast_query",
                 "description": "Ask the project's TypeScript compiler structural questions grep cannot answer reliably. v1 op: 'resolve' \u{2014} does a symbol exist in scope at file[:line]? Where is it declared? Use this BEFORE flagging any 'X is undefined / missing / not declared' finding. If ast_query says resolved=true, do NOT flag the finding. If resolved=false, attach the returned `evidence_detail` as evidence (source=ast) and the grader will graduate your finding to 'probable' confidence. Returns { ok, result: { resolved, declaration: { file, line, kind } | null, evidence_detail }, error }.",
                 "parameters": {
@@ -437,6 +459,11 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
             // user's `agent.typecheck_command` + `typecheck_timeout_secs`.
             tool_typecheck(args_json, cwd, None, None)
         }
+        "run_tests" => {
+            // Same pattern as typecheck. Production callers go through
+            // `execute_run_tests` for config-driven defaults.
+            tool_run_tests(args_json, cwd, None, None)
+        }
         "ast_query" => tool_ast_query(args_json, cwd),
         "web_search" => Err(
             "web_search is async; dispatch via execute_web_search instead of execute".into(),
@@ -484,6 +511,33 @@ pub fn execute_typecheck(
     }
 }
 
+/// Like `execute` but for the test-runner substrate cell, threading
+/// through the user's `agent.test_command` + `test_timeout_secs` config.
+pub fn execute_run_tests(
+    args_json: &str,
+    cwd: &str,
+    config_command: Option<&[String]>,
+    config_timeout_secs: u64,
+) -> ToolInvocation {
+    let result = tool_run_tests(
+        args_json,
+        cwd,
+        config_command,
+        Some(config_timeout_secs),
+    );
+    match result {
+        Ok((summary, payload)) => ToolInvocation { ok: true, summary, payload },
+        Err(e) => {
+            let payload = json!({ "error": e }).to_string();
+            ToolInvocation {
+                ok: false,
+                summary: format!("error: {}", e),
+                payload,
+            }
+        }
+    }
+}
+
 /// True iff the tool must be dispatched through the async entry point.
 pub fn is_async_tool(name: &str) -> bool {
     matches!(name, "web_search")
@@ -493,7 +547,7 @@ pub fn is_async_tool(name: &str) -> bool {
 /// `execute()` doesn't have. The agent loop dispatches these through a
 /// dedicated entry point so per-user defaults are honored.
 pub fn needs_config_dispatch(name: &str) -> bool {
-    matches!(name, "typecheck")
+    matches!(name, "typecheck" | "run_tests")
 }
 
 // ---------------------------------------------------------------------------
@@ -1587,6 +1641,61 @@ fn format_bytes(n: u64) -> String {
     } else {
         format!("{:.1} MB", n as f64 / (1024.0 * 1024.0))
     }
+}
+
+// ---------------------------------------------------------------------------
+// run_tests (substrate v3)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Default)]
+struct RunTestsArgs {
+    #[serde(default)]
+    command: Option<Vec<String>>,
+    #[serde(default)]
+    timeout_secs: Option<u64>,
+}
+
+/// Wrapper around `diagnostics::run_tests`. Returns a (summary, payload)
+/// pair shaped like every other tool.
+fn tool_run_tests(
+    args_json: &str,
+    cwd: &str,
+    config_command: Option<&[String]>,
+    config_timeout_secs: Option<u64>,
+) -> Result<(String, String), String> {
+    let args: RunTestsArgs = if args_json.trim().is_empty() {
+        RunTestsArgs::default()
+    } else {
+        serde_json::from_str(args_json).map_err(|e| format!("invalid arguments: {}", e))?
+    };
+
+    let override_argv: Option<Vec<String>> = args
+        .command
+        .clone()
+        .or_else(|| config_command.map(|s| s.to_vec()));
+    let timeout = args
+        .timeout_secs
+        .or(config_timeout_secs)
+        .map(std::time::Duration::from_secs);
+
+    let run = crate::diagnostics::run_tests(cwd, override_argv.as_deref(), timeout)?;
+    let n = run.failures.len();
+    let exit_part = match run.exit_code {
+        Some(c) => format!("exit {}", c),
+        None => "no exit".to_string(),
+    };
+    let summary = format!(
+        "run_tests \u{2192} {} {} {} \u{2014} {} failure{}{}{}",
+        run.command.first().map(|s| s.as_str()).unwrap_or(""),
+        if run.passed { "PASS" } else { "FAIL" },
+        format!("[{}]", exit_part),
+        n,
+        if n == 1 { "" } else { "s" },
+        if run.timed_out { ", timed out" } else { "" },
+        if run.failures_truncated { ", truncated" } else { "" },
+    );
+    let payload = crate::diagnostics::to_test_payload(&run).to_string();
+    Ok((summary, payload))
 }
 
 // ---------------------------------------------------------------------------

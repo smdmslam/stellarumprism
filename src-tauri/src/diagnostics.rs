@@ -446,6 +446,385 @@ fn truncate_for_log(s: &str, max: usize) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// run_tests (substrate v3)
+//
+// The strongest runtime-correctness signal available without running the
+// full app: did the project's test suite pass? A failing test maps to a
+// `confirmed` Finding via the grader (source="test"). The cell exists for
+// the case typecheck cannot catch \u{2014} behavior that compiles but breaks at
+// runtime.
+// ---------------------------------------------------------------------------
+
+/// Default timeout for the test runner. Tests legitimately run longer
+/// than typecheck; users with very large suites should override via
+/// `agent.test_timeout_secs` in config.
+const TEST_DEFAULT_TIMEOUT_SECS: u64 = 120;
+
+/// Maximum bytes of test runner output preserved in the payload. Caps
+/// runaway suites without losing the most useful failure context.
+const TEST_MAX_RAW_BYTES: usize = 16 * 1024;
+
+/// Outcome of one test-suite run. Mirrors `DiagnosticRun`'s shape so
+/// the consumer side renders both substrate cells uniformly. Failures
+/// are surfaced as `Diagnostic` entries with `source="test"`.
+#[derive(Debug, Clone, Serialize)]
+pub struct TestRun {
+    pub command: Vec<String>,
+    pub exit_code: Option<i32>,
+    pub duration_ms: u128,
+    /// Number of tests we could parse as failures from the output. May
+    /// be 0 even when `exit_code != 0` if the parser didn't recognize
+    /// the format \u{2014} the model can fall back to `raw`.
+    pub failures: Vec<Diagnostic>,
+    pub failures_truncated: bool,
+    pub raw: String,
+    pub raw_truncated: bool,
+    pub timed_out: bool,
+    /// True iff the suite passed: exit_code == 0 AND no parsed failures.
+    pub passed: bool,
+}
+
+/// Run the project's test suite from `cwd`. `override_argv` (per-call or
+/// from `agent.test_command`) wins over auto-detection. `timeout` is in
+/// seconds; pass None to use the default.
+///
+/// Returns Err only on early-failure conditions (empty cwd, no detect +
+/// no override, invalid override). A non-zero exit code from the
+/// underlying command is NOT an error \u{2014} it usually means tests failed,
+/// which is exactly the diagnostic we want.
+pub fn run_tests(
+    cwd: &str,
+    override_argv: Option<&[String]>,
+    timeout: Option<Duration>,
+) -> Result<TestRun, String> {
+    if cwd.trim().is_empty() {
+        return Err("cwd is unknown (shell integration may not be started)".into());
+    }
+    let cwd_path = Path::new(cwd);
+    let argv = match override_argv {
+        Some(argv) => {
+            validate_argv(argv)?;
+            argv.to_vec()
+        }
+        None => detect_test_command(cwd_path)
+            .ok_or_else(|| {
+                "no test command detected; pass `command` argument or set agent.test_command in config".to_string()
+            })?,
+    };
+    let timeout = timeout.unwrap_or(Duration::from_secs(TEST_DEFAULT_TIMEOUT_SECS));
+
+    let started = Instant::now();
+    let (output, timed_out) = run_with_timeout(&argv, cwd_path, timeout)?;
+    let duration_ms = started.elapsed().as_millis();
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    let combined = if stderr.is_empty() {
+        stdout.clone()
+    } else if stdout.is_empty() {
+        stderr.clone()
+    } else {
+        format!(
+            "{}{}{}",
+            stdout,
+            if stdout.ends_with('\n') { "" } else { "\n" },
+            stderr,
+        )
+    };
+
+    let mut failures = parse_test_failures(&argv, &stdout, &stderr);
+    let failures_truncated = failures.len() > MAX_DIAGNOSTICS;
+    if failures_truncated {
+        failures.truncate(MAX_DIAGNOSTICS);
+    }
+
+    let (raw, raw_truncated) = if combined.len() > TEST_MAX_RAW_BYTES {
+        (
+            format!(
+                "{}\n[\u{2026}raw output truncated at {} bytes]",
+                &combined[..TEST_MAX_RAW_BYTES],
+                TEST_MAX_RAW_BYTES,
+            ),
+            true,
+        )
+    } else {
+        (combined, false)
+    };
+
+    let passed = output.status.code() == Some(0) && failures.is_empty();
+
+    Ok(TestRun {
+        command: argv,
+        exit_code: output.status.code(),
+        duration_ms,
+        failures,
+        failures_truncated,
+        raw,
+        raw_truncated,
+        timed_out,
+        passed,
+    })
+}
+
+/// Translate a `TestRun` into the JSON payload sent back to the LLM.
+/// Each failure carries `source="test"` + a verbatim `evidence_detail`
+/// the model can paste directly into `evidence: source=test; detail=...`.
+pub fn to_test_payload(run: &TestRun) -> Value {
+    json!({
+        "command": run.command,
+        "exit_code": run.exit_code,
+        "duration_ms": run.duration_ms,
+        "timed_out": run.timed_out,
+        "passed": run.passed,
+        "failures_truncated": run.failures_truncated,
+        "raw_truncated": run.raw_truncated,
+        "failures": run.failures
+            .iter()
+            .map(|d| json!({
+                "source": d.source,
+                "confidence": "confirmed",
+                "file": d.file,
+                "line": d.line,
+                "col": d.col,
+                "severity": d.severity.as_str(),
+                "code": d.code,
+                "message": d.message,
+                "evidence": [
+                    {
+                        "source": d.source,
+                        "detail": format_diagnostic_evidence(d),
+                    }
+                ],
+            }))
+            .collect::<Vec<_>>(),
+        "raw": run.raw,
+    })
+}
+
+/// Inspect `cwd` and pick a reasonable test command. Mirrors
+/// `detect_typecheck_command` but for the test runner branch.
+pub fn detect_test_command(cwd: &Path) -> Option<Vec<String>> {
+    if let Some(cmd) = detect_node_test(cwd) {
+        return Some(cmd);
+    }
+    if cwd.join("Cargo.toml").is_file() {
+        return Some(vec![
+            "cargo".into(),
+            "test".into(),
+            "--quiet".into(),
+        ]);
+    }
+    if cwd.join("go.mod").is_file() {
+        return Some(vec![
+            "go".into(),
+            "test".into(),
+            "./...".into(),
+        ]);
+    }
+    if cwd.join("pyproject.toml").is_file() && which("pytest").is_some() {
+        return Some(vec!["pytest".into(), "-q".into()]);
+    }
+    None
+}
+
+/// Look for a Node test command. Priority:
+///   1. package.json has a "test" script \u{2192} run via the detected pm.
+///   2. package.json + tsconfig.json present + vitest|jest dep \u{2192} run
+///      that runner directly via `<pm> exec`.
+fn detect_node_test(cwd: &Path) -> Option<Vec<String>> {
+    let pkg_path = cwd.join("package.json");
+    if !pkg_path.is_file() {
+        return None;
+    }
+    let pm = detect_package_manager(cwd);
+    if let Ok(text) = std::fs::read_to_string(&pkg_path) {
+        if let Ok(json) = serde_json::from_str::<Value>(&text) {
+            if let Some(scripts) = json.get("scripts").and_then(|v| v.as_object()) {
+                for name in ["test", "test:unit", "vitest", "jest"] {
+                    if scripts.contains_key(name) {
+                        return Some(run_script_argv(&pm, name));
+                    }
+                }
+            }
+            // No script declared but a runner is in deps: run it directly.
+            for runner in ["vitest", "jest"] {
+                if has_dependency(&json, runner) {
+                    return Some(vec![
+                        pm.bin().into(),
+                        "exec".into(),
+                        runner.into(),
+                        "run".into(),
+                    ]);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// True iff package.json declares `name` as a (dev)dependency.
+fn has_dependency(pkg: &Value, name: &str) -> bool {
+    for key in ["dependencies", "devDependencies", "peerDependencies"] {
+        if let Some(deps) = pkg.get(key).and_then(|v| v.as_object()) {
+            if deps.contains_key(name) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Pick a parser based on argv[0]. Falls back to a generic line scanner
+/// that recognizes the common `path:line:col` failure prefixes used by
+/// pytest, cargo-test panic captures, jest with location info, etc.
+fn parse_test_failures(argv: &[String], stdout: &str, stderr: &str) -> Vec<Diagnostic> {
+    let prog = Path::new(&argv[0])
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(&argv[0]);
+    let combined = if stderr.is_empty() {
+        stdout.to_string()
+    } else if stdout.is_empty() {
+        stderr.to_string()
+    } else {
+        format!("{}\n{}", stdout, stderr)
+    };
+    match prog {
+        "cargo" => parse_cargo_test_failures(&combined),
+        "pytest" => parse_pytest_failures(&combined),
+        "go" => parse_go_test_failures(&combined),
+        // Node runners: vitest/jest output is hard to parse without JSON
+        // mode. v1 falls back to the generic scanner; users wanting
+        // structured failures should configure their runner with a JSON
+        // reporter and pass it via agent.test_command.
+        _ => parse_generic_test_failures(&combined),
+    }
+}
+
+/// Parse `cargo test` text output. Failed tests are listed as
+/// `test path::to::test ... FAILED` and the panic capture follows in a
+/// `failures:` block.
+fn parse_cargo_test_failures(text: &str) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim_end();
+        // `test foo::bar ... FAILED`
+        if let Some(rest) = trimmed.strip_prefix("test ") {
+            if rest.ends_with("... FAILED") {
+                let name = rest.trim_end_matches("... FAILED").trim();
+                out.push(Diagnostic {
+                    source: "test".into(),
+                    file: name.to_string(),
+                    line: 0,
+                    col: 0,
+                    severity: Severity::Error,
+                    code: String::new(),
+                    message: format!("test {} failed", name),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Parse pytest `-q` output. Failures appear as `path/to/test.py::test_name FAILED`
+/// or the long-form summary block at the end.
+fn parse_pytest_failures(text: &str) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        // Long form: `FAILED tests/test_x.py::test_name - AssertionError: ...`
+        if let Some(rest) = trimmed.strip_prefix("FAILED ") {
+            let (loc, msg) = match rest.split_once(" - ") {
+                Some((l, m)) => (l, m),
+                None => (rest, ""),
+            };
+            // loc is `path/to/test.py::test_name`; line number not
+            // typically given on the FAILED summary line.
+            let file = loc.split("::").next().unwrap_or(loc).to_string();
+            out.push(Diagnostic {
+                source: "test".into(),
+                file,
+                line: 0,
+                col: 0,
+                severity: Severity::Error,
+                code: String::new(),
+                message: if msg.is_empty() {
+                    format!("pytest failed: {}", loc)
+                } else {
+                    format!("{} \u{2014} {}", loc, msg)
+                },
+            });
+        }
+    }
+    out
+}
+
+/// Parse `go test ./...` output. Failures look like `--- FAIL: TestName (0.00s)`.
+fn parse_go_test_failures(text: &str) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("--- FAIL: ") {
+            // `TestName (0.00s)`
+            let name = rest.split(' ').next().unwrap_or(rest);
+            out.push(Diagnostic {
+                source: "test".into(),
+                file: name.to_string(),
+                line: 0,
+                col: 0,
+                severity: Severity::Error,
+                code: String::new(),
+                message: format!("go test {} failed", name),
+            });
+        }
+    }
+    out
+}
+
+/// Generic fallback: scan for lines that look like `path:line[:col]:`
+/// followed by something error-ish, OR for `at <file>:<line>` suffixes
+/// common to JS test runners. Best-effort \u{2014} misses are acceptable
+/// because the raw output is preserved for the model.
+fn parse_generic_test_failures(text: &str) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let trimmed = line.trim_end();
+        // Generic `path:line:col: <message>` form.
+        if let Some(d) = parse_generic_path_line_col(trimmed) {
+            out.push(d);
+        }
+    }
+    out
+}
+
+fn parse_generic_path_line_col(line: &str) -> Option<Diagnostic> {
+    let mut iter = line.splitn(4, ':');
+    let file = iter.next()?.trim().to_string();
+    let l: u32 = iter.next()?.trim().parse().ok()?;
+    let c: u32 = iter.next()?.trim().parse().ok()?;
+    let msg = iter.next()?.trim().to_string();
+    if file.is_empty() || msg.is_empty() {
+        return None;
+    }
+    if !msg.to_ascii_lowercase().contains("error")
+        && !msg.to_ascii_lowercase().contains("fail")
+        && !msg.to_ascii_lowercase().contains("assert")
+    {
+        return None;
+    }
+    Some(Diagnostic {
+        source: "test".into(),
+        file: file.replace('\\', "/"),
+        line: l,
+        col: c,
+        severity: Severity::Error,
+        code: String::new(),
+        message: collapse_ws(&msg),
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Auto-detection
 // ---------------------------------------------------------------------------
 
@@ -1187,6 +1566,152 @@ error[E0599]: no method named `foo` found for struct `Bar`
         .expect("should run");
         assert!(r.timed_out, "expected timeout");
     }
+
+    // -- run_tests substrate cell -------------------------------------
+
+    #[test]
+    fn parses_cargo_test_failure_line() {
+        let raw = "\
+running 3 tests
+test foo::bar ... FAILED
+test foo::baz ... ok
+test foo::qux ... FAILED
+";
+        let out = parse_cargo_test_failures(raw);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].source, "test");
+        assert!(out[0].file.contains("foo::bar"));
+        assert!(out[1].file.contains("foo::qux"));
+    }
+
+    #[test]
+    fn parses_pytest_failure_lines() {
+        let raw = "\
+FAILED tests/test_x.py::test_login - AssertionError: 401 != 200
+FAILED tests/test_y.py::test_logout
+";
+        let out = parse_pytest_failures(raw);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].source, "test");
+        assert_eq!(out[0].file, "tests/test_x.py");
+        assert!(out[0].message.contains("AssertionError"));
+        assert_eq!(out[1].file, "tests/test_y.py");
+    }
+
+    #[test]
+    fn parses_go_test_failure_lines() {
+        let raw = "\
+--- FAIL: TestLogin (0.01s)
+--- FAIL: TestLogout (0.00s)
+";
+        let out = parse_go_test_failures(raw);
+        assert_eq!(out.len(), 2);
+        assert!(out[0].file.contains("TestLogin"));
+        assert!(out[1].file.contains("TestLogout"));
+    }
+
+    #[test]
+    fn detects_node_test_script_via_pm() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"scripts": {"test": "vitest run"}}"#,
+        )
+        .unwrap();
+        fs::write(dir.join("pnpm-lock.yaml"), "").unwrap();
+        let argv = detect_test_command(&dir).expect("should detect");
+        assert_eq!(argv, vec!["pnpm", "run", "test"]);
+    }
+
+    #[test]
+    fn detects_vitest_via_dependency_when_no_script() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"scripts": {}, "devDependencies": {"vitest": "^1.0.0"}}"#,
+        )
+        .unwrap();
+        let argv = detect_test_command(&dir).expect("should detect");
+        assert_eq!(argv[0], "npm");
+        assert!(argv.iter().any(|s| s == "vitest"));
+    }
+
+    #[test]
+    fn detects_cargo_test_when_cargo_toml_present() {
+        let dir = fresh_tmp();
+        fs::write(dir.join("Cargo.toml"), "[package]\nname='x'\n").unwrap();
+        let argv = detect_test_command(&dir).expect("should detect");
+        assert_eq!(argv[0], "cargo");
+        assert!(argv.iter().any(|s| s == "test"));
+    }
+
+    #[test]
+    fn run_tests_errors_on_empty_cwd() {
+        let r = run_tests("", None, None);
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn run_tests_uses_override_argv_passing() {
+        let dir = fresh_tmp();
+        // `true` exits 0 without printing anything: substrate should
+        // mark the suite as passed with no parsed failures.
+        let argv = vec!["true".to_string()];
+        let r = run_tests(
+            &dir.to_string_lossy(),
+            Some(&argv),
+            Some(Duration::from_secs(5)),
+        )
+        .expect("should run");
+        assert!(r.passed);
+        assert_eq!(r.exit_code, Some(0));
+        assert!(r.failures.is_empty());
+    }
+
+    #[test]
+    fn run_tests_uses_override_argv_failing() {
+        let dir = fresh_tmp();
+        // `false` exits 1: passed=false even if no failures are parsed.
+        let argv = vec!["false".to_string()];
+        let r = run_tests(
+            &dir.to_string_lossy(),
+            Some(&argv),
+            Some(Duration::from_secs(5)),
+        )
+        .expect("should run");
+        assert!(!r.passed);
+        assert_eq!(r.exit_code, Some(1));
+    }
+
+    #[test]
+    fn to_test_payload_has_evidence_per_failure() {
+        let run = TestRun {
+            command: vec!["cargo".into(), "test".into()],
+            exit_code: Some(101),
+            duration_ms: 250,
+            failures: vec![Diagnostic {
+                source: "test".into(),
+                file: "foo::bar".into(),
+                line: 0,
+                col: 0,
+                severity: Severity::Error,
+                code: String::new(),
+                message: "test foo::bar failed".into(),
+            }],
+            failures_truncated: false,
+            raw: "raw".into(),
+            raw_truncated: false,
+            timed_out: false,
+            passed: false,
+        };
+        let v = to_test_payload(&run);
+        assert_eq!(v["passed"], false);
+        assert_eq!(v["failures"][0]["severity"], "error");
+        assert_eq!(v["failures"][0]["confidence"], "confirmed");
+        assert_eq!(v["failures"][0]["evidence"][0]["source"], "test");
+    }
+
+    // -- end run_tests --
 
     #[test]
     fn to_finding_payload_emits_expected_keys() {

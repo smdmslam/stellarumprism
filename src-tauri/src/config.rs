@@ -58,6 +58,15 @@ pub struct AgentConfig {
     /// `["pnpm", "-w", "run", "typecheck"]` in a monorepo.
     #[serde(default)]
     pub typecheck_command: Option<Vec<String>>,
+    /// Per-call timeout for the `run_tests` substrate tool, in seconds.
+    /// Tests are slower than typecheck on average. Default 120.
+    #[serde(default = "default_test_timeout_secs")]
+    pub test_timeout_secs: u64,
+    /// Optional override for the test command, as an argv array (NOT a
+    /// shell string). Mirrors `typecheck_command` for the test runner.
+    /// Example: `["pnpm", "-w", "test", "--reporter=json"]`.
+    #[serde(default)]
+    pub test_command: Option<Vec<String>>,
     #[serde(default)]
     pub verifier: VerifierConfig,
 }
@@ -70,6 +79,8 @@ impl Default for AgentConfig {
             max_tool_rounds: default_max_tool_rounds(),
             typecheck_timeout_secs: default_typecheck_timeout_secs(),
             typecheck_command: None,
+            test_timeout_secs: default_test_timeout_secs(),
+            test_command: None,
             verifier: VerifierConfig::default(),
         }
     }
@@ -253,6 +264,12 @@ fn default_max_tool_rounds() -> usize {
 /// medium repo without making fast projects feel laggy.
 fn default_typecheck_timeout_secs() -> u64 {
     60
+}
+/// 120 seconds is enough for a typical Vitest/Jest/cargo-test suite.
+/// Tests legitimately take longer than typecheck; users with very large
+/// suites should raise this in config.
+fn default_test_timeout_secs() -> u64 {
+    120
 }
 
 /// Location of the config file: `$HOME/.config/prism/config.toml`.
