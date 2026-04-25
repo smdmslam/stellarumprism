@@ -150,6 +150,18 @@ INVESTIGATION ORDER (mandatory):\n\
         - If the diff is purely non-HTTP (UI, types, config, docs), \
           skip http_fetch entirely. The mandate is scoped to actual \
           HTTP code paths.\n\
+  3c. OPTIONAL: when the diff touches a STATEFUL flow (auth, multi-step \
+     CRUD, anything where one request produces state another request \
+     consumes), prefer e2e_run over a single http_fetch. Build a small \
+     flow that exercises the path end-to-end \u{2014} login \u{2192} extract token \
+     \u{2192} action \u{2192} assert outcome. Each step can extract a value \
+     (json path or response header) into the flow's variable map and \
+     subsequent steps reference it via {{name}} templates. Each step \
+     declares assertions (status, body_contains, json_eq) that the \
+     substrate evaluates deterministically. e2e_run \u{2192} source=runtime \
+     for the grader; failed assertions are confirmed-tier evidence for \
+     a finding, not LLM speculation. Skip when the change is just a \
+     single endpoint already covered by http_fetch.\n\
   4. After the compiler-backed pass, look for non-compiler wiring gaps \
      the type system can't see:\n\
         - stale barrel re-exports in index files\n\
@@ -380,6 +392,18 @@ INVESTIGATION ORDER (mandatory):\n\
           equally important as typecheck for any HTTP-touching step; \
           a feature that compiles but does not respond is not done. \
           For non-HTTP work, skip this substep entirely.\n\
+       g. STATEFUL FLOW VERIFICATION (use when applicable): when the \
+          feature is multi-step (login \u{2192} action, multi-stage CRUD, \
+          anything that needs state between requests), call e2e_run \
+          with a small flow that exercises the path end-to-end and \
+          asserts the expected outcomes (status, json fields, body \
+          content). Use {{var}} templates to thread extracted values \
+          (token, session id) between steps. e2e_run is the strongest \
+          runtime-correctness signal Prism produces; a build that \
+          completes a stateful feature should include at least one \
+          e2e_run with passed=true in the BUILD REPORT's Final \
+          verification block (source=runtime). Skip for single-shot \
+          endpoints already covered by http_fetch.\n\
   4. REPORT. Produce ONE final BUILD REPORT block (format below). No \
      prose narration during execution \u{2014} the tool log already shows \
      what you did.\n\
@@ -417,6 +441,7 @@ OUTPUT CONTRACT:\n\
       ast_query: <N resolutions confirmed>\n\
       run_tests: <pass | N failures>   (omit if not run)\n\
       http_fetch: <N endpoints OK | N failed | dev server unreachable>   (omit if no HTTP work)\n\
+      e2e_run: <flow names: PASS|FAIL with assertion counts>   (omit if no flow ran)\n\
 \n\
   - Use \u{2713} for success, \u{2298} for skipped, \u{2717} for failed. One line each. \
      Keep summaries terse.\n\
@@ -1154,6 +1179,12 @@ pub async fn agent_query(
                                         }
                                         "http_fetch" => {
                                             crate::tools::execute_http_fetch(
+                                                &call.function.arguments,
+                                            )
+                                            .await
+                                        }
+                                        "e2e_run" => {
+                                            crate::tools::execute_e2e_run(
                                                 &call.function.arguments,
                                             )
                                             .await
@@ -1934,6 +1965,8 @@ mod resolver_tests {
 mod prompt_tests {
     use super::{AUDIT_SYSTEM_PROMPT, BUILD_SYSTEM_PROMPT, REFACTOR_SYSTEM_PROMPT};
 
+    // -- e2e_run prompt-contract tests ----------------------------------
+
     #[test]
     fn audit_prompt_makes_typecheck_first_call_mandatory() {
         // The compiler-first contract that grounds every other check.
@@ -2126,6 +2159,41 @@ mod prompt_tests {
         assert!(
             REFACTOR_SYSTEM_PROMPT.contains("Do NOT use replace_all"),
             "refactor prompt no longer forbids replace_all=true"
+        );
+    }
+
+    #[test]
+    fn audit_prompt_references_e2e_run_for_stateful_flows() {
+        // e2e_run is the substrate's strongest runtime signal. The
+        // audit prompt must tell the agent to reach for it on stateful
+        // diffs (auth, multi-step CRUD), not just one-shot http_fetch.
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("e2e_run"),
+            "audit prompt no longer mentions e2e_run"
+        );
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("STATEFUL flow"),
+            "audit prompt no longer scopes e2e_run to stateful flows"
+        );
+    }
+
+    #[test]
+    fn build_prompt_references_e2e_run_for_multi_step_features() {
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("e2e_run"),
+            "build prompt no longer mentions e2e_run"
+        );
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("strongest runtime-correctness signal"),
+            "build prompt no longer marks e2e_run as the strongest signal"
+        );
+    }
+
+    #[test]
+    fn build_prompt_includes_e2e_in_final_verification() {
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("e2e_run:"),
+            "build prompt's Final verification block no longer reports e2e_run"
         );
     }
 }

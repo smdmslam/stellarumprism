@@ -2,6 +2,7 @@ mod agent;
 mod approval;
 mod config;
 mod diagnostics;
+mod e2e;
 mod file_ref;
 mod lsp;
 mod pty;

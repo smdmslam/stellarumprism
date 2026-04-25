@@ -347,6 +347,62 @@ pub fn tool_schema() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "e2e_run",
+                "description": "Execute a multi-step E2E flow against the user's dev server with variable extraction between steps and assertions per step. Substrate v6: the strongest runtime-correctness signal Prism produces \u{2014} a feature is 'done' when the recorded flow that exercises it (login \u{2192} action \u{2192} verify) passes every assertion. Each step is one HTTP request with optional `extract` (json path or response header into a named variable) and optional `assert` entries (status / body_contains / json_eq). Subsequent steps reference extracted values via {{name}} templates in url / headers / body. Returns { flow_name, passed, aborted, duration_ms, steps: [{name, method, url, status, body, extracted, assertions: [{assertion, passed, detail}]}], evidence_detail }. passed=true iff every step responded AND every assertion passed; transport failures abort the flow with aborted=true (NOT a build failure on its own \u{2014} same carve-out as http_fetch). source='runtime' \u{2192} grader graduates findings to confirmed confidence. Use this OVER http_fetch when the behavior you need to verify spans more than one request (auth, multi-step CRUD, anything with state). Cap of 25 steps per flow.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "flow_name": {
+                            "type": "string",
+                            "description": "Short label for the flow (e.g. 'login_then_me'). Surfaced in the evidence_detail line."
+                        },
+                        "steps": {
+                            "type": "array",
+                            "description": "Ordered steps to execute. Each step is one HTTP request plus optional extract/assert entries.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": { "type": "string", "description": "Optional human-readable step label." },
+                                    "method": { "type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"], "description": "HTTP method. Default GET." },
+                                    "url": { "type": "string", "description": "Absolute URL or template (supports {{var}})." },
+                                    "headers": {
+                                        "type": "object",
+                                        "additionalProperties": { "type": "string" },
+                                        "description": "Optional request headers; values support {{var}}."
+                                    },
+                                    "body": { "type": "string", "description": "Optional request body; supports {{var}}." },
+                                    "timeout_secs": { "type": "integer", "description": "Per-step timeout. Default 10." },
+                                    "extract": {
+                                        "type": "array",
+                                        "description": "Values to pull out of the response into the flow's variable map. Each is one of { name, from='json', path } or { name, from='header', name }.",
+                                        "items": { "type": "object" }
+                                    },
+                                    "assert": {
+                                        "type": "array",
+                                        "description": "Assertions on this step's response. Each is one of { kind='status', equals='200'|'2xx' }, { kind='body_contains', value='\u{2026}' }, { kind='json_eq', path='user.id', value: <json> }.",
+                                        "items": { "type": "object" }
+                                    }
+                                },
+                                "required": ["url"]
+                            }
+                        },
+                        "vars": {
+                            "type": "object",
+                            "additionalProperties": { "type": "string" },
+                            "description": "Optional initial variable map. The 'Dev server URL' from the user message is a natural seed when present."
+                        },
+                        "timeout_secs": {
+                            "type": "integer",
+                            "description": "Overall flow timeout in seconds. Default 30."
+                        }
+                    },
+                    "required": ["flow_name", "steps"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "http_fetch",
                 "description": "Issue an HTTP request and return the response. Substrate v4: the strongest pre-E2E runtime signal \u{2014} directly probes a user-running endpoint to verify it returns what your code claims it does. Use after wiring a new route or middleware (in /build) to confirm the endpoint is live, or in /audit when the diff touches HTTP code paths and you want runtime evidence. Returns { url, status, status_text, body, response_headers, duration_ms, ok, error, evidence_detail }. A successful response (any status code) means the endpoint exists; transport errors (timeout, connection refused) are substrate failures with ok=false. source='runtime' \u{2192} grader graduates findings to 'confirmed' confidence. Body is capped at 32 KB.",
                 "parameters": {
@@ -539,6 +595,9 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
         "http_fetch" => Err(
             "http_fetch is async; dispatch via execute_http_fetch instead of execute".into(),
         ),
+        "e2e_run" => Err(
+            "e2e_run is async; dispatch via execute_e2e_run instead of execute".into(),
+        ),
         other => Err(format!("unknown tool: {}", other)),
     };
     match result {
@@ -638,7 +697,7 @@ pub fn execute_lsp_diagnostics(
 
 /// True iff the tool must be dispatched through the async entry point.
 pub fn is_async_tool(name: &str) -> bool {
-    matches!(name, "web_search" | "http_fetch")
+    matches!(name, "web_search" | "http_fetch" | "e2e_run")
 }
 
 /// True iff the tool needs config-driven defaults that the generic
@@ -807,6 +866,69 @@ struct HttpFetchArgs {
     body: Option<String>,
     #[serde(default)]
     timeout_secs: Option<u64>,
+}
+
+// ---------------------------------------------------------------------------
+// e2e_run (async \u{2014} substrate v6)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct E2eRunArgs {
+    flow_name: String,
+    steps: Vec<crate::e2e::FlowStep>,
+    #[serde(default)]
+    vars: Option<std::collections::HashMap<String, String>>,
+    #[serde(default)]
+    timeout_secs: Option<u64>,
+}
+
+/// Execute `e2e_run` via the async substrate entry point. Same dispatch
+/// shape as `http_fetch`/`web_search`. The returned ToolInvocation
+/// carries a one-line PASS/FAIL summary for xterm plus the full flow
+/// payload (every step's status, body, extracted vars, and per-assertion
+/// outcomes) for the model.
+pub async fn execute_e2e_run(args_json: &str) -> ToolInvocation {
+    let args: E2eRunArgs = match serde_json::from_str(args_json) {
+        Ok(a) => a,
+        Err(e) => return err_invocation(format!("invalid arguments: {}", e)),
+    };
+    let initial_vars = args.vars.clone().unwrap_or_default();
+    let timeout = args
+        .timeout_secs
+        .map(std::time::Duration::from_secs)
+        .or_else(|| Some(std::time::Duration::from_secs(30)));
+
+    let result =
+        crate::e2e::run_flow(&args.flow_name, &args.steps, initial_vars, timeout).await;
+    let run = match result {
+        Ok(r) => r,
+        Err(e) => return err_invocation(e),
+    };
+
+    let total_assertions: usize = run.steps.iter().map(|s| s.assertions.len()).sum();
+    let failed_assertions: usize = run
+        .steps
+        .iter()
+        .map(|s| s.assertions.iter().filter(|a| !a.passed).count())
+        .sum();
+    let summary = format!(
+        "e2e_run flow '{}' \u{2192} {} ({} step{}, {}/{} assertion{}{}{})",
+        run.flow_name,
+        if run.passed { "PASS" } else { "FAIL" },
+        run.steps.len(),
+        if run.steps.len() == 1 { "" } else { "s" },
+        total_assertions - failed_assertions,
+        total_assertions,
+        if total_assertions == 1 { "" } else { "s" },
+        if run.aborted { ", aborted" } else { "" },
+        format!(", {} ms", run.duration_ms),
+    );
+    let payload = crate::e2e::to_e2e_payload(&run).to_string();
+    ToolInvocation {
+        ok: true,
+        summary,
+        payload,
+    }
 }
 
 /// Execute `http_fetch` via the async substrate entry point. Mirrors the
