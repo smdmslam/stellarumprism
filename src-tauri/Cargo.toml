@@ -4,6 +4,10 @@ version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+# Disambiguate `cargo run` when multiple bin targets are defined. The
+# Tauri binary (the GUI app) is the default; the prism-audit CLI is
+# opt-in via `cargo run --bin prism-audit`.
+default-run = "prism"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
