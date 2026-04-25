@@ -16,7 +16,7 @@ use agent::{
     agent_new_session, agent_query, AgentState, SessionState,
 };
 use approval::{agent_clear_session_approval, agent_tool_decision, ApprovalState};
-use file_ref::{list_dir_entries, read_file_scoped};
+use file_ref::{list_dir_entries, read_file_scoped, read_file_snippet};
 use save_chat::save_chat_markdown;
 use second_pass::{read_latest_audit_report, write_audit_report};
 use config::{
@@ -59,6 +59,7 @@ pub fn run() {
             write_audit_report,
             read_latest_audit_report,
             read_file_scoped,
+            read_file_snippet,
             list_dir_entries,
         ])
         .run(tauri::generate_context!())

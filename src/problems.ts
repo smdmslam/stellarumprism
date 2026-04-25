@@ -267,16 +267,27 @@ function renderFindingRow(f: Finding): string {
         f.suggested_fix,
       )}</div>`
     : "";
+  // The row expands to show a code snippet around f.line when clicked.
+  // The snippet container is rendered empty up front; the workspace's
+  // click handler invokes `read_file_snippet` and fills it on demand.
+  // A small copy button preserves the previous click-to-clipboard
+  // affordance without making the whole row a copy target.
   return (
     `<li class="problems-row sev-${f.severity} conf-${f.confidence}" ` +
     `data-finding-id="${escapeAttr(f.id)}" ` +
     `data-loc="${escapeAttr(loc)}" ` +
-    `tabindex="0" title="Click to copy ${escapeAttr(loc)}">` +
+    `data-file="${escapeAttr(f.file)}" ` +
+    `data-line="${f.line}" ` +
+    `data-expanded="false" ` +
+    `data-snippet-loaded="false" ` +
+    `tabindex="0" title="Click to expand snippet">` +
     `<span class="problems-dot sev-${f.severity}" aria-label="severity ${f.severity}"></span>` +
     `<span class="problems-line">${f.line > 0 ? f.line : "\u2014"}</span>` +
     `<span class="problems-desc">${escapeHtml(f.description || "(no description)")}</span>` +
+    `<button class="problems-copy" data-row-action="copy" title="Copy ${escapeAttr(loc)}" tabindex="-1" aria-label="copy path:line">\u29c9</button>` +
     `<span class="problems-meta">[${f.confidence}] (${escapeHtml(sources)})</span>` +
     fixHtml +
+    `<div class="problems-snippet" data-snippet-host=""></div>` +
     `</li>`
   );
 }

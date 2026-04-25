@@ -41,6 +41,11 @@ import {
   toggleSeverity as toggleProblemsSeverity,
   type ProblemsFilter,
 } from "./problems";
+import {
+  renderSnippet,
+  renderSnippetError,
+  type FileSnippet,
+} from "./snippet";
 
 /**
  * Pixels of breathing room to reserve on the right of the terminal so the
@@ -920,15 +925,28 @@ export class Workspace {
         }
         return;
       }
-      const row = target.closest<HTMLElement>(".problems-row");
-      if (row) {
-        const loc = row.getAttribute("data-loc") ?? "";
+      // Explicit copy button on a row keeps the previous
+      // click-to-clipboard affordance without making the whole row a
+      // copy target. Stop propagation so the click doesn't also expand
+      // the snippet.
+      const copyBtn = target.closest<HTMLElement>(
+        '.problems-row [data-row-action="copy"]',
+      );
+      if (copyBtn) {
+        e.stopPropagation();
+        const row = copyBtn.closest<HTMLElement>(".problems-row");
+        const loc = row?.getAttribute("data-loc") ?? "";
         if (loc) {
           void navigator.clipboard.writeText(loc).catch(() => {});
           this.term.write(
             `\r\n\x1b[2m[problems] copied \x1b[36m${sanitize(loc)}\x1b[0m\x1b[2m to clipboard\x1b[0m\r\n`,
           );
         }
+        return;
+      }
+      const row = target.closest<HTMLElement>(".problems-row");
+      if (row) {
+        void this.toggleProblemsRow(row);
       }
     });
     // Escape closes the panel when it's focused / hovered.
@@ -969,6 +987,49 @@ export class Workspace {
       this.lastAuditReport,
       this.problemsFilter,
     );
+  }
+
+  /**
+   * Toggle a finding row's expanded state. On first expand, lazily
+   * fetches the code snippet around the finding via the Rust
+   * `read_file_snippet` command and renders it inline. Subsequent
+   * toggles reuse the cached HTML to keep things snappy.
+   */
+  private async toggleProblemsRow(row: HTMLElement): Promise<void> {
+    const expanded = row.getAttribute("data-expanded") === "true";
+    const next = !expanded;
+    row.setAttribute("data-expanded", next ? "true" : "false");
+    if (!next) return;
+    if (row.getAttribute("data-snippet-loaded") === "true") return;
+    const host = row.querySelector<HTMLElement>("[data-snippet-host]");
+    if (!host) return;
+    const file = row.getAttribute("data-file") ?? "";
+    const line = Number(row.getAttribute("data-line") ?? "0");
+    if (!file) {
+      host.innerHTML = renderSnippetError("finding has no file path");
+      row.setAttribute("data-snippet-loaded", "true");
+      return;
+    }
+    if (!this.cwd) {
+      host.innerHTML = renderSnippetError(
+        "cwd unknown; cannot resolve relative path",
+        file,
+      );
+      row.setAttribute("data-snippet-loaded", "true");
+      return;
+    }
+    host.innerHTML = `<div class="snippet snippet-loading">loading\u2026</div>`;
+    try {
+      const snippet = await invoke<FileSnippet>("read_file_snippet", {
+        cwd: this.cwd,
+        path: file,
+        line: Math.max(0, Math.floor(line)),
+      });
+      host.innerHTML = renderSnippet(snippet);
+    } catch (e) {
+      host.innerHTML = renderSnippetError(String(e), file);
+    }
+    row.setAttribute("data-snippet-loaded", "true");
   }
 
   /** Driver for `/problems [show|hide|toggle|clear]`. */

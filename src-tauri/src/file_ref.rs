@@ -251,6 +251,118 @@ fn read_directory_as_listing(
     })
 }
 
+/// One slice of a file, centered on a target line. Used by the Problems
+/// panel's inline snippet viewer so a click on a finding shows the
+/// relevant code window without leaving Prism.
+#[derive(Debug, Serialize)]
+pub struct FileSnippet {
+    /// Absolute path that was read.
+    pub path: String,
+    /// The path the user (UI) supplied, preserved for display.
+    pub original: String,
+    /// 1-based line of the first line in `content`.
+    pub start_line: u32,
+    /// 1-based line of the last line in `content`. May be < start_line
+    /// only when the file is empty.
+    pub end_line: u32,
+    /// 1-based target line the caller asked us to center on. Echoed
+    /// back so the renderer can highlight it without re-deriving.
+    pub target_line: u32,
+    /// Total line count of the underlying file (so the UI can show
+    /// "30\u{2013}50 of 412" instead of just "30\u{2013}50").
+    pub total_lines: u32,
+    /// The slice as a single string, joined with `\n`. Never includes
+    /// a trailing newline so the renderer doesn't draw a phantom row.
+    pub content: String,
+    /// True iff the requested window was clipped at the top or bottom
+    /// of the file (or `before`/`after` exceeded the per-call cap).
+    pub truncated: bool,
+}
+
+/// Maximum number of context lines (above OR below the target) per
+/// snippet call. Keeps a runaway `before`/`after` from sucking the
+/// entire file into the UI.
+const SNIPPET_MAX_CONTEXT_LINES: u32 = 80;
+
+/// Read a slice of `path` centered on `line`, with `before` lines above
+/// and `after` lines below. All line numbers are 1-based. Used by the
+/// Problems panel's inline snippet viewer.
+///
+/// - `line == 0` is treated as "top of file" (e.g. for findings the
+///   parser couldn't pin to a line) and clamps the window to 1.
+/// - `before` / `after` default to 6 / 8 respectively when omitted.
+/// - The cell is read-only and binary-safe (refuses files with NUL in
+///   the first 8 KB).
+#[tauri::command]
+pub fn read_file_snippet(
+    cwd: String,
+    path: String,
+    line: u32,
+    before: Option<u32>,
+    after: Option<u32>,
+) -> Result<FileSnippet, String> {
+    let resolved = resolve_path(&cwd, &path)?;
+    let metadata = fs::metadata(&resolved)
+        .map_err(|e| format!("cannot stat {}: {}", resolved.display(), e))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a regular file", resolved.display()));
+    }
+
+    let bytes = fs::read(&resolved)
+        .map_err(|e| format!("cannot read {}: {}", resolved.display(), e))?;
+    let sniff_len = bytes.len().min(8 * 1024);
+    if bytes[..sniff_len].contains(&0) {
+        return Err(format!(
+            "{} looks like a binary file and cannot be snippeted",
+            resolved.display()
+        ));
+    }
+
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let all_lines: Vec<&str> = text.split('\n').collect();
+    let total_lines = all_lines.len() as u32;
+
+    let target = if line == 0 { 1 } else { line };
+    let before = before
+        .unwrap_or(6)
+        .min(SNIPPET_MAX_CONTEXT_LINES);
+    let after = after
+        .unwrap_or(8)
+        .min(SNIPPET_MAX_CONTEXT_LINES);
+
+    // Clamp the window to the file. start_line is 1-based and must be
+    // at least 1; end_line caps at total_lines but is allowed to be 0
+    // when the file is genuinely empty.
+    let start_line = target.saturating_sub(before).max(1);
+    let end_line = target.saturating_add(after).min(total_lines.max(1));
+    let truncated = before > 0
+        && (target.saturating_sub(before) < 1
+            || target.saturating_add(after) > total_lines);
+
+    // Slice using 0-based indices.
+    let start_idx = (start_line - 1) as usize;
+    let end_idx = (end_line - 1) as usize;
+    let slice: &[&str] = if all_lines.is_empty() {
+        &[]
+    } else {
+        let lo = start_idx.min(all_lines.len() - 1);
+        let hi = end_idx.min(all_lines.len() - 1);
+        &all_lines[lo..=hi]
+    };
+    let content = slice.join("\n");
+
+    Ok(FileSnippet {
+        path: resolved.to_string_lossy().into_owned(),
+        original: path,
+        start_line,
+        end_line,
+        target_line: target,
+        total_lines,
+        content,
+        truncated,
+    })
+}
+
 /// Resolve a user-typed path with the shell's cwd as the starting point.
 ///
 /// Rules (first match wins):
@@ -280,4 +392,156 @@ fn resolve_path(cwd: &str, raw: &str) -> Result<PathBuf, String> {
     // Best-effort canonicalize; if it fails (file missing), return the
     // as-constructed path so the caller sees a meaningful fs error later.
     Ok(buf.canonicalize().unwrap_or(buf))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn fresh_tmp() -> PathBuf {
+        let dir = env::temp_dir().join(format!(
+            "prism-snippet-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&dir).expect("create tmp dir");
+        fs::canonicalize(&dir).expect("canonicalize tmp")
+    }
+
+    fn write_lines(dir: &Path, name: &str, n: usize) -> PathBuf {
+        let path = dir.join(name);
+        let body: Vec<String> = (1..=n).map(|i| format!("line {}", i)).collect();
+        fs::write(&path, body.join("\n")).expect("write file");
+        path
+    }
+
+    #[test]
+    fn snippet_centers_on_target_with_default_window() {
+        let dir = fresh_tmp();
+        write_lines(&dir, "a.txt", 50);
+        let s = read_file_snippet(
+            dir.to_string_lossy().to_string(),
+            "a.txt".to_string(),
+            20,
+            None,
+            None,
+        )
+        .expect("snippet");
+        assert_eq!(s.target_line, 20);
+        // Default window: 6 before + 8 after, so 14..28.
+        assert_eq!(s.start_line, 14);
+        assert_eq!(s.end_line, 28);
+        assert_eq!(s.total_lines, 50);
+        // Content has the expected number of lines.
+        let line_count = s.content.split('\n').count();
+        assert_eq!(line_count, (s.end_line - s.start_line + 1) as usize);
+        assert!(s.content.contains("line 20"));
+        assert!(s.content.contains("line 14"));
+        assert!(s.content.contains("line 28"));
+        assert!(!s.content.contains("line 13"));
+        assert!(!s.content.contains("line 29"));
+    }
+
+    #[test]
+    fn snippet_clamps_at_top_of_file() {
+        let dir = fresh_tmp();
+        write_lines(&dir, "a.txt", 50);
+        let s = read_file_snippet(
+            dir.to_string_lossy().to_string(),
+            "a.txt".to_string(),
+            2,
+            Some(10),
+            Some(3),
+        )
+        .expect("snippet");
+        assert_eq!(s.start_line, 1);
+        assert_eq!(s.end_line, 5);
+        assert!(s.truncated, "clipped at top");
+    }
+
+    #[test]
+    fn snippet_clamps_at_bottom_of_file() {
+        let dir = fresh_tmp();
+        write_lines(&dir, "a.txt", 10);
+        let s = read_file_snippet(
+            dir.to_string_lossy().to_string(),
+            "a.txt".to_string(),
+            8,
+            Some(2),
+            Some(20),
+        )
+        .expect("snippet");
+        assert_eq!(s.start_line, 6);
+        assert_eq!(s.end_line, 10);
+        assert!(s.truncated, "clipped at bottom");
+    }
+
+    #[test]
+    fn snippet_treats_line_zero_as_top_of_file() {
+        let dir = fresh_tmp();
+        write_lines(&dir, "a.txt", 30);
+        let s = read_file_snippet(
+            dir.to_string_lossy().to_string(),
+            "a.txt".to_string(),
+            0,
+            Some(0),
+            Some(4),
+        )
+        .expect("snippet");
+        assert_eq!(s.target_line, 1);
+        assert_eq!(s.start_line, 1);
+        assert_eq!(s.end_line, 5);
+    }
+
+    #[test]
+    fn snippet_caps_context_at_max() {
+        let dir = fresh_tmp();
+        write_lines(&dir, "a.txt", 1000);
+        let s = read_file_snippet(
+            dir.to_string_lossy().to_string(),
+            "a.txt".to_string(),
+            500,
+            Some(10_000),
+            Some(10_000),
+        )
+        .expect("snippet");
+        // Context capped at SNIPPET_MAX_CONTEXT_LINES (80) on each side.
+        assert_eq!(s.start_line, 500 - 80);
+        assert_eq!(s.end_line, 500 + 80);
+    }
+
+    #[test]
+    fn snippet_rejects_directory_targets() {
+        let dir = fresh_tmp();
+        let r = read_file_snippet(
+            dir.parent().unwrap().to_string_lossy().to_string(),
+            dir.file_name().unwrap().to_string_lossy().to_string(),
+            1,
+            None,
+            None,
+        );
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("not a regular file"));
+    }
+
+    #[test]
+    fn snippet_rejects_binary_files() {
+        let dir = fresh_tmp();
+        let path = dir.join("bin.dat");
+        // NUL byte in the first 8 KB triggers the binary sniff.
+        let mut data = vec![0u8; 32];
+        data.extend_from_slice(b"trailing text");
+        fs::write(&path, data).unwrap();
+        let r = read_file_snippet(
+            dir.to_string_lossy().to_string(),
+            "bin.dat".to_string(),
+            1,
+            None,
+            None,
+        );
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("binary"));
+    }
 }
