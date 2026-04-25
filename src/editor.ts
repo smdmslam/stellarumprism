@@ -157,6 +157,15 @@ export class PrismInput {
           key: "ArrowDown",
           run: () => this.tryHistoryNext(),
         },
+        // Cmd+Backspace (Mac) / Ctrl+Backspace (other): delete one path
+        // segment when the user is mid-typing a `/cd` or `@` path. This
+        // turns recovery from a bad autocomplete pick into a single
+        // keystroke instead of N backspaces. Falls through to CodeMirror's
+        // default word-delete when not in a path context.
+        {
+          key: "Mod-Backspace",
+          run: () => this.deletePathSegment(),
+        },
       ]),
     );
 
@@ -255,6 +264,63 @@ export class PrismInput {
 
   private toggleAgent(): void {
     this.setAgentMode(!this.agentMode);
+  }
+
+  /**
+   * Delete back to (and including) the previous `/` in a `/cd` or `@`
+   * path. Returns true to consume the keystroke; false to fall through
+   * to CodeMirror's default Cmd+Backspace (delete-word-backward).
+   *
+   * Triggers only when the doc starts with `/cd ` and the cursor is in
+   * the path argument, OR when the current word starts with `@`. That
+   * keeps Cmd+Backspace working as expected for shell command lines.
+   */
+  private deletePathSegment(): boolean {
+    const sel = this.view.state.selection.main;
+    if (!sel.empty) return false;
+    const cursor = sel.head;
+    const doc = this.view.state.doc.toString();
+    const before = doc.slice(0, cursor);
+
+    // /cd argument context: after "/cd " prefix.
+    const cdMatch = /^\s*\/cd\s+(.*)$/.exec(before);
+    if (cdMatch) {
+      const partial = cdMatch[1];
+      if (partial.length === 0) return false;
+      // Find the previous `/` (excluding a trailing one if present).
+      const trimmed = partial.endsWith("/")
+        ? partial.slice(0, -1)
+        : partial;
+      const cutoff = trimmed.lastIndexOf("/");
+      const argStart = cursor - partial.length;
+      const newCursor = cutoff >= 0 ? argStart + cutoff + 1 : argStart;
+      this.view.dispatch({
+        changes: { from: newCursor, to: cursor, insert: "" },
+        selection: { anchor: newCursor },
+      });
+      return true;
+    }
+
+    // @path context: most recent whitespace-or-start-delimited @-token.
+    const atMatch = /(?:^|\s)@([^\s"]*)$/.exec(before);
+    if (atMatch) {
+      const partial = atMatch[1];
+      if (partial.length === 0) return false;
+      const trimmed = partial.endsWith("/")
+        ? partial.slice(0, -1)
+        : partial;
+      const cutoff = trimmed.lastIndexOf("/");
+      const partialStart = cursor - partial.length;
+      const newCursor =
+        cutoff >= 0 ? partialStart + cutoff + 1 : partialStart;
+      this.view.dispatch({
+        changes: { from: newCursor, to: cursor, insert: "" },
+        selection: { anchor: newCursor },
+      });
+      return true;
+    }
+
+    return false;
   }
 
   private currentIntent(): IntentResult {
@@ -386,51 +452,88 @@ function slashCompletions(
   const cdMatch = /^\s*\/cd\s+(.*)$/.exec(before);
   if (cdMatch) {
     const partial = cdMatch[1];
-    // Insert/replace range starts at the prefix portion (after the last `/`).
-    const slashIdx = partial.lastIndexOf("/");
-    const dirPart = slashIdx >= 0 ? partial.slice(0, slashIdx + 1) : "";
-    const prefixLen = partial.length - dirPart.length;
-    const from = context.pos - prefixLen;
     const opts = OPTIONS_BY_VIEW.get(context.view!);
     const cwd = opts?.getCwd?.() ?? "";
     return (async () => {
-      try {
-        const listing = await invoke<{
-          dir: string;
-          prefix: string;
-          entries: Array<{ name: string; kind: string }>;
-          truncated: boolean;
-        }>("list_dir_entries", { cwd, partial });
+      // Single helper: list `partial`. When that returns zero matches
+      // and there's a typed prefix to blame, fall back to listing the
+      // parent directory so the popup stays open with browsable
+      // entries instead of dying — user can backspace into recovery
+      // or pick a different folder without re-typing the whole path.
+      const slashIdx = partial.lastIndexOf("/");
+      const dirPart = slashIdx >= 0 ? partial.slice(0, slashIdx + 1) : "";
+      const fetchListing = async (q: string) => {
+        try {
+          return await invoke<{
+            dir: string;
+            prefix: string;
+            entries: Array<{ name: string; kind: string }>;
+            truncated: boolean;
+          }>("list_dir_entries", { cwd, partial: q });
+        } catch {
+          return null;
+        }
+      };
+      let listing = await fetchListing(partial);
+      let recoveredFrom = false;
+      if (listing && listing.entries.filter((e) => e.kind === "dir").length === 0
+        && partial !== dirPart) {
+        // Bad trailing prefix — re-list the parent directory and replace
+        // the failing prefix with whatever the user picks next.
+        const parent = await fetchListing(dirPart);
+        if (parent) {
+          listing = parent;
+          recoveredFrom = true;
+        }
+      }
+      if (!listing) return null;
+      // Insert/replace range: when we recovered, the replacement covers
+      // the bad prefix; otherwise it just covers the prefix portion.
+      const prefixLen = partial.length - dirPart.length;
+      const from = context.pos - prefixLen;
+      // Sentinel option keeps the popup mounted when there are no real
+      // matches in the current directory either, so the user can
+      // backspace once and recover instead of having to retype.
+      const dirEntries = listing.entries.filter((e) => e.kind === "dir");
+      if (dirEntries.length === 0) {
         return {
           from,
           filter: false,
-          options: listing.entries
-            .filter((e) => e.kind === "dir")
-            .map((e) => {
-              const display = e.name + "/";
-              return {
-                label: display,
-                detail: "folder",
-                type: "folder",
-                apply: (
-                  view: EditorView,
-                  _completion: unknown,
-                  applyFrom: number,
-                  applyTo: number,
-                ) => {
-                  view.dispatch({
-                    changes: { from: applyFrom, to: applyTo, insert: display },
-                    selection: { anchor: applyFrom + display.length },
-                  });
-                  // Drill in: re-open the popup to show this folder's children.
-                  setTimeout(() => startCompletion(view), 0);
-                },
-              };
-            }),
+          options: [
+            {
+              label: `(no folders in ${listing.dir})`,
+              detail: "",
+              type: "text",
+              apply: () => {},
+            },
+          ],
         };
-      } catch {
-        return null;
       }
+      return {
+        from,
+        filter: false,
+        options: dirEntries.map((e) => {
+          const display = e.name + "/";
+          return {
+            label: display,
+            detail: recoveredFrom ? "folder (recovered)" : "folder",
+            type: "folder",
+            apply: (
+              view: EditorView,
+              _completion: unknown,
+              applyFrom: number,
+              applyTo: number,
+            ) => {
+              view.dispatch({
+                changes: { from: applyFrom, to: applyTo, insert: display },
+                selection: { anchor: applyFrom + display.length },
+              });
+              // Drill in: re-open the popup to show this folder's children.
+              setTimeout(() => startCompletion(view), 0);
+            },
+          };
+        }),
+      };
     })();
   }
 
