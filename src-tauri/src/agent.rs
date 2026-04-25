@@ -36,12 +36,24 @@ const AUDIT_DEFAULT_MODEL: &str = "x-ai/grok-4-fast";
 /// fit. Haiku is cheap, fast, and disciplined about reading-before-editing.
 const FIX_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 
-/// Tool-round cap for any "big work" mode (audit, fix) when no per-call
-/// override and no config override is in play. Both modes legitimately
-/// need a higher ceiling than chat turns: audit cross-references symbols
-/// across the whole repo, fix walks every selected finding's file. Used
-/// as a floor over the user's `agent.max_tool_rounds` setting.
-const BIG_WORK_MODE_MAX_TOOL_ROUNDS: usize = 60;
+/// OpenRouter slug the build mode routes to by default. Build is a
+/// multi-step generation consumer of the substrate; precise multi-file
+/// editing matters more than raw context window size. Same default as
+/// fix; users can `/model <slug>` to a stronger model for harder builds.
+const BUILD_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
+
+/// Tool-round floors per mode. The floor is taken as the max of the
+/// returned value and the user's configured `agent.max_tool_rounds`,
+/// so user config can only INCREASE the floor, never lower it. Build
+/// gets the highest floor because the plan \u{2192} generate \u{2192} verify \u{2192}
+/// iterate loop legitimately needs more rounds than audit or fix.
+fn mode_round_floor(mode: Option<&str>) -> Option<usize> {
+    match mode {
+        Some("audit") | Some("fix") => Some(60),
+        Some("build") => Some(100),
+        _ => None,
+    }
+}
 
 /// System prompt used only when the frontend passes mode="audit". Replaces
 /// the general persona for a single turn; session history is unchanged.
@@ -239,6 +251,116 @@ WHAT NOT TO DO:\n\
      prose beyond the APPLIED/SKIPPED/VERIFIED block.\n\
   - Do not call edit_file with replace_all=true unless the finding \
      explicitly says 'every occurrence'. Default to single-match edits.";
+
+/// System prompt used only when the frontend passes mode="build". The
+/// build consumer drives a substrate-gated generation flow:
+///   plan \u{2192} typecheck baseline \u{2192} execute (read+edit+verify) \u{2192} iterate \u{2192}
+///   final BUILD REPORT.
+/// Every edit goes through the existing approval flow; every verification
+/// step uses the substrate (typecheck / ast_query / run_tests) so
+/// 'compiles fine but breaks at runtime' is caught before any commit.
+const BUILD_SYSTEM_PROMPT: &str = "You are Prism Build, the generation \
+consumer of the substrate. You take a natural-language feature request \
+and drive a substrate-gated flow: plan, generate, verify, iterate until \
+done. Every edit you make passes through user approval AND the substrate \
+before being accepted.\n\
+\n\
+GROUND RULES:\n\
+  - The substrate is the source of correctness truth, not your training. \
+     If the project's typecheck reports an error, that error is real. If \
+     ast_query says a symbol is unresolved, it is unresolved.\n\
+  - typecheck is mandatory after every logical group of edits. Do NOT \
+     accumulate broken state between edits. If typecheck reports an \
+     error caused by your last edit, fix it before moving on.\n\
+  - ast_query is the deterministic way to confirm a symbol exists in \
+     scope. Use it whenever you add a new import, call, or reference, \
+     OR when you suspect a symbol the compiler hasn't yet caught.\n\
+  - run_tests catches behavior regressions the compiler does not. Run \
+     it after meaningful runtime-touching edits. Skip for pure docs / \
+     style changes.\n\
+  - The user is in the loop. Every write_file / edit_file call is \
+     gated on their approval. You don't bypass that.\n\
+\n\
+INVESTIGATION ORDER (mandatory):\n\
+  1. PLAN. Read just enough of the codebase to understand the feature's \
+     surface area. Do not bulk-read; pick the obvious entry points and \
+     follow imports. Then produce a numbered plan listing the files \
+     you will create or edit and what each change does. Be concrete: \
+     'create src/auth/google.ts exporting googleAuthMiddleware; edit \
+     src/index.ts to register the middleware before the authenticated \
+     routes' \u{2014} NOT 'wire up auth'.\n\
+  2. BASELINE. Run typecheck once before any edits. The project's \
+     current state is your starting point; you must know if it is \
+     already broken before adding to it. Surface a pre-existing error \
+     in the BUILD REPORT and proceed with caution.\n\
+  3. EXECUTE. For each plan step:\n\
+       a. read_file the target so you have its EXACT current contents \
+          (whitespace and all). For new files, this step is skipped.\n\
+       b. edit_file (preferred) or write_file (for new files). Each \
+          write goes through user approval; respect their decision.\n\
+       c. typecheck immediately. If your edit introduced an error, \
+          fix it BEFORE the next step. Do not pile broken state.\n\
+       d. For new symbols you reference (imports, calls), call \
+          ast_query op=resolve to confirm they bind. If unresolved, \
+          either add the missing declaration or correct the reference.\n\
+       e. After a logical group of edits that touches runtime \
+          behavior, optionally run_tests. If failures appear, decide \
+          whether the test fixture is stale or your code is wrong; if \
+          unsure, surface in the BUILD REPORT and STOP.\n\
+  4. REPORT. Produce ONE final BUILD REPORT block (format below). No \
+     prose narration during execution \u{2014} the tool log already shows \
+     what you did.\n\
+\n\
+WHEN VERIFICATION FAILS:\n\
+  - typecheck error caused by your edit \u{2192} read the file, identify the \
+     issue, fix with edit_file. If you have tried the same fix 3 times \
+     and the error persists, STOP and surface in BUILD REPORT.\n\
+  - ast_query says a symbol is unresolved \u{2192} either add the missing \
+     declaration / import, or correct the reference. Do not paper over \
+     it with `as any` or `// @ts-ignore`.\n\
+  - run_tests fails \u{2192} read the failing test, decide if your code is \
+     wrong or the test fixture is stale. If unsure, STOP and surface.\n\
+  - Tool round budget is finite. Do not loop forever on a stuck error. \
+     Bail at 3 attempts per error class and report.\n\
+\n\
+OUTPUT CONTRACT:\n\
+  After all edits are issued (or when stopping), produce ONE block:\n\
+      BUILD COMPLETED   (or BUILD INCOMPLETE if you bailed)\n\
+\n\
+      ## Plan\n\
+      1. <step 1 description>\n\
+      2. <step 2 description>\n\
+      ...\n\
+\n\
+      ## Steps executed\n\
+      \u{2713} <step 1> \u{2014} <one-line summary> [verified: typecheck]\n\
+      \u{2713} <step 2> \u{2014} <one-line summary> [verified: typecheck, ast_query]\n\
+      \u{2298} <step 3> \u{2014} <reason for skip>\n\
+      \u{2717} <step 4> \u{2014} <reason for failure>\n\
+      ...\n\
+\n\
+      ## Final verification\n\
+      typecheck: <pass | N errors>\n\
+      ast_query: <N resolutions confirmed>\n\
+      run_tests: <pass | N failures>   (omit if not run)\n\
+\n\
+  - Use \u{2713} for success, \u{2298} for skipped, \u{2717} for failed. One line each. \
+     Keep summaries terse.\n\
+  - The BUILD REPORT is the entire deliverable. Do NOT add a \
+     'Recommendations', 'Next steps', or 'Conclusion' section.\n\
+\n\
+WHAT NOT TO DO:\n\
+  - Do NOT call edit_file without read_file on the same target first.\n\
+  - Do NOT skip typecheck after edits 'because the change looks safe'. \
+     The compiler is fast and definitive; running it is always right.\n\
+  - Do NOT silence errors with `as any`, `// @ts-ignore`, `// @ts-nocheck`, \
+     or equivalent escape hatches. Address the root cause.\n\
+  - Do NOT scope-creep. Only do what the feature request asks. If you \
+     notice unrelated issues, mention them at the end of BUILD REPORT \
+     under a one-line 'Adjacent issues noticed (not addressed):' note.\n\
+  - Do NOT loop on a stuck error past 3 attempts. Bail and report.\n\
+  - Do NOT produce prose narration during execution. The tool-call log \
+     shows your work; the BUILD REPORT summarizes it.";
 
 // ---------------------------------------------------------------------------
 // Request types
@@ -626,6 +748,7 @@ pub async fn agent_query(
         match mode.as_deref() {
             Some("audit") => (Some(AUDIT_SYSTEM_PROMPT), Some(AUDIT_DEFAULT_MODEL)),
             Some("fix") => (Some(FIX_SYSTEM_PROMPT), Some(FIX_DEFAULT_MODEL)),
+            Some("build") => (Some(BUILD_SYSTEM_PROMPT), Some(BUILD_DEFAULT_MODEL)),
             Some(other) => {
                 // Unknown mode: log and fall through to normal flow.
                 eprintln!("agent_query: unknown mode '{}'; ignoring", other);
@@ -643,19 +766,16 @@ pub async fn agent_query(
     // Clone the prompt into an owned String so the spawned task can use it.
     let mode_system_prompt = mode_system_prompt.map(|s| s.to_string());
 
-    // Tool-round cap priority: explicit caller override > big-work mode
-    // floor (audit/fix) > the user's config setting. Big-work modes need
-    // a higher ceiling than chat: audit cross-references the whole repo,
-    // fix walks every selected finding's file. Power users can still dial
-    // up via config or per-call --max-rounds without recompiling.
-    let is_big_work_mode = matches!(mode.as_deref(), Some("audit") | Some("fix"));
+    // Tool-round cap priority: explicit caller override > per-mode
+    // floor (via `mode_round_floor`) > the user's config setting.
+    // Big-work modes need a higher ceiling than chat. Build has the
+    // highest floor because plan + generate + verify + iterate is
+    // legitimately many rounds. Power users can still dial up via
+    // config or per-call --max-rounds without recompiling.
     let max_tool_rounds = max_tool_rounds
         .or_else(|| {
-            if is_big_work_mode {
-                Some(BIG_WORK_MODE_MAX_TOOL_ROUNDS.max(snapshot.agent.max_tool_rounds))
-            } else {
-                None
-            }
+            mode_round_floor(mode.as_deref())
+                .map(|floor| floor.max(snapshot.agent.max_tool_rounds))
         })
         .unwrap_or(snapshot.agent.max_tool_rounds)
         .max(1);

@@ -41,6 +41,20 @@ export interface Mode {
 
 export const MODES: Mode[] = [
   {
+    name: "build",
+    aliases: ["/build"],
+    description: "Build a feature with substrate-gated generation",
+    info:
+      "Generation consumer of the substrate. Drives a plan \u2192 generate \u2192 " +
+      "verify (typecheck + ast_query + run_tests) \u2192 iterate flow until the " +
+      "feature lands. Every edit goes through the existing approval flow; " +
+      "every verification step uses the substrate so 'compiles but breaks at " +
+      "runtime' is caught before any commit. Usage: '/build <feature " +
+      "description>'. Pass --max-rounds=N for very large features. Uses " +
+      "claude-haiku-4.5 by default for precise multi-file edits.",
+    preferredModel: "anthropic/claude-haiku-4.5",
+  },
+  {
     name: "fix",
     aliases: ["/fix"],
     description: "Apply findings from the latest audit report",

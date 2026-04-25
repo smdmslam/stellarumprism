@@ -28,6 +28,7 @@ import {
   type AuditReport,
 } from "./findings";
 import { buildFixPrompt, filterFindings, parseFixArgs } from "./fix";
+import { buildBuildPrompt, parseBuildArgs } from "./build";
 
 /**
  * Pixels of breathing room to reserve on the right of the terminal so the
@@ -432,6 +433,40 @@ export class Workspace {
       }
       void this.agent.setModel(resolved);
       this.term.write(`\r\n\x1b[2m[agent] model set to ${sanitize(resolved)}\x1b[0m\r\n`);
+      return;
+    }
+
+    // /build [--max-rounds=N] <feature description> — substrate-gated
+    // generation. Drives plan → verify → iterate using the same agent
+    // loop as /audit and /fix, with a higher round budget. Each edit
+    // goes through the existing approval flow.
+    const buildMatch = /^\s*\/build(?:\s+(.*))?$/i.exec(text);
+    if (buildMatch) {
+      const rawArgs = (buildMatch[1] ?? "").trim();
+      const mode = findMode("/build");
+      if (!mode) {
+        this.term.write(
+          `\r\n\x1b[1;31m[build]\x1b[0m mode registry misconfigured\r\n`,
+        );
+        return;
+      }
+      const parsed = parseBuildArgs(rawArgs);
+      if (parsed.error) {
+        this.term.write(
+          `\r\n\x1b[1;31m[build]\x1b[0m ${sanitize(parsed.error)}\r\n`,
+        );
+        return;
+      }
+      const buildPrompt = buildBuildPrompt(parsed.feature);
+      this.setTitleFromText(`build: ${parsed.feature}`);
+      this.term.write(
+        `\r\n\x1b[2m[build] starting substrate-gated build of \x1b[36m${sanitize(parsed.feature)}\x1b[0m\r\n`,
+      );
+      void this.dispatchAgentQuery(buildPrompt, {
+        mode: mode.name,
+        modelOverride: mode.preferredModel,
+        maxToolRounds: parsed.maxToolRounds,
+      });
       return;
     }
 
