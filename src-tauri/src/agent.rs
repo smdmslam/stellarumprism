@@ -104,6 +104,17 @@ INVESTIGATION ORDER (mandatory):\n\
      [confirmed error] finding with source=test in evidence. Tests \
      can be slow; budget rounds accordingly. Skip when the diff is \
      pure docs / cosmetics.\n\
+  3a-bis. OPTIONAL: call lsp_diagnostics when you want richer evidence \
+     than the bare compiler provides \u{2014} cross-file lints, unused-import \
+     warnings, dead-code detection, project-wide analysis from \
+     rust-analyzer / pyright / gopls / typescript-language-server. \
+     Each LSP diagnostic carries source=lsp and is graded as confirmed \
+     evidence. Use it when typecheck is clean but the diff is wide, \
+     when the project's compiler is shallow (e.g. plain `cargo check` \
+     misses what rust-analyzer catches), or when you need confirmed \
+     evidence for a non-TS/Rust project. LSP servers are slower than \
+     typecheck \u{2014} budget accordingly. An empty diagnostics list is a \
+     valid 'project is clean by LSP analysis' result, not a failure.\n\
   3b. RUNTIME CHECK (mandatory when applicable): if the diff touches \
      an HTTP route, middleware, controller, or API surface, you MUST \
      call http_fetch to probe the affected endpoint(s) before \
@@ -334,6 +345,14 @@ INVESTIGATION ORDER (mandatory):\n\
           behavior, optionally run_tests. If failures appear, decide \
           whether the test fixture is stale or your code is wrong; if \
           unsure, surface in the BUILD REPORT and STOP.\n\
+       e-bis. OPTIONAL: call lsp_diagnostics for richer per-file \
+          analysis (rust-analyzer / pyright / gopls / \
+          typescript-language-server). Useful when you've added a new \
+          public API surface and want to see cross-file lints, or when \
+          the project's compiler is shallow relative to its LSP server \
+          (Rust + cargo check vs rust-analyzer is the canonical case). \
+          source=lsp \u{2192} confirmed evidence in the report. LSP is \
+          slower than typecheck; skip for trivial single-file edits.\n\
        f. RUNTIME CHECK (mandatory for HTTP work): after wiring or \
           modifying any HTTP route / middleware / controller, you \
           MUST call http_fetch on the affected endpoint to confirm \
@@ -863,6 +882,9 @@ pub async fn agent_query(
     // Same for the test-runner substrate cell.
     let test_command = snapshot.agent.test_command.clone();
     let test_timeout_secs = snapshot.agent.test_timeout_secs;
+    // Same for the LSP substrate cell.
+    let lsp_command = snapshot.agent.lsp_command.clone();
+    let lsp_timeout_secs = snapshot.agent.lsp_timeout_secs;
 
     // Clone the approval maps (Arc bumps) so the spawned task can gate
     // write tool calls on user consent without holding Tauri State.
@@ -1026,6 +1048,12 @@ pub async fn agent_query(
                                             &cwd_for_tools,
                                             test_command.as_deref(),
                                             test_timeout_secs,
+                                        ),
+                                        "lsp_diagnostics" => crate::tools::execute_lsp_diagnostics(
+                                            &call.function.arguments,
+                                            &cwd_for_tools,
+                                            lsp_command.as_deref(),
+                                            lsp_timeout_secs,
                                         ),
                                         other => crate::tools::ToolInvocation {
                                             ok: false,
@@ -1865,6 +1893,34 @@ mod prompt_tests {
         assert!(
             BUILD_SYSTEM_PROMPT.contains("this is NOT a build failure"),
             "build prompt no longer says transport errors are not build failures"
+        );
+    }
+
+    #[test]
+    fn audit_prompt_references_lsp_diagnostics() {
+        // The LSP cell is the language-agnostic substrate move; the
+        // audit prompt must mention it as a confirmed-tier option so
+        // the agent reaches for it when typecheck is clean but a
+        // richer cross-file pass is warranted.
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("lsp_diagnostics"),
+            "audit prompt no longer mentions lsp_diagnostics"
+        );
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("source=lsp"),
+            "audit prompt no longer cites source=lsp evidence"
+        );
+    }
+
+    #[test]
+    fn build_prompt_references_lsp_diagnostics() {
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("lsp_diagnostics"),
+            "build prompt no longer mentions lsp_diagnostics"
+        );
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("source=lsp"),
+            "build prompt no longer cites source=lsp evidence"
         );
     }
 

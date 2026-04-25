@@ -67,6 +67,18 @@ pub struct AgentConfig {
     /// Example: `["pnpm", "-w", "test", "--reporter=json"]`.
     #[serde(default)]
     pub test_command: Option<Vec<String>>,
+    /// Per-call timeout for the `lsp_diagnostics` substrate tool, in
+    /// seconds. LSP analysis is incremental, so this needs to be long
+    /// enough for rust-analyzer / pyright / gopls to settle on a
+    /// medium project. Default 30.
+    #[serde(default = "default_lsp_timeout_secs")]
+    pub lsp_timeout_secs: u64,
+    /// Optional override for the LSP server argv (NOT a shell string).
+    /// When unset, `lsp::detect_lsp_command` infers from project shape
+    /// + PATH. Example: `["rust-analyzer"]`, `["pyright-langserver",
+    /// "--stdio"]`, `["typescript-language-server", "--stdio"]`.
+    #[serde(default)]
+    pub lsp_command: Option<Vec<String>>,
     /// Base URL of the user's dev server, used by the `http_fetch`
     /// substrate cell when /audit and /build probe live endpoints.
     /// When unset, `diagnostics::detect_dev_server_url` infers a sensible
@@ -90,6 +102,8 @@ impl Default for AgentConfig {
             typecheck_command: None,
             test_timeout_secs: default_test_timeout_secs(),
             test_command: None,
+            lsp_timeout_secs: default_lsp_timeout_secs(),
+            lsp_command: None,
             dev_server_url: None,
             verifier: VerifierConfig::default(),
         }
@@ -280,6 +294,12 @@ fn default_typecheck_timeout_secs() -> u64 {
 /// suites should raise this in config.
 fn default_test_timeout_secs() -> u64 {
     120
+}
+/// 30 seconds is the default LSP budget. Long enough for rust-analyzer
+/// or pyright to do a first analysis pass on a medium project, short
+/// enough that a hung server doesn't stall the agent indefinitely.
+fn default_lsp_timeout_secs() -> u64 {
+    crate::lsp::DEFAULT_LSP_TIMEOUT_SECS
 }
 
 /// Location of the config file: `$HOME/.config/prism/config.toml`.

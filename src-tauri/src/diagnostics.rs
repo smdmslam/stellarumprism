@@ -435,7 +435,10 @@ pub fn to_ast_payload(run: &AstQueryRun) -> Value {
     })
 }
 
-fn truncate_for_log(s: &str, max: usize) -> String {
+/// Compact a string for logs / error messages, char-wise so we never
+/// slice inside a multibyte boundary. Public so sibling substrate cells
+/// (`lsp.rs`, future cells) can share the same shape.
+pub fn truncate_for_log(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         s.to_string()
     } else {
@@ -1352,6 +1355,13 @@ fn detect_python_dev_port(cwd: &Path) -> Option<u16> {
 // ---------------------------------------------------------------------------
 // Override validation
 // ---------------------------------------------------------------------------
+
+/// Public re-export of `validate_argv` for sibling substrate cells that
+/// accept argv overrides. Exists so `lsp.rs` (and future cells) get the
+/// same hardening as `run_typecheck` without duplicating the rules.
+pub fn validate_argv_public(argv: &[String]) -> Result<(), String> {
+    validate_argv(argv)
+}
 
 /// Reject unsafe overrides. We accept argv arrays only; shell strings are
 /// rejected because we run via `Command` (no shell), and any metacharacter

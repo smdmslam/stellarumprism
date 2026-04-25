@@ -3,6 +3,7 @@ mod approval;
 mod config;
 mod diagnostics;
 mod file_ref;
+mod lsp;
 mod pty;
 mod save_chat;
 mod second_pass;
