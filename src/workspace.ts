@@ -446,9 +446,18 @@ export class Workspace {
     });
 
     // Click anywhere in the input bar (but outside the badges) refocuses.
+    // Critical carve-out: skip the manual refocus when the click is
+    // already inside the editor itself. CodeMirror handles its own
+    // focus-on-click natively, and a focus() call landing mid-drag on
+    // a contenteditable surface collapses any in-progress text
+    // selection on WebKit/macOS \u2014 which broke drag-select inside the
+    // prompt area. The manual refocus is still useful when the user
+    // clicks the surrounding chrome (prefix glyph, cwd-badge area,
+    // input-bar padding) so clicks 'near' the editor still land focus.
     this.root.querySelector(".input-bar")?.addEventListener("mousedown", (e) => {
       const t = e.target as HTMLElement;
       if (t.classList.contains("intent-badge") || t.classList.contains("model-badge")) return;
+      if (t.closest(".editor-host")) return;
       queueMicrotask(() => this.input.focus());
     });
 

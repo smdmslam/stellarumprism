@@ -380,8 +380,19 @@ body {
   min-width: 0;
   overflow: auto;
   max-height: 40vh;
+  /* Hint that the surface is text \u2014 the I-beam cursor signals
+   * 'drag here to select' before the user tries it. */
+  cursor: text;
 }
 .editor-host .cm-editor { background: transparent; }
+.editor-host .cm-content,
+.editor-host .cm-line {
+  /* Defensive: even though contenteditable defaults to user-select:text,
+   * an inherited 'user-select: none' from a parent could otherwise leak
+   * in. Pin selection-on for the editor surface. */
+  -webkit-user-select: text;
+  user-select: text;
+}
 
 .intent-badge {
   flex: 0 0 auto;
