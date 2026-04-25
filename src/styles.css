@@ -192,6 +192,55 @@ body {
   color: #e5e7eb;
 }
 
+/* PRISM by Stellarum wordmark.
+ * Lives at the right edge of the titlebar so it's always visible
+ * regardless of how many tabs are open (the tab strip is allowed to
+ * scroll horizontally; this never moves). PRISM is rendered with the
+ * brand spectrum gradient that matches the stripe below the titlebar;
+ * the house name sits in slate so the eye anchors on PRISM first. */
+.titlebar-wordmark {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  padding: 0 14px 0 12px;
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  user-select: none;
+  -webkit-app-region: drag;
+  pointer-events: none;
+}
+.titlebar-wordmark .wm-mark {
+  background: linear-gradient(
+    90deg,
+    var(--prism-emerald) 0%,
+    var(--prism-cyan) 35%,
+    var(--prism-amber) 70%,
+    var(--prism-rose) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+}
+.titlebar-wordmark .wm-sep {
+  color: #4b5563;
+  font-weight: 400;
+  font-size: 11px;
+  line-height: 1;
+}
+.titlebar-wordmark .wm-house {
+  color: #94a3b8;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
+
 /* ---------- workspaces container ---------- */
 
 #workspaces {
