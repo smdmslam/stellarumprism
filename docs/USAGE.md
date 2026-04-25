@@ -6,6 +6,9 @@ Practical reference for everything you can type or invoke.
 - [Modes](#modes)
 - [Configuration](#configuration)
 - [The Problems panel](#the-problems-panel)
+- [The file tree and editor](#the-file-tree-and-editor)
+- [Workspace state and persistence](#workspace-state-and-persistence)
+- [Resizable layout](#resizable-layout)
 - [The prism-audit CLI](#the-prism-audit-cli)
 - [@-path file references](#-path-file-references)
 
@@ -27,6 +30,9 @@ Type `/` in the input bar to open the autocomplete popup. Tab/Enter to accept; E
 | `/new` (alias `/clear`) | Start a fresh chat in this tab |
 | `/history` | Print the current tab's user/assistant history |
 | `/save` | Save the chat to a markdown file |
+| `/load` | Load a previously `/save`d chat back into this tab |
+| `/files` | Switch the sidebar to the file tree |
+| `/last` | Print last audit + last build summary from `.prism/state.json` |
 | `/cd <path>` | Change shell directory (with path autocomplete) |
 | `/verify on\|off\|<model>` | Toggle the reviewer pass / set its model |
 | `/help` | Print this list inline |
@@ -102,7 +108,42 @@ Toggle the right-side findings panel.
 /problems clear      # drop the cached report and reset filters
 ```
 
-The panel auto-opens after `/audit` completes.
+The panel auto-opens after `/audit` completes. The header shows a one-line
+subtitle with the latest audit's relative time, severity counts, and scope,
+hydrated from `<cwd>/.prism/state.json` so it's available on first open
+without re-running `/audit`.
+
+### `/save` and `/load`
+
+Round-trip the current chat tab to a markdown file. Useful for long-running
+plans you want to reopen after a restart, or to share a session with a
+teammate.
+
+```text path=null start=null
+/save                # opens a save dialog (defaults to ~/Documents/Prism/Chats)
+/load                # opens a file picker; replaces this tab's history
+```
+
+`/load` reseeds the agent session with the saved messages, adopts the saved
+title, and reports the model recorded at save time (use `/model` to switch).
+It warns before clobbering an unsaved chat — `/save` first if you want to
+keep what's there.
+
+### `/last`
+
+Print a compact ANSI summary of the workspace's persisted spine
+(`<cwd>/.prism/state.json`): the most recent `/audit` (path, scope, counts)
+and the most recent build/new/refactor/test-gen completion (path, feature,
+status, substrate verification line). Useful when the Problems panel isn't
+open, or to confirm what's on disk before piping through `/fix`.
+
+### `/files`
+
+Switch the sidebar to the file tree. The tree honors `.gitignore`,
+lazy-loads each subdirectory on expand, and supports keyboard navigation
+(arrow keys, Enter to open). Click a file to open it in the editor surface
+over the terminal; see [The file tree and editor](#the-file-tree-and-editor)
+below.
 
 ### `/cd` (with path autocomplete)
 
@@ -175,6 +216,66 @@ The right-side panel that auto-opens after `/audit`. Grouped by file, with sever
 - **Toggle filter chips** to show/hide errors, warnings, info, or confirmed/probable/candidate findings
 - **Esc** closes the panel; `/problems show` reopens with the same filter state
 - **Runtime probes section** below the findings shows every `http_fetch` / `e2e_run` the audit ran
+- **Header subtitle** shows `audit · <relative time> · err N · warn N · info N · scope <scope>` from the persisted state spine
+
+## The file tree and editor
+
+`/files` (or clicking the **Files** sidebar tab) shows a lazy-loaded,
+`.gitignore`-aware tree of the project. Click a file to open it above the
+terminal in an embedded CodeMirror editor:
+
+- Plain-text editing with line numbers, undo/redo, default keymap, and the
+  oneDark theme. No language-aware highlighting in v1.
+- **Cmd+S** saves; the Save button + a dirty dot in the header reflect
+  buffer state.
+- Saves go through a Tauri `write_file_text` command that uses the open-time
+  mtime as an optimistic-concurrency token — if something else has touched
+  the file since you opened it, the save aborts instead of clobbering.
+- Closing the buffer or switching to another file with unsaved changes
+  prompts before discarding.
+- Findings from the latest audit render as **inline squiggles** (wavy
+  underlines colored by severity), a tinted line background, and a colored
+  gutter marker. Hover a marker for the message + source label.
+- Findings refresh automatically when `/audit` finishes; matches are by
+  path-suffix so relative or absolute paths in the report both line up.
+- Read/write is capped at 256 KB per file with binary-content detection.
+
+The **eye toggle** next to the Files tab includes hidden dotfiles
+(`.git`, `.env`, etc.). `.prism/` is always shown regardless of the toggle.
+
+## Workspace state and persistence
+
+Every project gets a small persisted spine at `<cwd>/.prism/state.json`
+(versioned, atomic-write, never duplicated from the underlying reports):
+
+- `last_audit` — pointer to the latest `.prism/second-pass/audit-<ts>.json`
+  + pre-aggregated severity/confidence counts.
+- `last_build` — pointer to the latest `.prism/builds/build-<ts>.json` +
+  feature, status (`completed` / `incomplete`), and a one-line verification
+  summary (typecheck, tests, http).
+- `recent_files` — capped at 10 entries.
+- `layout` — sidebar / problems / preview pane sizes (see below).
+
+`/build`, `/new`, `/refactor`, `/fix`, and `/test-gen` all parse the BUILD
+REPORT block emitted at the end of the turn and write a markdown +
+JSON sidecar under `.prism/builds/`, mirroring how `/audit` writes to
+`.prism/second-pass/`. If the model emits no recognizable report block, a
+stub with `status: "incomplete"` is written so the spine stays consistent.
+
+On workspace open, the spine is hydrated as soon as the shell reports its
+cwd via OSC 7 — the Problems panel and `/last` show the previous session's
+results without re-running anything.
+
+## Resizable layout
+
+The sidebar, file-preview overlay, and Problems panel are all drag-resizable:
+
+- **Drag** the dividers between panes; widths/height clamp to sane bounds.
+- **Double-click** a divider to snap back to the default size.
+- **Cmd+Opt+[ / Cmd+Opt+]** nudges the most recently moved divider 16 px.
+- Sizes persist in `state.json.layout` and re-apply on the next workspace
+  open. A bogus state file can't make panes unreachable — the frontend
+  clamps on apply.
 
 ## The prism-audit CLI
 

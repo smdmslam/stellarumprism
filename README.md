@@ -23,7 +23,13 @@ Prism is a desktop AI coding tool built on a different premise than chat-style a
 │
 ├── prism-audit         standalone CLI: substrate as a CI gate
 │
-└── ui                  problems panel, inline snippets, approval flow
+├── workspace spine     <cwd>/.prism/state.json + .prism/builds/ sidecars
+│                       last_audit / last_build pointers, recent files,
+│                       persisted layout — survives tab/app reload
+│
+└── ui                  problems panel, inline snippets, file tree,
+                        editable CodeMirror buffer with audit squiggles,
+                        resizable panes, approval flow
 ```
 
 ## Why this exists
@@ -60,7 +66,16 @@ Then in the running app:
 /build add a /api/health route  # substrate-gated feature generation
 /refactor oldName newName       # ast_query-verified identifier rename
 /problems                       # toggle the right-side findings panel
+/files                          # file tree in the sidebar; click to edit
+/save / /load                   # round-trip the chat to/from a markdown file
+/last                           # print last audit + last build summary
 ```
+
+Click a file in the tree to open it in the embedded CodeMirror editor.
+The latest audit findings render as inline squiggles + gutter markers in
+the open buffer; Cmd+S saves with mtime-based concurrency safety. Sidebar,
+problems-panel, and file-preview panes are drag-resizable; widths persist
+per-workspace in `.prism/state.json`.
 
 See [docs/USAGE.md](docs/USAGE.md) for the full slash-command reference.
 
