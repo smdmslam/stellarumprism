@@ -35,6 +35,7 @@ import { buildFixPrompt, filterFindings, parseFixArgs } from "./fix";
 import { buildBuildPrompt, parseBuildArgs } from "./build";
 import { buildRefactorPrompt, parseRefactorArgs } from "./refactor";
 import { buildTestGenPrompt, parseTestGenArgs } from "./test-gen";
+import { buildNewPrompt, parseNewArgs } from "./new";
 import {
   defaultFilter as defaultProblemsFilter,
   parseProblemsArgs,
@@ -563,6 +564,46 @@ export class Workspace {
     const problemsMatch = /^\s*\/problems(?:\s+(.*))?$/i.exec(text);
     if (problemsMatch) {
       this.handleProblemsCommand((problemsMatch[1] ?? "").trim());
+      return;
+    }
+
+    // /new <project-name> <stack description> [--into=<dir>] [--max-rounds=N]
+    //   \u2014 substrate-gated project scaffolder. Bare `/new` (no args)
+    //   was already handled above as 'clear conversation history', so
+    //   this branch only fires when args are present (the regex requires
+    //   at least one whitespace + non-empty tail).
+    const newScaffoldMatch = /^\s*\/new\s+(\S.*)$/i.exec(text);
+    if (newScaffoldMatch) {
+      const rawArgs = newScaffoldMatch[1].trim();
+      const mode = findMode("/new");
+      if (!mode) {
+        this.term.write(
+          `\r\n\x1b[1;31m[new]\x1b[0m mode registry misconfigured\r\n`,
+        );
+        return;
+      }
+      const parsed = parseNewArgs(rawArgs);
+      if (parsed.error) {
+        this.term.write(
+          `\r\n\x1b[1;31m[new]\x1b[0m ${sanitize(parsed.error)}\r\n`,
+        );
+        return;
+      }
+      const newPrompt = buildNewPrompt({
+        projectName: parsed.projectName,
+        description: parsed.description,
+        into: parsed.into,
+      });
+      const target = parsed.into ?? `${parsed.projectName}/`;
+      this.setTitleFromText(`new ${parsed.projectName}`);
+      this.term.write(
+        `\r\n\x1b[2m[new] scaffolding \x1b[36m${sanitize(parsed.projectName)}\x1b[0m\x1b[2m into \x1b[36m${sanitize(target)}\x1b[0m${parsed.description ? `\x1b[2m \u2014 \x1b[36m${sanitize(parsed.description)}\x1b[0m` : ""}\x1b[0m\r\n`,
+      );
+      void this.dispatchAgentQuery(newPrompt, {
+        mode: mode.name,
+        modelOverride: mode.preferredModel,
+        maxToolRounds: parsed.maxToolRounds,
+      });
       return;
     }
 

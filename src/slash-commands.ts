@@ -41,14 +41,9 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     info: "Prints the curated model library in the terminal with their short aliases and descriptions.",
   },
   {
-    label: "/new",
-    detail: "Start a fresh chat",
-    info: "Clears the current tab's conversation history so the next /ask starts from nothing.",
-  },
-  {
     label: "/clear",
-    detail: "Alias of /new",
-    info: "Same as /new \u2014 clears the current tab's conversation.",
+    detail: "Clear chat history",
+    info: "Clears the current tab's conversation history so the next /ask starts from nothing. Same as bare /new (with no arguments). Use /new <project-name> <stack> to scaffold a project instead.",
   },
   {
     label: "/history",

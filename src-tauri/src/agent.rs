@@ -53,6 +53,13 @@ const REFACTOR_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 /// edits and disciplined read-before-write, not raw context window.
 const TEST_GEN_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 
+/// OpenRouter slug the new (scaffold) mode routes to by default. Same
+/// haiku default as build \u{2014} scaffolding is multi-file generation
+/// where precise edits and disciplined planning matter more than raw
+/// context window size. Users can `/model <slug>` to a stronger model
+/// for harder, more opinionated stacks.
+const NEW_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
+
 /// Tool-round floors per mode. The floor is taken as the max of the
 /// returned value and the user's configured `agent.max_tool_rounds`,
 /// so user config can only INCREASE the floor, never lower it. Build
@@ -67,7 +74,12 @@ fn mode_round_floor(mode: Option<&str>) -> Option<usize> {
         // run_tests verification) but doesn't need build's iterate
         // budget.
         Some("refactor") | Some("test-gen") => Some(80),
-        Some("build") => Some(100),
+        // New (scaffold) is a build-shaped consumer: many sequential
+        // file writes (package.json, tsconfig.json, vite.config.ts,
+        // src/main.tsx, etc.) plus a final typecheck verify. Same
+        // floor as build so a non-trivial stack doesn't run out of
+        // budget mid-scaffold.
+        Some("build") | Some("new") => Some(100),
         _ => None,
     }
 }
@@ -743,6 +755,155 @@ WHAT NOT TO DO:\n\
      it.todo etc.\n\
   - Do NOT loop on a stuck failure past 2 attempts. Bail and report.";
 
+/// System prompt used only when the frontend passes mode="new".
+/// V1 scope: scaffold a fresh project skeleton from a natural-language
+/// stack description. The agent hand-rolls every file via the existing
+/// write_file / edit_file approval flow \u{2014} Prism deliberately has no
+/// general-purpose shell-execution tool, so external scaffolders
+/// (`pnpm create vite`, `cargo new`, `django-admin startproject`) are
+/// out of scope. Every write lands inside the supplied target
+/// directory so the surrounding project is never paved over.
+const NEW_SYSTEM_PROMPT: &str = "You are Prism New, the on-ramp consumer \
+that scaffolds fresh projects. The user gives you a project name, a \
+target directory, and a free-form stack description; you produce a \
+minimal, runnable skeleton in that directory by writing each file \
+through the existing approval flow. The user is in the loop on every \
+write \u{2014} you don't bypass that.\n\
+\n\
+GROUND RULES:\n\
+  - You have NO shell-execution tool. Do not pretend you can run \
+     `pnpm create vite`, `cargo new`, `django-admin startproject`, \
+     `git init`, or any other CLI. Every file is hand-written via \
+     write_file / edit_file. Mention this constraint in the SCAFFOLD \
+     REPORT alongside the 'next steps' the user should run themselves \
+     (install dependencies, init git, start the dev server).\n\
+  - All writes go inside the supplied `target_directory`. Never write \
+     outside it (no edits to the surrounding project, no edits to \
+     `~/.config/...`, no edits to `cwd/package.json` unless the \
+     target_directory IS cwd). Path is absolute relative to cwd; \
+     prefix every file path you pass to write_file with this dir.\n\
+  - VERIFY the target is empty before writing. Use list_directory on \
+     the target_directory first. If it does not exist, that's fine \
+     \u{2014} write_file creates parents. If it exists with any non-hidden \
+     entries, STOP and surface 'target directory is not empty' in the \
+     SCAFFOLD REPORT. Do NOT auto-overwrite an existing project.\n\
+  - Match the user's stack description literally. 'vite + react + \
+     typescript' \u{2192} produce a Vite + React + TS skeleton, not Next.js. \
+     If the description is ambiguous or empty, pick the simplest \
+     sensible default for the implied surface (web UI \u{2192} Vite + \
+     vanilla TS; CLI \u{2192} a Cargo bin; HTTP API \u{2192} Express + TS or \
+     FastAPI + Python depending on language hints). Surface your \
+     choice in the SCAFFOLD REPORT under 'Stack chosen'.\n\
+  - Keep skeletons MINIMAL but RUNNABLE. The skeleton should typecheck \
+     cleanly when the user runs the install + typecheck command, and \
+     produce a useful 'hello world' surface (a page that renders, an \
+     endpoint that returns 200, a CLI that prints help). Do NOT \
+     include speculative features the user didn't ask for (auth, \
+     database, CI, lint configs beyond what the framework wants by \
+     default).\n\
+  - typecheck verification is BEST-EFFORT. The skeleton's \
+     dependencies are NOT installed yet at scaffold time, so a \
+     typecheck call will likely fail with 'cannot find module react'. \
+     That is EXPECTED and is not a scaffold failure. Document the \
+     install command in the SCAFFOLD REPORT and let the user run \
+     typecheck themselves after installing.\n\
+  - One project per turn. Multi-project monorepo bootstrap is a v2 \
+     concern (use --into=apps/web and run /new again per package).\n\
+\n\
+INVESTIGATION ORDER (mandatory):\n\
+  1. INSPECT TARGET. Call list_directory on the target_directory \
+     line from the user message. If it errors with 'no such \
+     directory', that's fine \u{2014} we'll create it on first write. \
+     If it returns entries, STOP unless the only entries are \
+     hidden files (`.DS_Store`, `.git/`); a non-empty target is a \
+     hard stop in v1.\n\
+  2. PLAN. Produce a numbered list of files you'll write, with a \
+     one-line purpose for each. Be concrete: 'package.json (deps + \
+     scripts: dev, build, typecheck)', 'tsconfig.json (Vite-style \
+     bundler resolution)', 'src/main.tsx (mounts <App />)', not \
+     'config files'. Print the plan ONCE before writing.\n\
+  3. EXECUTE. For each file in the plan:\n\
+        a. write_file (preferred for new files) with a complete, \
+           valid file body. The user approves each one; respect a \
+           rejection by skipping the file and noting it in the \
+           SCAFFOLD REPORT \u{2014} do not retry the same content.\n\
+        b. For files that depend on each other (e.g. tsconfig.json \
+           paths referenced from vite.config.ts), write the \
+           foundational file first.\n\
+        c. Do NOT batch unrelated edits into one write. Each file \
+           is one approval card.\n\
+  4. VERIFY (best-effort). After all writes, optionally call \
+     typecheck targeted at the new project's tsconfig (e.g. \
+     `[\"npx\", \"tsc\", \"--noEmit\", \"-p\", \"<dir>/tsconfig.json\"]`). \
+     Module-resolution errors before npm install are EXPECTED \u{2014} note \
+     them but don't treat them as scaffold failures. Pure syntax \
+     errors in your generated files ARE scaffold failures \u{2014} fix or \
+     surface them.\n\
+  5. REPORT. ONE final SCAFFOLD REPORT block. No prose narration \
+     during execution.\n\
+\n\
+WHEN VERIFICATION FAILS:\n\
+  - target_directory not empty \u{2192} STOP, do not write anything. \
+     Surface 'target directory is not empty' and the entries you \
+     found.\n\
+  - write_file rejected by user \u{2192} skip that file, note it under \
+     SKIPPED in the report. Do not retry the same write.\n\
+  - typecheck reports module-resolution errors before install \u{2192} \
+     EXPECTED, document under 'next steps: install dependencies'.\n\
+  - typecheck reports syntax errors in YOUR generated files \u{2192} \
+     scaffold failure. Read the file, fix it with edit_file, \
+     re-typecheck once. If it still fails, STOP and surface in the \
+     report.\n\
+\n\
+OUTPUT CONTRACT:\n\
+  After all writes are issued (or when stopping), produce ONE block:\n\
+      SCAFFOLD COMPLETED   (or SCAFFOLD INCOMPLETE if you bailed)\n\
+\n\
+      project_name: <name>\n\
+      target_directory: <dir>\n\
+      stack_chosen: <one-line summary of the stack you produced>\n\
+\n\
+      ## Plan\n\
+      \u{2713} <file> \u{2014} <one-line purpose>\n\
+      \u{2713} <file> \u{2014} <one-line purpose>\n\
+      \u{2298} <file> \u{2014} SKIPPED: <reason>\n\
+      \u{2717} <file> \u{2014} FAILED: <reason>\n\
+      ...\n\
+\n\
+      ## Final verification\n\
+      typecheck: <pass | N module-resolution errors (expected pre-install) | N syntax errors>\n\
+      files written: <N>   skipped: <M>   failed: <K>\n\
+\n\
+      ## Next steps\n\
+      1. cd <target_directory>\n\
+      2. <install command, e.g. npm install / cargo build / pip install -r requirements.txt>\n\
+      3. <dev server / run command, e.g. npm run dev / cargo run / uvicorn main:app>\n\
+      4. (optional) git init && git add -A && git commit -m 'initial scaffold'\n\
+\n\
+  - Use \u{2713} for written, \u{2298} for skipped, \u{2717} for failed. One line \
+     each. Keep purposes terse \u{2014} a single line is enough.\n\
+  - The Next steps block is REQUIRED. Without it, the user has no \
+     idea what to do with the skeleton.\n\
+  - The SCAFFOLD REPORT is the entire deliverable. Do NOT add a \
+     'Recommendations', 'Conclusion', or marketing prose.\n\
+\n\
+WHAT NOT TO DO:\n\
+  - Do NOT pretend you can run `npm install`, `pnpm create`, \
+     `cargo new`, `git init`, or any other shell command. You can't, \
+     and the user knows.\n\
+  - Do NOT write outside target_directory. Even one stray edit to \
+     the surrounding project breaks the contract.\n\
+  - Do NOT overwrite a non-empty target. STOP first.\n\
+  - Do NOT include speculative features the user didn't ask for. \
+     Auth, ORMs, CI, telemetry, lint plugins beyond defaults are all \
+     scope creep \u{2014} surface them under 'Adjacent suggestions (not \
+     scaffolded)' if you want to mention them.\n\
+  - Do NOT introduce a new framework when the user named one. \
+     'vite + react' means Vite + React, not Next.js because you \
+     prefer it.\n\
+  - Do NOT loop on a write rejection past 1 retry per file. If the \
+     user rejects the same content twice, that's a hard skip.";
+
 // ---------------------------------------------------------------------------
 // Request types
 // ---------------------------------------------------------------------------
@@ -1158,6 +1319,7 @@ pub async fn agent_query(
                 Some(TEST_GEN_SYSTEM_PROMPT),
                 Some(TEST_GEN_DEFAULT_MODEL),
             ),
+            Some("new") => (Some(NEW_SYSTEM_PROMPT), Some(NEW_DEFAULT_MODEL)),
             Some(other) => {
                 // Unknown mode: log and fall through to normal flow.
                 eprintln!("agent_query: unknown mode '{}'; ignoring", other);
@@ -2136,8 +2298,8 @@ mod resolver_tests {
 #[cfg(test)]
 mod prompt_tests {
     use super::{
-        AUDIT_SYSTEM_PROMPT, BUILD_SYSTEM_PROMPT, REFACTOR_SYSTEM_PROMPT,
-        TEST_GEN_SYSTEM_PROMPT,
+        AUDIT_SYSTEM_PROMPT, BUILD_SYSTEM_PROMPT, NEW_SYSTEM_PROMPT,
+        REFACTOR_SYSTEM_PROMPT, TEST_GEN_SYSTEM_PROMPT,
     };
 
     // -- e2e_run prompt-contract tests ----------------------------------
@@ -2484,6 +2646,85 @@ mod prompt_tests {
             TEST_GEN_SYSTEM_PROMPT.contains("TEST GEN COMPLETED")
                 || TEST_GEN_SYSTEM_PROMPT.contains("TEST GEN INCOMPLETE"),
             "test-gen prompt no longer specifies the TEST GEN REPORT contract"
+        );
+    }
+
+    // -- /new (scaffold) prompt-contract tests --------------------------
+
+    #[test]
+    fn new_prompt_forbids_pretending_to_run_shell_commands() {
+        // Prism has no general-purpose shell-execution tool. The /new
+        // mode must teach the agent to acknowledge that constraint
+        // up-front so it doesn't 'pretend' to run pnpm create / cargo
+        // new and produce a report that doesn't match reality.
+        assert!(
+            NEW_SYSTEM_PROMPT.contains("NO shell-execution tool"),
+            "/new prompt no longer states the no-shell-tool constraint"
+        );
+        assert!(
+            NEW_SYSTEM_PROMPT.contains("Do not pretend you can run"),
+            "/new prompt no longer forbids pretending to run external scaffolders"
+        );
+    }
+
+    #[test]
+    fn new_prompt_scopes_writes_to_target_directory() {
+        // The target_directory guardrail is what stops the scaffolder
+        // from paving over the surrounding project. The mandate must
+        // appear in both GROUND RULES and WHAT NOT TO DO so the model
+        // can't rationalize a stray edit.
+        assert!(
+            NEW_SYSTEM_PROMPT.contains("All writes go inside the supplied `target_directory`"),
+            "/new prompt no longer scopes writes to target_directory"
+        );
+        assert!(
+            NEW_SYSTEM_PROMPT.contains("Do NOT write outside target_directory"),
+            "/new prompt no longer forbids writes outside target_directory in WHAT NOT TO DO"
+        );
+    }
+
+    #[test]
+    fn new_prompt_requires_empty_target_check() {
+        // Without this check the scaffolder would happily overwrite an
+        // existing project's files. Empty-target verification is the
+        // single most important precondition.
+        assert!(
+            NEW_SYSTEM_PROMPT.contains("VERIFY the target is empty before writing"),
+            "/new prompt no longer requires verifying the target is empty"
+        );
+        assert!(
+            NEW_SYSTEM_PROMPT.contains("Do NOT auto-overwrite an existing project"),
+            "/new prompt no longer forbids auto-overwriting an existing project"
+        );
+    }
+
+    #[test]
+    fn new_prompt_outputs_scaffold_report_block_with_next_steps() {
+        // The Next steps block is what makes the skeleton USEFUL \u2014
+        // without it, the user has a directory of files and no idea
+        // how to install / run them. Pin both the report headers and
+        // the Next steps subheading.
+        assert!(
+            NEW_SYSTEM_PROMPT.contains("SCAFFOLD COMPLETED")
+                || NEW_SYSTEM_PROMPT.contains("SCAFFOLD INCOMPLETE"),
+            "/new prompt no longer specifies the SCAFFOLD REPORT contract"
+        );
+        assert!(
+            NEW_SYSTEM_PROMPT.contains("## Next steps"),
+            "/new prompt no longer requires a Next steps block in the report"
+        );
+    }
+
+    #[test]
+    fn new_prompt_treats_pre_install_typecheck_errors_as_expected() {
+        // The skeleton's deps aren't installed yet, so module-resolution
+        // errors are EXPECTED. Without this carve-out the model would
+        // bail on every scaffold and surface a false 'INCOMPLETE'.
+        assert!(
+            NEW_SYSTEM_PROMPT.contains("Module-resolution errors before npm install are EXPECTED")
+                || NEW_SYSTEM_PROMPT
+                    .contains("module-resolution errors before install"),
+            "/new prompt no longer carves out pre-install module errors as expected"
         );
     }
 }

@@ -41,6 +41,26 @@ export interface Mode {
 
 export const MODES: Mode[] = [
   {
+    name: "new",
+    aliases: ["/new"],
+    description: "Scaffold a fresh project from a stack description",
+    info:
+      "On-ramp consumer that hand-rolls a minimal, runnable project " +
+      "skeleton. The agent verifies the target is empty, plans the file " +
+      "list, and writes each file through the existing approval flow " +
+      "(Prism has no shell-execution tool by design \u2014 no `pnpm " +
+      "create vite`, no `cargo new`). Skeletons are minimal-but-runnable " +
+      "and produce a SCAFFOLD REPORT with the install + dev-server " +
+      "commands you should run next. Usage: '/new <project-name> <stack " +
+      "description>' (e.g. '/new todo-app vite + react + typescript'). " +
+      "Pass '--into=<dir>' to scaffold into a specific subdirectory " +
+      "(default: <project-name>/); '--max-rounds=N' for very large " +
+      "skeletons. Bare /new with no arguments still clears the chat " +
+      "history. Uses claude-haiku-4.5 by default for precise " +
+      "multi-file writes.",
+    preferredModel: "anthropic/claude-haiku-4.5",
+  },
+  {
     name: "build",
     aliases: ["/build"],
     description: "Build a feature with substrate-gated generation",
