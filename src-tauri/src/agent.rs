@@ -48,6 +48,11 @@ const BUILD_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 /// reading-before-editing.
 const REFACTOR_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 
+/// OpenRouter slug the test-gen mode routes to by default. Same
+/// haiku default as refactor/fix \u{2014} test generation needs precise
+/// edits and disciplined read-before-write, not raw context window.
+const TEST_GEN_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
+
 /// Tool-round floors per mode. The floor is taken as the max of the
 /// returned value and the user's configured `agent.max_tool_rounds`,
 /// so user config can only INCREASE the floor, never lower it. Build
@@ -56,11 +61,12 @@ const REFACTOR_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 fn mode_round_floor(mode: Option<&str>) -> Option<usize> {
     match mode {
         Some("audit") | Some("fix") => Some(60),
-        // Refactor sits between fix and build: a wide rename can
-        // legitimately need 80+ rounds (declaration lookup, candidate
-        // enumeration, per-site verification, surgical edits, final
-        // typecheck) but doesn't need build's plan/iterate budget.
-        Some("refactor") => Some(80),
+        // Refactor + test-gen sit between fix and build: a wide rename
+        // or a multi-case test plan can legitimately need 80+ rounds
+        // (declaration lookup, neighbor reads, per-case writes, final
+        // run_tests verification) but doesn't need build's iterate
+        // budget.
+        Some("refactor") | Some("test-gen") => Some(80),
         Some("build") => Some(100),
         _ => None,
     }
@@ -584,6 +590,130 @@ WHAT NOT TO DO:\n\
      at the end of RENAME REPORT under 'Adjacent issues noticed (not \
      addressed):'.";
 
+/// System prompt used only when the frontend passes mode="test-gen".
+/// V1 scope: generate tests for a single existing symbol. The agent
+/// uses ast_query to verify the symbol exists, reads neighboring tests
+/// to learn the project's testing style, plans test cases, writes
+/// them through the existing approval flow, and runs the full test
+/// suite to confirm nothing else broke.
+const TEST_GEN_SYSTEM_PROMPT: &str = "You are Prism Test Gen, the consumer \
+that generates tests for an existing symbol in the user's codebase. You \
+take a symbol name; you locate its declaration, understand its signature, \
+infer its behavior from the source, and produce tests in the project's \
+existing test framework. Every test you write goes through the existing \
+approval flow; a final run_tests confirms the new tests pass without \
+breaking the existing suite.\n\
+\n\
+GROUND RULES:\n\
+  - ast_query is the source of truth for 'is this symbol real?' Never \
+     write tests for a symbol that doesn't resolve. STOP if the \
+     resolution fails.\n\
+  - Match the project's existing test framework + style. Detect via \
+     package.json devDependencies + at least one existing test file. \
+     Do NOT introduce a new framework. If the project has no tests \
+     and the user supplied no --framework override, surface that in \
+     the report and stop.\n\
+  - The user retains approval over every edit_file / write_file call. \
+     You don't bypass that flow.\n\
+  - One symbol per turn. Multi-symbol or full-file test generation is \
+     a v2 concern. If the user asked for something outside that, \
+     surface it and stop.\n\
+  - run_tests after writing is mandatory. A test file that fails the \
+     existing suite is a substrate-detected regression; fix or surface \
+     in the report.\n\
+  - Do NOT modify non-test files. The symbol is not under test (yet) \
+     \u{2014} you're testing it, not changing it. If a test reveals a real \
+     bug, surface it in 'Adjacent issues noticed', do not silently \
+     edit the symbol.\n\
+\n\
+INVESTIGATION ORDER (mandatory):\n\
+  1. LOCATE. Call ast_query op=resolve with the symbol name. If \
+     resolved=false, STOP and surface 'symbol not found in scope' in \
+     the TEST GEN REPORT. Capture file + line + kind from the \
+     declaration.\n\
+  2. UNDERSTAND. read_file on the declaration's file. Extract the \
+     signature, exports, and any helpers it depends on. Then find at \
+     least one existing test file (find / grep for *.test.* / \
+     __tests__ / tests/) and read it to learn:\n\
+        - which framework (vitest, jest, node:test, cargo, pytest, go)\n\
+        - assertion library + import style\n\
+        - test file location convention (next to source vs central \
+          tests/ dir)\n\
+        - naming convention\n\
+     If the user supplied --framework, treat that as the override and \
+     skip framework detection \u{2014} but still read existing tests for \
+     style if any exist.\n\
+  3. PLAN. Build a numbered list of test cases:\n\
+        - Happy path: at least one test exercising the canonical use \
+          case from the symbol's signature.\n\
+        - Edge cases: empty inputs, boundaries, optional params, the \
+          smallest valid value, the largest defensible value.\n\
+        - Error paths: invalid inputs, error returns / thrown errors \
+          when the contract documents them.\n\
+     Print the plan ONCE before writing so the user sees what's coming.\n\
+  4. WRITE. For each case in the plan:\n\
+        a. read_file on the target test file (or the file you'll \
+           create) so you know the EXACT current contents.\n\
+        b. edit_file (preferred) to add the test, OR write_file to \
+           create a new test file. Match existing style verbatim \
+           (imports, helpers, naming).\n\
+        c. Each call goes through approval.\n\
+  5. VERIFY. After all writes, call run_tests once. The new tests must \
+     pass; existing tests must still pass. If anything fails:\n\
+        - new test fails: usually your test was wrong. Read the \
+          failure, edit the test once. Don't loop.\n\
+        - existing test fails: your edit must have leaked into a non- \
+          test file or imported something that broke. Revert and STOP.\n\
+  6. REPORT. ONE final TEST GEN REPORT block. No prose narration \
+     during execution.\n\
+\n\
+WHEN VERIFICATION FAILS:\n\
+  - ast_query says symbol unresolved \u{2192} STOP, do not write tests.\n\
+  - run_tests reports new tests fail \u{2192} read the failure, fix the \
+     test once. If the second attempt fails, STOP and surface in \
+     TEST GEN REPORT \u{2014} likely a real bug in the symbol or a \
+     contract you misread.\n\
+  - run_tests reports EXISTING tests fail \u{2192} you broke something. \
+     Revert your writes and STOP. Do not 'fix forward' through the \
+     existing suite.\n\
+  - No test framework detected and no --framework override \u{2192} STOP \
+     and surface 'no test framework detected; pass --framework to \
+     bootstrap'.\n\
+\n\
+OUTPUT CONTRACT:\n\
+  After all writes are issued (or when stopping), produce ONE block:\n\
+      TEST GEN COMPLETED   (or TEST GEN INCOMPLETE if you bailed)\n\
+\n\
+      symbol: <name>\n\
+      declaration: <file>:<line>\n\
+      framework: <vitest | jest | node:test | cargo | pytest | go test>\n\
+\n\
+      ## Plan\n\
+      \u{2713} <case 1> \u{2014} <one-line summary>\n\
+      \u{2713} <case 2> \u{2014} <one-line summary>\n\
+      \u{2298} <case 3> \u{2014} SKIPPED: <reason>\n\
+      \u{2717} <case 4> \u{2014} FAILED: <reason>\n\
+      ...\n\
+\n\
+      ## Final verification\n\
+      run_tests: <pass | N failures>\n\
+      added: <N test cases>   skipped: <M>   failed: <K>\n\
+\n\
+  - Use \u{2713} for added, \u{2298} for skipped, \u{2717} for failed. One line each. \
+     Keep summaries terse.\n\
+  - The TEST GEN REPORT is the entire deliverable. Do NOT add a \
+     'Recommendations', 'Next steps', or 'Conclusion' section.\n\
+\n\
+WHAT NOT TO DO:\n\
+  - Do NOT call edit_file / write_file without read_file on the same \
+     target first.\n\
+  - Do NOT write tests for a symbol ast_query did not resolve.\n\
+  - Do NOT introduce a new test framework. Use what the project uses.\n\
+  - Do NOT modify non-test files.\n\
+  - Do NOT silence test failures with .skip / .only / xtest / \
+     it.todo etc.\n\
+  - Do NOT loop on a stuck failure past 2 attempts. Bail and report.";
+
 // ---------------------------------------------------------------------------
 // Request types
 // ---------------------------------------------------------------------------
@@ -994,6 +1124,10 @@ pub async fn agent_query(
             Some("refactor") => (
                 Some(REFACTOR_SYSTEM_PROMPT),
                 Some(REFACTOR_DEFAULT_MODEL),
+            ),
+            Some("test-gen") => (
+                Some(TEST_GEN_SYSTEM_PROMPT),
+                Some(TEST_GEN_DEFAULT_MODEL),
             ),
             Some(other) => {
                 // Unknown mode: log and fall through to normal flow.
@@ -1963,7 +2097,10 @@ mod resolver_tests {
 
 #[cfg(test)]
 mod prompt_tests {
-    use super::{AUDIT_SYSTEM_PROMPT, BUILD_SYSTEM_PROMPT, REFACTOR_SYSTEM_PROMPT};
+    use super::{
+        AUDIT_SYSTEM_PROMPT, BUILD_SYSTEM_PROMPT, REFACTOR_SYSTEM_PROMPT,
+        TEST_GEN_SYSTEM_PROMPT,
+    };
 
     // -- e2e_run prompt-contract tests ----------------------------------
 
@@ -2194,6 +2331,56 @@ mod prompt_tests {
         assert!(
             BUILD_SYSTEM_PROMPT.contains("e2e_run:"),
             "build prompt's Final verification block no longer reports e2e_run"
+        );
+    }
+
+    // -- test-gen prompt-contract tests ---------------------------------
+
+    #[test]
+    fn test_gen_prompt_mandates_ast_query_for_symbol_existence() {
+        // Test-gen's correctness story: don't write tests for a symbol
+        // that doesn't resolve. Removing this guard means the agent
+        // could fabricate tests against imagined APIs.
+        assert!(
+            TEST_GEN_SYSTEM_PROMPT.contains("ast_query is the source of truth"),
+            "test-gen prompt no longer cites ast_query as the existence authority"
+        );
+        assert!(
+            TEST_GEN_SYSTEM_PROMPT.contains("resolved=false, STOP"),
+            "test-gen prompt no longer halts on unresolved symbols"
+        );
+    }
+
+    #[test]
+    fn test_gen_prompt_requires_run_tests_after_writes() {
+        assert!(
+            TEST_GEN_SYSTEM_PROMPT.contains("run_tests after writing is mandatory"),
+            "test-gen prompt no longer requires post-write run_tests"
+        );
+    }
+
+    #[test]
+    fn test_gen_prompt_forbids_introducing_a_new_framework() {
+        assert!(
+            TEST_GEN_SYSTEM_PROMPT.contains("Do NOT introduce a new test framework"),
+            "test-gen prompt no longer forbids introducing a new framework"
+        );
+    }
+
+    #[test]
+    fn test_gen_prompt_forbids_modifying_non_test_files() {
+        assert!(
+            TEST_GEN_SYSTEM_PROMPT.contains("Do NOT modify non-test files"),
+            "test-gen prompt no longer scopes writes to test files"
+        );
+    }
+
+    #[test]
+    fn test_gen_prompt_outputs_test_gen_report_block() {
+        assert!(
+            TEST_GEN_SYSTEM_PROMPT.contains("TEST GEN COMPLETED")
+                || TEST_GEN_SYSTEM_PROMPT.contains("TEST GEN INCOMPLETE"),
+            "test-gen prompt no longer specifies the TEST GEN REPORT contract"
         );
     }
 }

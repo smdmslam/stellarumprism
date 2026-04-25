@@ -34,6 +34,7 @@ import {
 import { buildFixPrompt, filterFindings, parseFixArgs } from "./fix";
 import { buildBuildPrompt, parseBuildArgs } from "./build";
 import { buildRefactorPrompt, parseRefactorArgs } from "./refactor";
+import { buildTestGenPrompt, parseTestGenArgs } from "./test-gen";
 import {
   defaultFilter as defaultProblemsFilter,
   parseProblemsArgs,
@@ -562,6 +563,41 @@ export class Workspace {
     const problemsMatch = /^\s*\/problems(?:\s+(.*))?$/i.exec(text);
     if (problemsMatch) {
       this.handleProblemsCommand((problemsMatch[1] ?? "").trim());
+      return;
+    }
+
+    // /test-gen <symbol> [--file=path] [--framework=name] [--max-rounds=N]
+    const testGenMatch = /^\s*\/(?:test-gen|testgen)(?:\s+(.*))?$/i.exec(text);
+    if (testGenMatch) {
+      const rawArgs = (testGenMatch[1] ?? "").trim();
+      const mode = findMode("/test-gen");
+      if (!mode) {
+        this.term.write(
+          `\r\n\x1b[1;31m[test-gen]\x1b[0m mode registry misconfigured\r\n`,
+        );
+        return;
+      }
+      const parsed = parseTestGenArgs(rawArgs);
+      if (parsed.error) {
+        this.term.write(
+          `\r\n\x1b[1;31m[test-gen]\x1b[0m ${sanitize(parsed.error)}\r\n`,
+        );
+        return;
+      }
+      const testGenPrompt = buildTestGenPrompt({
+        symbol: parsed.symbol,
+        file: parsed.file,
+        framework: parsed.framework,
+      });
+      this.setTitleFromText(`test-gen ${parsed.symbol}`);
+      this.term.write(
+        `\r\n\x1b[2m[test-gen] generating tests for \x1b[36m${sanitize(parsed.symbol)}\x1b[0m\x1b[2m${parsed.file ? ` in \x1b[36m${sanitize(parsed.file)}\x1b[0m\x1b[2m` : ""}${parsed.framework ? ` (\x1b[36m${sanitize(parsed.framework)}\x1b[0m\x1b[2m)` : ""}\x1b[0m\r\n`,
+      );
+      void this.dispatchAgentQuery(testGenPrompt, {
+        mode: mode.name,
+        modelOverride: mode.preferredModel,
+        maxToolRounds: parsed.maxToolRounds,
+      });
       return;
     }
 

@@ -69,6 +69,23 @@ export const MODES: Mode[] = [
     preferredModel: "anthropic/claude-haiku-4.5",
   },
   {
+    name: "test-gen",
+    aliases: ["/test-gen", "/testgen"],
+    description: "Generate tests for an existing symbol",
+    info:
+      "Substrate-gated test generation. Uses ast_query to verify the " +
+      "symbol exists, reads the declaration + neighboring test files " +
+      "to learn the project's framework and style, plans test cases " +
+      "(happy path / edge cases / error paths), and writes them through " +
+      "the existing approval flow. A final run_tests confirms the new " +
+      "tests pass without breaking the existing suite. Usage: " +
+      "'/test-gen <symbol>'. Add '--file=<path>' to scope where the " +
+      "tests live; '--framework=<vitest|jest|node|cargo|pytest|go>' to " +
+      "override auto-detection. Uses claude-haiku-4.5 by default for " +
+      "precise test edits.",
+    preferredModel: "anthropic/claude-haiku-4.5",
+  },
+  {
     name: "refactor",
     aliases: ["/refactor"],
     description: "Rename an identifier across the project safely",
