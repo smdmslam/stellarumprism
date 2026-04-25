@@ -126,7 +126,10 @@ body {
   font-size: 12px;
   color: #9ca3af;
   background: transparent;
-  border: 1px solid transparent;
+  /* Faint border by default so inactive tabs read as discrete chips
+   * rather than text floating in the titlebar. The active tab paints
+   * a brighter border on top of this baseline. */
+  border: 1px solid rgba(var(--prism-slate-rgb), 0.18);
   border-bottom: none;
   border-radius: 6px 6px 0 0;
   cursor: pointer;
@@ -136,11 +139,12 @@ body {
 .tab:hover {
   background: #11141b;
   color: #d1d5db;
+  border-color: rgba(var(--prism-slate-rgb), 0.32);
 }
 .tab.active {
   background: #0d0f14;
   color: #e5e7eb;
-  border-color: #1f2937;
+  border-color: rgba(var(--prism-slate-rgb), 0.45);
 }
 .tab-title {
   flex: 1 1 auto;
