@@ -212,7 +212,13 @@ export class PrismInput {
         syntaxHighlighting(oneDarkHighlightStyle),
         oneDark,
         prismTheme,
-        EditorView.lineWrapping,
+        // No soft-wrap on the input bar. A narrow window used to wrap the
+        // placeholder hint to two lines, which grew the editor height and
+        // distorted the input chrome (cwd badge, intent pill, model badge
+        // all shifted). Long input now scrolls horizontally instead
+        // (Warp-style); explicit newlines via Shift+Enter still work as
+        // before. Multi-line agent prompts use real \n characters, not
+        // soft-wrapped visual lines.
         placeholder("Type a command\u2026  (\u2318/ for commands, \u21e7\u23ce newline, \u2303K agent)"),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) this.notifyChange();

@@ -451,6 +451,18 @@ body {
   -webkit-user-select: text;
   user-select: text;
 }
+/* Placeholder is a single, fixed string. Never let it wrap \u2014 a narrow
+ * window must clip it horizontally instead of growing the input bar.
+ * Belt-and-suspenders alongside dropping EditorView.lineWrapping in
+ * editor.ts. */
+.editor-host .cm-placeholder {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: clip;
+  display: inline-block;
+  max-width: 100%;
+  pointer-events: none;
+}
 
 .intent-badge {
   flex: 0 0 auto;
