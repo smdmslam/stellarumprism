@@ -104,15 +104,28 @@ INVESTIGATION ORDER (mandatory):\n\
      [confirmed error] finding with source=test in evidence. Tests \
      can be slow; budget rounds accordingly. Skip when the diff is \
      pure docs / cosmetics.\n\
-  3b. OPTIONAL: when the diff touches an HTTP route, middleware, or \
-     API surface AND the user is running their dev server, call \
-     http_fetch to probe the actual endpoint. A response (any status) \
-     means the route is live; a transport error (connection refused, \
-     timeout) likely means the dev server is not running and you \
-     should NOT flag the endpoint as broken on that basis. When you \
-     get a real response, paste the returned `evidence_detail` as \
-     evidence (source=runtime) and the grader will graduate findings \
-     to confirmed.\n\
+  3b. RUNTIME CHECK (mandatory when applicable): if the diff touches \
+     an HTTP route, middleware, controller, or API surface, you MUST \
+     call http_fetch to probe the affected endpoint(s) before \
+     finalizing your report. This is the ONLY way to produce \
+     runtime-tier evidence for HTTP behavior, and it costs one tool \
+     round. Use the project's dev-server URL (default \
+     http://localhost:3000 unless the repo says otherwise). Procedure:\n\
+        - For each route the diff adds, modifies, or reorders, call \
+          http_fetch with the appropriate method and a minimal body. \
+          A response (any status) is runtime evidence \u{2014} paste the \
+          returned `evidence_detail` into the finding's evidence line \
+          as `source=runtime` and the grader will graduate it to \
+          confirmed.\n\
+        - A transport error (connection refused, timeout) means the \
+          dev server is not running. Do NOT flag the endpoint as \
+          broken on that basis. Note 'dev server unreachable; runtime \
+          probe skipped' under your final report and continue with \
+          compiler-tier evidence only. Transport failures are \
+          substrate failures, not endpoint evidence.\n\
+        - If the diff is purely non-HTTP (UI, types, config, docs), \
+          skip http_fetch entirely. The mandate is scoped to actual \
+          HTTP code paths.\n\
   4. After the compiler-backed pass, look for non-compiler wiring gaps \
      the type system can't see:\n\
         - stale barrel re-exports in index files\n\
@@ -319,12 +332,20 @@ INVESTIGATION ORDER (mandatory):\n\
           behavior, optionally run_tests. If failures appear, decide \
           whether the test fixture is stale or your code is wrong; if \
           unsure, surface in the BUILD REPORT and STOP.\n\
-       f. After wiring or modifying an HTTP route / middleware AND \
-          the user is running their dev server, optionally http_fetch \
-          the endpoint to confirm it is live. A real response (any \
-          status) is runtime-tier evidence; a transport error means \
-          the dev server is not running, NOT that the endpoint is \
-          broken \u{2014} do not treat transport errors as build failures.\n\
+       f. RUNTIME CHECK (mandatory for HTTP work): after wiring or \
+          modifying any HTTP route / middleware / controller, you \
+          MUST call http_fetch on the affected endpoint to confirm \
+          it is live. Use the project's dev-server URL (default \
+          http://localhost:3000 unless the repo says otherwise). A \
+          real response (any status) is runtime-tier evidence and \
+          belongs in the BUILD REPORT's Final verification block. \
+          A transport error (connection refused, timeout) means the \
+          dev server is not running \u{2014} this is NOT a build failure. \
+          Note 'dev server unreachable; runtime probe skipped' in \
+          the report and continue. Treat the runtime probe as \
+          equally important as typecheck for any HTTP-touching step; \
+          a feature that compiles but does not respond is not done. \
+          For non-HTTP work, skip this substep entirely.\n\
   4. REPORT. Produce ONE final BUILD REPORT block (format below). No \
      prose narration during execution \u{2014} the tool log already shows \
      what you did.\n\
@@ -361,6 +382,7 @@ OUTPUT CONTRACT:\n\
       typecheck: <pass | N errors>\n\
       ast_query: <N resolutions confirmed>\n\
       run_tests: <pass | N failures>   (omit if not run)\n\
+      http_fetch: <N endpoints OK | N failed | dev server unreachable>   (omit if no HTTP work)\n\
 \n\
   - Use \u{2713} for success, \u{2298} for skipped, \u{2717} for failed. One line each. \
      Keep summaries terse.\n\
@@ -1551,4 +1573,120 @@ fn build_user_message(prompt: &str, context: Option<&AgentContext>) -> String {
     out.push_str("User question: ");
     out.push_str(prompt);
     out
+}
+
+// ---------------------------------------------------------------------------
+// Prompt-contract tests
+//
+// These tests pin the substrate-discipline mandates that drive observable
+// user behavior (compiler-first auditing, runtime-probe verification of
+// HTTP routes, etc.). Wording can evolve, but the *contract* — that the
+// agent reaches for the substrate when it should — must not silently
+// regress. Each test asserts on a specific mandate by phrase, so a copy
+// edit that loses the mandate fails fast.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::{AUDIT_SYSTEM_PROMPT, BUILD_SYSTEM_PROMPT};
+
+    #[test]
+    fn audit_prompt_makes_typecheck_first_call_mandatory() {
+        // The compiler-first contract that grounds every other check.
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("CALL typecheck FIRST"),
+            "audit prompt no longer mandates typecheck-first; this is the\n\
+             central substrate contract and must not regress."
+        );
+    }
+
+    #[test]
+    fn audit_prompt_requires_http_fetch_when_diff_touches_http() {
+        // Step 3b is the runtime-tier mandate. Wording can move; the
+        // 'must call http_fetch' phrase + the route-trigger phrase are
+        // what turn http_fetch from available into habitual.
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("RUNTIME CHECK (mandatory when applicable)"),
+            "audit prompt lost the runtime-check mandate header"
+        );
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("you MUST \
+     call http_fetch")
+                || AUDIT_SYSTEM_PROMPT.contains("you MUST call http_fetch"),
+            "audit prompt no longer requires http_fetch on HTTP-touching diffs"
+        );
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("HTTP route, middleware, controller, or API surface"),
+            "audit prompt no longer scopes the runtime check to HTTP code paths"
+        );
+    }
+
+    #[test]
+    fn audit_prompt_preserves_transport_error_carve_out() {
+        // If we lose this carve-out, transport failures will be flagged
+        // as endpoint bugs and produce false positives for users whose
+        // dev server is simply not running.
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("transport error")
+                && AUDIT_SYSTEM_PROMPT.contains("dev server is not running"),
+            "audit prompt no longer carves out transport-error \u{2192} dev-server-down"
+        );
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("Do NOT flag the endpoint as \
+          broken"),
+            "audit prompt no longer instructs to skip flagging on transport error"
+        );
+    }
+
+    #[test]
+    fn audit_prompt_keeps_runtime_evidence_example() {
+        // The example shapes are the model's anchor for how to format
+        // findings. Removing the runtime-backed example would let the
+        // grader-graduating path silently fall out of use.
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("source=runtime"),
+            "audit prompt no longer references source=runtime in examples"
+        );
+    }
+
+    #[test]
+    fn build_prompt_requires_http_fetch_for_http_work() {
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("RUNTIME CHECK (mandatory for HTTP work)"),
+            "build prompt lost the per-HTTP-step runtime-check mandate"
+        );
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("MUST call http_fetch"),
+            "build prompt no longer requires http_fetch after HTTP edits"
+        );
+        assert!(
+            BUILD_SYSTEM_PROMPT
+                .contains("HTTP route / middleware / controller"),
+            "build prompt no longer scopes the runtime check to HTTP code paths"
+        );
+    }
+
+    #[test]
+    fn build_prompt_includes_http_fetch_in_final_verification() {
+        // Surfacing http_fetch results in the BUILD REPORT is what makes
+        // the runtime check observable to the user. Without this line,
+        // even a successful probe disappears into the tool log.
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("http_fetch:"),
+            "build prompt's Final verification block no longer reports http_fetch"
+        );
+    }
+
+    #[test]
+    fn build_prompt_preserves_transport_error_carve_out() {
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("transport error")
+                && BUILD_SYSTEM_PROMPT.contains("dev server is not running"),
+            "build prompt no longer carves out transport-error \u{2192} dev-server-down"
+        );
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("this is NOT a build failure"),
+            "build prompt no longer says transport errors are not build failures"
+        );
+    }
 }
