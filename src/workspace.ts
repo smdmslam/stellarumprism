@@ -49,6 +49,21 @@ import {
   renderSnippetError,
   type FileSnippet,
 } from "./snippet";
+import {
+  emptyTreeState,
+  flattenVisibleRows,
+  formatBytes as formatTreeBytes,
+  moveSelection,
+  setChildren,
+  setError as setTreeError,
+  setLoading as setTreeLoading,
+  setRoot as setTreeRoot,
+  setSelected as setTreeSelected,
+  toggleExpanded,
+  type RawTreeListing,
+  type TreeState,
+  type VisibleRow,
+} from "./file-tree";
 
 /**
  * Pixels of breathing room to reserve on the right of the terminal so the
@@ -122,6 +137,21 @@ export class Workspace {
   private problemsFilter: ProblemsFilter = defaultProblemsFilter();
   /** Whether the Problems panel is currently visible. */
   private problemsVisible = false;
+  /**
+   * IDE-shape file-tree state. Owned by the workspace so the tree
+   * persists across sidebar-tab switches; rebuilt from scratch only
+   * when the cwd changes (rare).
+   */
+  private treeState: TreeState = emptyTreeState();
+  /**
+   * Which sidebar pane is visible. "blocks" matches the legacy view;
+   * "files" shows the lazy-loaded file tree.
+   */
+  private activeSidebarTab: "blocks" | "files" = "blocks";
+  /** True iff `refreshFileTreeRoot` has been called for this cwd. */
+  private fileTreeRootLoaded = false;
+  /** Last cwd we built the tree for, so we can detect cwd changes. */
+  private fileTreeLastCwd = "";
   private readonly cb: WorkspaceCallbacks;
 
   private term!: Terminal;
@@ -145,13 +175,19 @@ export class Workspace {
     this.root.dataset.id = this.id;
     this.root.innerHTML = `
       <aside class="blocks-sidebar">
-        <div class="sidebar-header">
-          <span>Blocks</span>
-          <span class="blocks-count">0</span>
+        <div class="sidebar-tabs" role="tablist" aria-label="Sidebar">
+          <button class="sidebar-tab active" data-tab="blocks" role="tab" aria-selected="true">Blocks <span class="sidebar-tab-count blocks-count">0</span></button>
+          <button class="sidebar-tab" data-tab="files" role="tab" aria-selected="false">Files</button>
         </div>
-        <ul class="blocks-list"></ul>
+        <div class="sidebar-pane sidebar-pane-blocks" data-tab="blocks">
+          <ul class="blocks-list"></ul>
+        </div>
+        <div class="sidebar-pane sidebar-pane-files" data-tab="files" hidden>
+          <div class="file-tree" tabindex="0" role="tree" aria-label="Project files"></div>
+        </div>
       </aside>
       <div class="content">
+        <div class="file-preview" data-visible="false" aria-hidden="true"></div>
         <div class="terminal-host"></div>
         <div class="agent-actions"></div>
         <div class="attachments"></div>
@@ -236,6 +272,8 @@ export class Workspace {
 
     this.blocks = new BlockManager(this.term);
     this.wireBlockSidebar();
+    this.wireSidebarTabs();
+    this.wireFileTree();
 
     // OSC 7: the shell (via our zsh integration) tells us its cwd on every
     // prompt. We parse `file://host/path` and keep the last value.
@@ -244,6 +282,15 @@ export class Workspace {
       if (parsed && parsed !== this.cwd) {
         this.cwd = parsed;
         this.updateCwdBadge();
+        // cwd changed \u2014 the file tree is now stale. We don't proactively
+        // re-fetch (might be a transient `cd`); the next time the Files
+        // tab is shown, it'll lazy-load.
+        if (this.fileTreeLastCwd !== parsed) {
+          this.fileTreeRootLoaded = false;
+          if (this.activeSidebarTab === "files") {
+            void this.refreshFileTreeRoot();
+          }
+        }
       }
       return true;
     });
@@ -436,6 +483,14 @@ export class Workspace {
     }
     if (/^\s*\/help\s*$/i.test(text)) {
       this.term.write("\r\n" + renderHelpAnsi());
+      return;
+    }
+    // /files \u2014 switch sidebar to the Files tab and focus the tree.
+    if (/^\s*\/files\s*$/i.test(text)) {
+      this.setSidebarTab("files");
+      this.term.write(
+        `\r\n\x1b[2m[files] sidebar \u2192 Files tab\x1b[0m\r\n`,
+      );
       return;
     }
     // /verify on|off|<model> — control the reviewer pass.
@@ -1386,6 +1441,311 @@ export class Workspace {
       }
     }, 500);
     this.disposers.push(() => clearInterval(interval));
+  }
+
+  // -- sidebar tabs --------------------------------------------------------
+
+  /**
+   * Wire the [Blocks | Files] tab strip in the sidebar header. The two
+   * panes (`.sidebar-pane-blocks`, `.sidebar-pane-files`) live side by
+   * side; we toggle their `hidden` attribute to show one at a time.
+   * Switching to Files lazy-loads the cwd's listing on first view.
+   */
+  private wireSidebarTabs(): void {
+    const tabsEl = this.root.querySelector<HTMLElement>(".sidebar-tabs");
+    if (!tabsEl) return;
+    tabsEl.addEventListener("click", (e) => {
+      const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>(
+        ".sidebar-tab",
+      );
+      if (!btn) return;
+      const tab = btn.dataset.tab as "blocks" | "files" | undefined;
+      if (!tab) return;
+      this.setSidebarTab(tab);
+    });
+  }
+
+  /**
+   * Switch the visible sidebar pane. Public so the `/files` slash
+   * command can call it directly.
+   */
+  setSidebarTab(tab: "blocks" | "files"): void {
+    if (this.activeSidebarTab === tab) {
+      // Re-focus on re-tap so /files quickly returns the user to the
+      // tree even when it's already showing.
+      if (tab === "files") this.focusFileTree();
+      return;
+    }
+    this.activeSidebarTab = tab;
+    const tabs = this.root.querySelectorAll<HTMLElement>(".sidebar-tab");
+    tabs.forEach((t) => {
+      const isActive = t.dataset.tab === tab;
+      t.classList.toggle("active", isActive);
+      t.setAttribute("aria-selected", isActive ? "true" : "false");
+    });
+    const panes = this.root.querySelectorAll<HTMLElement>(".sidebar-pane");
+    panes.forEach((p) => {
+      const isActive = p.dataset.tab === tab;
+      if (isActive) {
+        p.removeAttribute("hidden");
+      } else {
+        p.setAttribute("hidden", "");
+      }
+    });
+    if (tab === "files") {
+      // Lazy-load on first view (or when cwd changed since last view).
+      if (!this.fileTreeRootLoaded || this.fileTreeLastCwd !== this.cwd) {
+        void this.refreshFileTreeRoot();
+      }
+      this.focusFileTree();
+    }
+  }
+
+  // -- file tree -----------------------------------------------------------
+
+  /**
+   * Wire click + keyboard handlers on the `.file-tree` element. Listeners
+   * are attached once; the tree's contents are re-rendered on every
+   * state change but the parent element is stable.
+   */
+  private wireFileTree(): void {
+    const treeEl = this.root.querySelector<HTMLElement>(".file-tree");
+    if (!treeEl) return;
+    treeEl.addEventListener("click", (e) => {
+      const row = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+        "[data-path]",
+      );
+      if (!row) return;
+      const path = row.dataset.path!;
+      const kind = row.dataset.kind ?? "file";
+      this.treeState = setTreeSelected(this.treeState, path);
+      if (kind === "dir") {
+        void this.handleTreeToggle(path);
+      } else {
+        // Single click on a file = preview. Phase 2 will swap this
+        // for a real editor tab.
+        void this.openFilePreview(path);
+      }
+      this.renderFileTree();
+    });
+    treeEl.addEventListener("keydown", (e) => {
+      const rows = flattenVisibleRows(this.treeState);
+      if (rows.length === 0) return;
+      const sel = this.treeState.selected;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const next = moveSelection(this.treeState, rows, 1);
+        this.treeState = setTreeSelected(this.treeState, next);
+        this.renderFileTree();
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const next = moveSelection(this.treeState, rows, -1);
+        this.treeState = setTreeSelected(this.treeState, next);
+        this.renderFileTree();
+        return;
+      }
+      if (e.key === "ArrowRight") {
+        // Expand the focused dir; on a file, jump to next sibling.
+        if (!sel) return;
+        const row = rows.find((r) => r.entry.path === sel);
+        if (!row) return;
+        if (row.entry.kind === "dir" && !row.expanded) {
+          e.preventDefault();
+          void this.handleTreeToggle(sel);
+        }
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        if (!sel) return;
+        const row = rows.find((r) => r.entry.path === sel);
+        if (!row) return;
+        if (row.entry.kind === "dir" && row.expanded) {
+          e.preventDefault();
+          void this.handleTreeToggle(sel);
+        }
+        return;
+      }
+      if (e.key === "Enter" || e.key === " ") {
+        if (!sel) return;
+        const row = rows.find((r) => r.entry.path === sel);
+        if (!row) return;
+        e.preventDefault();
+        if (row.entry.kind === "dir") {
+          void this.handleTreeToggle(sel);
+        } else {
+          void this.openFilePreview(sel);
+        }
+      }
+    });
+  }
+
+  /** Move keyboard focus to the file tree (used by `/files` re-tap). */
+  private focusFileTree(): void {
+    const treeEl = this.root.querySelector<HTMLElement>(".file-tree");
+    treeEl?.focus();
+  }
+
+  /**
+   * Fetch the cwd's listing and seed the tree. Called on first view
+   * and on cwd change. Errors are surfaced inline in the tree pane.
+   */
+  private async refreshFileTreeRoot(): Promise<void> {
+    const treeEl = this.root.querySelector<HTMLElement>(".file-tree");
+    if (!treeEl) return;
+    if (!this.cwd) {
+      treeEl.innerHTML =
+        `<div class="file-tree-empty">cwd unknown \u2014 wait for the shell prompt</div>`;
+      return;
+    }
+    treeEl.innerHTML = `<div class="file-tree-loading">loading\u2026</div>`;
+    try {
+      const listing = await invoke<RawTreeListing>("list_directory_tree", {
+        cwd: this.cwd,
+        path: null,
+        showHidden: false,
+      });
+      this.treeState = setTreeRoot(this.treeState, listing);
+      this.fileTreeRootLoaded = true;
+      this.fileTreeLastCwd = this.cwd;
+      this.renderFileTree();
+    } catch (err) {
+      treeEl.innerHTML =
+        `<div class="file-tree-error">failed to list cwd: ${escapeHtml(String(err))}</div>`;
+    }
+  }
+
+  /**
+   * Toggle a directory's expanded state. When opening for the first
+   * time, fetch its children and feed them into the tree state.
+   */
+  private async handleTreeToggle(path: string): Promise<void> {
+    const isDir =
+      flattenVisibleRows(this.treeState).find((r) => r.entry.path === path)
+        ?.entry.kind === "dir";
+    if (!isDir) return;
+    const r = toggleExpanded(this.treeState, path, true);
+    this.treeState = r.state;
+    if (r.needsLoad) {
+      this.treeState = setTreeLoading(this.treeState, path);
+      this.renderFileTree();
+      try {
+        const listing = await invoke<RawTreeListing>("list_directory_tree", {
+          cwd: this.cwd,
+          path,
+          showHidden: false,
+        });
+        this.treeState = setChildren(this.treeState, path, listing);
+      } catch (err) {
+        this.treeState = setTreeError(this.treeState, path, String(err));
+      }
+    }
+    this.renderFileTree();
+  }
+
+  /** Re-render the file tree pane from the current state. */
+  private renderFileTree(): void {
+    const treeEl = this.root.querySelector<HTMLElement>(".file-tree");
+    if (!treeEl) return;
+    if (!this.treeState.root) {
+      // Either pre-load or the cwd was empty. Show a tiny note unless
+      // the load is in flight (loading shows its own spinner).
+      if (treeEl.querySelector(".file-tree-loading")) return;
+      treeEl.innerHTML =
+        `<div class="file-tree-empty">no files \u2014 cwd is empty or all entries are gitignored</div>`;
+      return;
+    }
+    const rows = flattenVisibleRows(this.treeState);
+    if (rows.length === 0) {
+      treeEl.innerHTML =
+        `<div class="file-tree-empty">no files \u2014 cwd is empty or all entries are gitignored</div>`;
+      return;
+    }
+    treeEl.innerHTML = rows.map((r) => this.renderTreeRow(r)).join("");
+  }
+
+  private renderTreeRow(row: VisibleRow): string {
+    const e = row.entry;
+    const indentPx = 8 + row.depth * 14;
+    const selected =
+      this.treeState.selected === e.path ? " file-tree-row-selected" : "";
+    const kindClass = `file-tree-row-${e.kind}`;
+    let icon = "";
+    if (e.kind === "dir") {
+      // Caret + folder glyph; rotated via CSS when expanded.
+      icon = `<span class="file-tree-caret">${row.expanded ? "\u25be" : "\u25b8"}</span>`;
+    } else {
+      icon = `<span class="file-tree-caret file-tree-caret-spacer">\u00a0</span>`;
+    }
+    const detail =
+      e.kind === "file" && typeof e.size === "number"
+        ? `<span class="file-tree-detail">${formatTreeBytes(e.size)}</span>`
+        : "";
+    let trailing = "";
+    if (row.loadState.kind === "loading") {
+      trailing = `<span class="file-tree-detail file-tree-detail-loading">\u2026</span>`;
+    } else if (row.loadState.kind === "error") {
+      trailing = `<span class="file-tree-detail file-tree-detail-error" title="${escapeAttr(row.loadState.message)}">!</span>`;
+    }
+    return (
+      `<div class="file-tree-row ${kindClass}${selected}" ` +
+      `data-path="${escapeAttr(e.path)}" data-kind="${e.kind}" ` +
+      `style="padding-left:${indentPx}px" role="treeitem" ` +
+      `aria-level="${row.depth + 1}" ` +
+      `aria-expanded="${e.kind === "dir" ? (row.expanded ? "true" : "false") : ""}">` +
+      `${icon}<span class="file-tree-name">${escapeHtml(e.name)}</span>` +
+      detail +
+      trailing +
+      `</div>`
+    );
+  }
+
+  // -- file preview overlay (phase 1; phase 2 replaces with editor) --------
+
+  /**
+   * Show a read-only preview of a file. Uses `read_file_snippet` with
+   * a wide window so the user sees the top of the file. Phase 2 will
+   * swap this for a real CodeMirror tab.
+   */
+  private async openFilePreview(path: string): Promise<void> {
+    const overlay = this.root.querySelector<HTMLElement>(".file-preview");
+    if (!overlay) return;
+    overlay.dataset.visible = "true";
+    overlay.setAttribute("aria-hidden", "false");
+    overlay.innerHTML =
+      `<div class="file-preview-header">` +
+      `<span class="file-preview-path">${escapeHtml(path)}</span>` +
+      `<button class="file-preview-close" type="button" aria-label="Close preview">\u00d7</button>` +
+      `</div>` +
+      `<div class="file-preview-body"><div class="file-tree-loading">loading\u2026</div></div>`;
+    overlay.querySelector(".file-preview-close")?.addEventListener(
+      "click",
+      () => this.closeFilePreview(),
+      { once: true },
+    );
+    try {
+      const snippet = await invoke<FileSnippet>("read_file_snippet", {
+        cwd: this.cwd,
+        path,
+        line: 1,
+        before: 0,
+        after: 80,
+      });
+      const body = overlay.querySelector<HTMLElement>(".file-preview-body");
+      if (body) body.innerHTML = renderSnippet(snippet);
+    } catch (err) {
+      const body = overlay.querySelector<HTMLElement>(".file-preview-body");
+      if (body) body.innerHTML = renderSnippetError(String(err), path);
+    }
+  }
+
+  private closeFilePreview(): void {
+    const overlay = this.root.querySelector<HTMLElement>(".file-preview");
+    if (!overlay) return;
+    overlay.dataset.visible = "false";
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.innerHTML = "";
   }
 
   // -- save chat -----------------------------------------------------------

@@ -6,6 +6,12 @@
 //!
 //! Size- and type-safe: refuses files over 256 KB (truncates and flags),
 //! refuses non-text files (detected by NUL-byte sniff).
+//!
+//! This module also hosts the IDE-shape file-tree command
+//! (`list_directory_tree`) used by the Files sidebar in `Workspace`.
+//! It honors .gitignore via the same `ignore::WalkBuilder` machinery
+//! the audit `find` tool uses, but only walks ONE level at a time so
+//! the frontend can lazy-load expansions.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -363,6 +369,159 @@ pub fn read_file_snippet(
     })
 }
 
+// ---------------------------------------------------------------------------
+// IDE-shape file-tree command
+// ---------------------------------------------------------------------------
+
+/// One row in the file-tree sidebar. The frontend keeps a cache keyed
+/// on the absolute `path` and lazy-loads children by issuing another
+/// `list_directory_tree` call with that path.
+#[derive(Debug, Serialize)]
+pub struct TreeEntry {
+    /// Display name (basename only).
+    pub name: String,
+    /// Absolute path on disk. Used as the cache key.
+    pub path: String,
+    /// "file" | "dir" | "symlink" | "other".
+    pub kind: String,
+    /// File size in bytes (only set for kind == "file"; dirs leave
+    /// this null since stat-ing every child to count entries is too
+    /// expensive on a cold filesystem).
+    pub size: Option<u64>,
+    /// True iff this is a directory whose children weren't listed yet
+    /// in this call. Always true for kind == "dir" in v1 (lazy load).
+    pub has_children: bool,
+}
+
+/// One level of a directory tree, ready for rendering. The frontend
+/// asks for `<cwd or absolute path>` and gets back its immediate
+/// children, sorted dirs-first then alphabetically.
+#[derive(Debug, Serialize)]
+pub struct TreeListing {
+    /// Absolute directory whose contents are listed.
+    pub dir: String,
+    /// One row per entry. Capped at `TREE_MAX_ENTRIES`.
+    pub entries: Vec<TreeEntry>,
+    /// True iff the listing was clipped at the cap.
+    pub truncated: bool,
+    /// True iff the directory is the cwd's repo root (used by the UI
+    /// to decorate the tree's root node).
+    pub is_root: bool,
+}
+
+/// Cap so a single call against a node_modules-shaped directory
+/// doesn't dump 50k entries into the UI. Mirrors the audit `find`
+/// tool's per-call results cap.
+const TREE_MAX_ENTRIES: usize = 5000;
+
+/// List one level of the directory tree at `path` (or `cwd` if path is
+/// omitted). gitignore + global-gitignore + git-exclude are honored
+/// so node_modules / target / __pycache__ stay out of the way.
+///
+/// Hidden files (.git, .DS_Store, etc.) are excluded by default but
+/// included when `show_hidden=true`. The cell is read-only and the
+/// path is constrained to the cwd's subtree (or absolute paths the
+/// user already authorized via the @ picker, which we trust).
+#[tauri::command]
+pub fn list_directory_tree(
+    cwd: String,
+    path: Option<String>,
+    show_hidden: Option<bool>,
+) -> Result<TreeListing, String> {
+    let raw = path.as_deref().unwrap_or(".");
+    let resolved = resolve_path(&cwd, raw)?;
+    let metadata = fs::metadata(&resolved)
+        .map_err(|e| format!("cannot stat {}: {}", resolved.display(), e))?;
+    if !metadata.is_dir() {
+        return Err(format!("{} is not a directory", resolved.display()));
+    }
+    let show_hidden = show_hidden.unwrap_or(false);
+
+    // ignore::WalkBuilder applies .gitignore + git_global +
+    // git_exclude across all visited paths. We set max_depth=1 so we
+    // only get the immediate children plus the root itself; the root
+    // is filtered out below. WalkBuilder still respects nested
+    // .gitignore files on subsequent calls (the frontend lazy-loads
+    // each subdir, so each call is its own scoped walk).
+    let mut builder = ignore::WalkBuilder::new(&resolved);
+    builder
+        .hidden(!show_hidden)
+        .git_ignore(true)
+        .git_global(true)
+        .git_exclude(true)
+        .parents(true)
+        .max_depth(Some(1));
+
+    let mut entries: Vec<TreeEntry> = Vec::new();
+    let mut truncated = false;
+    for entry in builder.build() {
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        // depth=0 is the root we passed in; skip it.
+        if entry.depth() == 0 {
+            continue;
+        }
+        if entries.len() >= TREE_MAX_ENTRIES {
+            truncated = true;
+            break;
+        }
+        let path_buf = entry.path().to_path_buf();
+        let name = entry
+            .file_name()
+            .to_string_lossy()
+            .into_owned();
+        let file_type = entry.file_type();
+        let kind: &'static str = match file_type {
+            Some(t) if t.is_dir() => "dir",
+            Some(t) if t.is_symlink() => "symlink",
+            Some(t) if t.is_file() => "file",
+            _ => "other",
+        };
+        // Only stat files for size; directories leave size unset to
+        // avoid an expensive walk on a cold cache.
+        let size = if kind == "file" {
+            fs::metadata(&path_buf).ok().map(|m| m.len())
+        } else {
+            None
+        };
+        let has_children = kind == "dir";
+        entries.push(TreeEntry {
+            name,
+            path: path_buf.to_string_lossy().into_owned(),
+            kind: kind.into(),
+            size,
+            has_children,
+        });
+    }
+
+    // Dirs first, then files/symlinks, alphabetically (case-insensitive)
+    // within each group.
+    entries.sort_by(|a, b| {
+        let a_dir = a.kind == "dir";
+        let b_dir = b.kind == "dir";
+        b_dir
+            .cmp(&a_dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+    });
+
+    // "is_root" == this directory is the cwd. Frontend uses this for
+    // a small visual cue (project icon vs folder icon).
+    let is_root = !cwd.is_empty()
+        && Path::new(&cwd)
+            .canonicalize()
+            .map(|c| c == resolved)
+            .unwrap_or(false);
+
+    Ok(TreeListing {
+        dir: resolved.to_string_lossy().into_owned(),
+        entries,
+        truncated,
+        is_root,
+    })
+}
+
 /// Resolve a user-typed path with the shell's cwd as the starting point.
 ///
 /// Rules (first match wins):
@@ -543,5 +702,159 @@ mod tests {
         );
         assert!(r.is_err());
         assert!(r.unwrap_err().contains("binary"));
+    }
+
+    // -- list_directory_tree --------------------------------------------
+
+    #[test]
+    fn tree_lists_immediate_children_sorted_dirs_first() {
+        let dir = fresh_tmp();
+        fs::write(dir.join("z.txt"), "hi").unwrap();
+        fs::write(dir.join("a.txt"), "hi").unwrap();
+        fs::create_dir(dir.join("src")).unwrap();
+        fs::create_dir(dir.join("docs")).unwrap();
+        fs::write(dir.join("src/main.rs"), "fn main() {}").unwrap();
+
+        let listing = list_directory_tree(
+            dir.to_string_lossy().to_string(),
+            None,
+            None,
+        )
+        .expect("tree");
+        assert!(listing.is_root);
+        let names: Vec<&str> = listing.entries.iter().map(|e| e.name.as_str()).collect();
+        // Dirs first (alpha), then files (alpha).
+        assert_eq!(names, vec!["docs", "src", "a.txt", "z.txt"]);
+        // src is a dir with children; it must report has_children=true.
+        let src = listing
+            .entries
+            .iter()
+            .find(|e| e.name == "src")
+            .unwrap();
+        assert_eq!(src.kind, "dir");
+        assert!(src.has_children);
+        assert!(src.size.is_none(), "dirs should not report size");
+        // a.txt is a file with size set.
+        let a = listing
+            .entries
+            .iter()
+            .find(|e| e.name == "a.txt")
+            .unwrap();
+        assert_eq!(a.kind, "file");
+        assert!(!a.has_children);
+        assert_eq!(a.size, Some(2));
+    }
+
+    #[test]
+    fn tree_excludes_hidden_files_by_default_and_includes_with_flag() {
+        let dir = fresh_tmp();
+        fs::write(dir.join("visible.txt"), "hi").unwrap();
+        fs::write(dir.join(".hidden"), "hi").unwrap();
+        // Default: hidden suppressed.
+        let default = list_directory_tree(
+            dir.to_string_lossy().to_string(),
+            None,
+            None,
+        )
+        .expect("tree");
+        let names: Vec<&str> = default
+            .entries
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["visible.txt"]);
+        // Opt-in: hidden included.
+        let with_hidden = list_directory_tree(
+            dir.to_string_lossy().to_string(),
+            None,
+            Some(true),
+        )
+        .expect("tree");
+        let names: Vec<String> = with_hidden
+            .entries
+            .iter()
+            .map(|e| e.name.clone())
+            .collect();
+        assert!(names.contains(&"visible.txt".to_string()));
+        assert!(names.contains(&".hidden".to_string()));
+    }
+
+    #[test]
+    fn tree_honors_gitignore() {
+        let dir = fresh_tmp();
+        // A repo-shaped layout so .gitignore is in scope.
+        fs::create_dir(dir.join(".git")).unwrap();
+        fs::write(dir.join(".gitignore"), "node_modules\n").unwrap();
+        fs::create_dir(dir.join("node_modules")).unwrap();
+        fs::write(dir.join("node_modules/leaf.txt"), "ignored").unwrap();
+        fs::write(dir.join("keep.txt"), "kept").unwrap();
+
+        let listing = list_directory_tree(
+            dir.to_string_lossy().to_string(),
+            None,
+            None,
+        )
+        .expect("tree");
+        let names: Vec<&str> = listing
+            .entries
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        // node_modules must be filtered out by gitignore.
+        assert!(
+            !names.contains(&"node_modules"),
+            "node_modules leaked through gitignore: {:?}",
+            names
+        );
+        assert!(names.contains(&"keep.txt"));
+    }
+
+    #[test]
+    fn tree_lazy_lists_subdirectory_when_path_is_passed() {
+        let dir = fresh_tmp();
+        fs::create_dir(dir.join("src")).unwrap();
+        fs::write(dir.join("src/lib.rs"), "pub fn x() {}").unwrap();
+        fs::write(dir.join("src/main.rs"), "fn main() {}").unwrap();
+        fs::write(dir.join("top.txt"), "top").unwrap();
+
+        let listing = list_directory_tree(
+            dir.to_string_lossy().to_string(),
+            Some("src".to_string()),
+            None,
+        )
+        .expect("tree");
+        // is_root is false for non-root paths.
+        assert!(!listing.is_root);
+        let names: Vec<&str> = listing
+            .entries
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["lib.rs", "main.rs"]);
+    }
+
+    #[test]
+    fn tree_errors_on_missing_directory() {
+        let dir = fresh_tmp();
+        let r = list_directory_tree(
+            dir.to_string_lossy().to_string(),
+            Some("does-not-exist".to_string()),
+            None,
+        );
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("cannot stat"));
+    }
+
+    #[test]
+    fn tree_errors_when_path_is_a_file() {
+        let dir = fresh_tmp();
+        fs::write(dir.join("a.txt"), "hi").unwrap();
+        let r = list_directory_tree(
+            dir.to_string_lossy().to_string(),
+            Some("a.txt".to_string()),
+            None,
+        );
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("is not a directory"));
     }
 }

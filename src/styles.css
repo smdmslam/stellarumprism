@@ -1272,8 +1272,219 @@ body {
   color: #9ca3af;
 }
 
-/* We don't use the floating info tooltip anymore — hide it if CM ever
+/* We don't use the floating info tooltip anymore \u2014 hide it if CM ever
  * decides to render one (e.g. from a future third-party source). */
 .cm-tooltip.cm-completionInfo {
   display: none !important;
 }
+
+/* ---------- sidebar tab strip (Blocks | Files) (IDE-shape v1) ---------- */
+
+.sidebar-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px 6px 0 6px;
+  background-color: #0a0c11;
+  border-bottom: 1px solid #1f2937;
+}
+
+.sidebar-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 7px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  color: #9ca3af;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-family: inherit;
+  cursor: pointer;
+  margin-bottom: -1px;
+}
+.sidebar-tab:hover { color: #d1d5db; }
+.sidebar-tab.active {
+  background: #0d0f14;
+  color: #e5e7eb;
+  border-color: #1f2937;
+}
+
+.sidebar-tab-count {
+  font-variant-numeric: tabular-nums;
+  color: #6b7280;
+  background: #111827;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sidebar-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sidebar-pane[hidden] { display: none; }
+
+/* ---------- file tree (Files sidebar pane) ---------- */
+
+.file-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0;
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  outline: none;
+}
+.file-tree:focus { box-shadow: inset 2px 0 0 #7dd3fc; }
+.file-tree::-webkit-scrollbar { width: 8px; }
+.file-tree::-webkit-scrollbar-track { background: transparent; }
+.file-tree::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 4px; }
+.file-tree::-webkit-scrollbar-thumb:hover { background: #374151; }
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 2px;
+  padding-bottom: 2px;
+  padding-right: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: #d1d5db;
+  user-select: none;
+}
+.file-tree-row:hover { background: #111827; }
+.file-tree-row-selected,
+.file-tree-row-selected:hover {
+  background: rgba(125, 211, 252, 0.12);
+  color: #f9fafb;
+}
+
+.file-tree-caret {
+  flex: 0 0 auto;
+  width: 12px;
+  text-align: center;
+  color: #6b7280;
+  font-size: 10px;
+  line-height: 1;
+}
+.file-tree-caret-spacer { color: transparent; }
+
+.file-tree-row-dir .file-tree-name {
+  color: #cbd5e1;
+  font-weight: 500;
+}
+.file-tree-row-file .file-tree-name { color: #d1d5db; }
+.file-tree-row-symlink .file-tree-name {
+  color: #c4b5fd;
+  font-style: italic;
+}
+
+.file-tree-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-tree-detail {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+.file-tree-detail-loading { color: #facc15; }
+.file-tree-detail-error {
+  color: #ef4444;
+  font-weight: 700;
+  cursor: help;
+}
+
+.file-tree-empty,
+.file-tree-loading,
+.file-tree-error {
+  padding: 12px 14px;
+  font-family:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 11px;
+  color: #6b7280;
+}
+.file-tree-loading { color: #94a3b8; font-style: italic; }
+.file-tree-error { color: #fca5a5; }
+
+/* ---------- file preview overlay (phase 1; phase 2 swaps for editor) ---------- */
+
+.file-preview {
+  flex: 0 0 auto;
+  display: none;
+  flex-direction: column;
+  max-height: 40vh;
+  background: #0c1018;
+  border-bottom: 1px solid #1f2937;
+}
+.file-preview[data-visible="true"] { display: flex; }
+
+.file-preview-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #0a0d13;
+  border-bottom: 1px solid #1f2937;
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.file-preview-path {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #cbd5e1;
+}
+.file-preview-close {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #6b7280;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+.file-preview-close:hover {
+  background: #1f2937;
+  color: #f9fafb;
+}
+.file-preview-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px 8px;
+}
+.file-preview-body .snippet {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+.file-preview-body .snippet-header { display: none; }
+.file-preview-body .snippet-body { max-height: none; }

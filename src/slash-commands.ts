@@ -77,6 +77,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     info: "Open / close / clear the right-side Problems panel that lists the latest audit's findings grouped by file. Auto-opens after /audit completes. Args: show, hide, toggle (default), clear.",
     takesArg: true,
   },
+  {
+    label: "/files",
+    detail: "Switch sidebar to the file tree",
+    info: "Show the project file tree in the left sidebar and focus it for keyboard navigation (arrow keys, Enter to open). Click a file to preview its top \u223c80 lines inline above the terminal; click again to open it in the editor (phase 2). The tree honors .gitignore and lazy-loads each subdirectory on expand.",
+  },
 
   // -- Modes (persona-switched agent turns) -------------------------------
   // Each mode contributes its primary alias as a slash command. Additional
