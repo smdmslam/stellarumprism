@@ -118,6 +118,22 @@ export interface AgentControllerOptions {
     runtimeProbes: RuntimeProbe[];
     substrateRuns: SubstrateRun[];
   }) => void;
+  /**
+   * Fires once per successful build/new/refactor/test-gen turn after
+   * the assistant response is fully assembled. The workspace uses this
+   * to parse the BUILD/RENAME/SCAFFOLD/TEST GEN REPORT block, render
+   * markdown + JSON sidecar, persist them, and update the workspace
+   * state pointer. Not fired for cancelled or errored turns.
+   *
+   * `mode` is the same string the workspace passed to `query()`
+   * ("build" | "new" | "refactor" | "test-gen"). `/fix` deliberately
+   * uses a different output contract and does NOT fire this hook.
+   */
+  onBuildComplete?: (info: {
+    responseText: string;
+    model: string;
+    mode: string;
+  }) => void;
 }
 
 /**
@@ -644,16 +660,17 @@ export class AgentController {
     this.setBusy(false);
     this.renderActionBar(extractCodeBlocks(this.responseBuffer));
     this.clearListeners();
-    // Fire mode-specific completion hook for audit turns. We capture the
-    // mode/model/response BEFORE clearing currentMode so the handler can
-    // use them.
-    const audit =
-      this.currentMode === "audit" && this.responseBuffer.trim().length > 0;
+    // Fire mode-specific completion hook for audit + build-family
+    // turns. Capture mode/model/response BEFORE clearing currentMode so
+    // the handlers can read them.
+    const finishedMode = this.currentMode;
     const respText = this.responseBuffer;
     const modelForHook = this.currentResolvedModel ?? this.model;
     this.currentMode = null;
     this.currentResolvedModel = null;
-    if (audit) {
+
+    const hasResponse = respText.trim().length > 0;
+    if (finishedMode === "audit" && hasResponse) {
       // Snapshot the probes + substrate runs BEFORE clearing so the
       // workspace handler gets the immutable lists this turn captured.
       const probesForHook = this.currentRuntimeProbes.slice();
@@ -667,6 +684,22 @@ export class AgentController {
         });
       } catch (e) {
         console.error("onAuditComplete threw", e);
+      }
+    } else if (
+      hasResponse &&
+      (finishedMode === "build" ||
+        finishedMode === "new" ||
+        finishedMode === "refactor" ||
+        finishedMode === "test-gen")
+    ) {
+      try {
+        this.opts.onBuildComplete?.({
+          responseText: respText,
+          model: modelForHook,
+          mode: finishedMode,
+        });
+      } catch (e) {
+        console.error("onBuildComplete threw", e);
       }
     }
     // Refresh session count so the UI badge stays accurate.

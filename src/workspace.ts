@@ -31,6 +31,15 @@ import {
   type Severity,
   type SubstrateRun,
 } from "./findings";
+import {
+  buildLastBuildIndex,
+  buildReportFilename,
+  parseBuildReportTranscript,
+  renderAnsiBuildReport,
+  renderBuildReportJson,
+  renderBuildReportMarkdown,
+  type BuildReport,
+} from "./build-report";
 import { buildFixPrompt, filterFindings, parseFixArgs } from "./fix";
 import { buildBuildPrompt, parseBuildArgs } from "./build";
 import { buildRefactorPrompt, parseRefactorArgs } from "./refactor";
@@ -38,6 +47,7 @@ import { buildTestGenPrompt, parseTestGenArgs } from "./test-gen";
 import { buildNewPrompt, parseNewArgs } from "./new";
 import {
   defaultFilter as defaultProblemsFilter,
+  formatRelativeTime,
   parseProblemsArgs,
   renderProblemsPanel,
   toggleConfidence as toggleProblemsConfidence,
@@ -131,6 +141,37 @@ export class Workspace {
    */
   private lastAuditReport: AuditReport | null = null;
   /**
+   * Feature description (or rename pair / project name / symbol) for
+   * the currently in-flight /build, /new, /refactor, or /test-gen turn.
+   * Used by handleBuildComplete to tag the persisted report. Cleared
+   * on dispatch failure or completion.
+   */
+  private activeBuildFeature: string | null = null;
+  /**
+   * Most recent successfully parsed build/new/refactor/test-gen report.
+   * Hydrated on first cwd resolution from `<cwd>/.prism/state.json`'s
+   * `last_build` pointer; updated after every successful build-family
+   * completion.
+   */
+  private lastBuildReport: BuildReport | null = null;
+  /**
+   * True once we've attempted to hydrate from `state.json` for the
+   * current cwd, so we don't re-hydrate on every OSC 7 prompt tick.
+   */
+  private workspaceStateHydrated = false;
+  /**
+   * In-memory layout snapshot, mirrored from `state.json.layout` and
+   * pushed back on every drag commit. Defaults match the CSS
+   * fallbacks so a fresh workspace renders identically to v0.
+   */
+  private layout: LayoutPrefs = { ...DEFAULT_LAYOUT };
+  /**
+   * Tracks the most recently interacted-with divider so the
+   * Cmd+Opt+[/] keyboard nudge knows what to move when no divider has
+   * DOM focus (e.g. user just released the mouse).
+   */
+  private lastActiveDivider: DividerKind | null = null;
+  /**
    * Filter state for the Problems panel. Held on the workspace so a
    * user-toggled chip stays toggled across re-renders.
    */
@@ -195,8 +236,10 @@ export class Workspace {
           <div class="file-tree" tabindex="0" role="tree" aria-label="Project files"></div>
         </div>
       </aside>
+      <div class="layout-divider layout-divider-sidebar" data-divider="sidebar" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize sidebar"></div>
       <div class="content">
         <div class="file-preview" data-visible="false" aria-hidden="true"></div>
+        <div class="layout-divider layout-divider-preview" data-divider="preview" data-visible="false" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize file preview"></div>
         <div class="terminal-host"></div>
         <div class="agent-actions"></div>
         <div class="attachments"></div>
@@ -209,6 +252,7 @@ export class Workspace {
           <span class="intent-badge" data-intent="command">CMD</span>
         </div>
       </div>
+      <div class="layout-divider layout-divider-problems" data-divider="problems" data-visible="false" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize problems panel"></div>
       <aside class="problems-panel" data-visible="false" aria-hidden="true"></aside>
     `;
     parent.appendChild(this.root);
@@ -300,6 +344,13 @@ export class Workspace {
             void this.refreshFileTreeRoot();
           }
         }
+        // First time we know the cwd, try to rehydrate the workspace
+        // spine (last audit + last build) from state.json. Subsequent
+        // cwd changes (rare; user typed `cd`) re-trigger hydration so
+        // the panel reflects the new project.
+        if (!this.workspaceStateHydrated) {
+          void this.hydrateWorkspaceState();
+        }
       }
       return true;
     });
@@ -355,12 +406,14 @@ export class Workspace {
       onBusyChange: (busy) => this.setBusyState(busy),
       onStall: () => this.setStalledState(true),
       onAuditComplete: (info) => this.handleAuditComplete(info),
+      onBuildComplete: (info) => this.handleBuildComplete(info),
     });
     this.setupEditor();
     this.setupAttachments();
     this.setupSlashFocusHijack();
     this.setupBusyPill();
     this.setupProblemsPanel();
+    this.setupLayoutDividers();
     this.updateModelBadge();
   }
 
@@ -511,6 +564,12 @@ export class Workspace {
       );
       return;
     }
+    // /last \u2014 print a compact summary of the persisted workspace
+    // state (last audit + last build pointers).
+    if (/^\s*\/last\s*$/i.test(text)) {
+      this.term.write(this.renderLastAnsi());
+      return;
+    }
     // /verify on|off|<model> — control the reviewer pass.
     const verifyMatch = /^\s*\/verify(?:\s+(.*))?$/i.exec(text);
     if (verifyMatch) {
@@ -568,6 +627,7 @@ export class Workspace {
       }
       const buildPrompt = buildBuildPrompt(parsed.feature);
       this.setTitleFromText(`build: ${parsed.feature}`);
+      this.activeBuildFeature = parsed.feature;
       this.term.write(
         `\r\n\x1b[2m[build] starting substrate-gated build of \x1b[36m${sanitize(parsed.feature)}\x1b[0m\r\n`,
       );
@@ -669,6 +729,9 @@ export class Workspace {
       });
       const target = parsed.into ?? `${parsed.projectName}/`;
       this.setTitleFromText(`new ${parsed.projectName}`);
+      this.activeBuildFeature = parsed.description
+        ? `${parsed.projectName} (${parsed.description})`
+        : parsed.projectName;
       this.term.write(
         `\r\n\x1b[2m[new] scaffolding \x1b[36m${sanitize(parsed.projectName)}\x1b[0m\x1b[2m into \x1b[36m${sanitize(target)}\x1b[0m${parsed.description ? `\x1b[2m \u2014 \x1b[36m${sanitize(parsed.description)}\x1b[0m` : ""}\x1b[0m\r\n`,
       );
@@ -704,6 +767,9 @@ export class Workspace {
         framework: parsed.framework,
       });
       this.setTitleFromText(`test-gen ${parsed.symbol}`);
+      this.activeBuildFeature = parsed.framework
+        ? `${parsed.symbol} (${parsed.framework})`
+        : parsed.symbol;
       this.term.write(
         `\r\n\x1b[2m[test-gen] generating tests for \x1b[36m${sanitize(parsed.symbol)}\x1b[0m\x1b[2m${parsed.file ? ` in \x1b[36m${sanitize(parsed.file)}\x1b[0m\x1b[2m` : ""}${parsed.framework ? ` (\x1b[36m${sanitize(parsed.framework)}\x1b[0m\x1b[2m)` : ""}\x1b[0m\r\n`,
       );
@@ -741,6 +807,7 @@ export class Workspace {
       this.setTitleFromText(
         `refactor ${parsed.oldName} \u2192 ${parsed.newName}`,
       );
+      this.activeBuildFeature = `${parsed.oldName} \u2192 ${parsed.newName}${parsed.scope ? ` in ${parsed.scope}` : ""}`;
       this.term.write(
         `\r\n\x1b[2m[refactor] renaming \x1b[36m${sanitize(parsed.oldName)}\x1b[0m\x1b[2m \u2192 \x1b[36m${sanitize(parsed.newName)}\x1b[0m\x1b[2m${parsed.scope ? ` in \x1b[36m${sanitize(parsed.scope)}\x1b[0m\x1b[2m` : ""}\x1b[0m\r\n`,
       );
@@ -1120,6 +1187,7 @@ export class Workspace {
     if (!panel) return;
     panel.dataset.visible = "true";
     panel.setAttribute("aria-hidden", "false");
+    this.setDividerVisible("problems", true);
     this.renderProblemsPanelInto();
   }
 
@@ -1129,6 +1197,7 @@ export class Workspace {
     if (!panel) return;
     panel.dataset.visible = "false";
     panel.setAttribute("aria-hidden", "true");
+    this.setDividerVisible("problems", false);
   }
 
   private renderProblemsPanelInto(): void {
@@ -1283,11 +1352,310 @@ export class Workspace {
         this.term.write(
           `\x1b[2m[audit] sidecar     \u2192 \x1b[36m${sanitize(prettyJson)}\x1b[0m\x1b[2m (${formatBytesShort(result.json_bytes_written ?? 0)})\x1b[0m\r\n`,
         );
+        // Update the workspace-state pointer so a future tab open
+        // hydrates this audit without re-running it. Best-effort: a
+        // failure here is logged but doesn't fail the audit turn.
+        void this.updateLastAuditPointer(report, result.json_path);
       }
     } catch (e) {
       this.term.write(
         `\r\n\x1b[1;31m[audit]\x1b[0m report write failed: ${sanitize(String(e))}\r\n`,
       );
+    }
+  }
+
+  // -- build/new/refactor/test-gen completion --------------------------------
+
+  /**
+   * Fired by the agent when a build-family turn (build / new / refactor /
+   * test-gen) finishes successfully. Mirrors `handleAuditComplete`:
+   *   1. Parse the BUILD/RENAME/SCAFFOLD/TEST GEN REPORT block.
+   *   2. Render an ANSI summary into xterm.
+   *   3. Persist markdown + JSON sidecar under `<cwd>/.prism/builds/`.
+   *   4. Update `state.json.last_build` with a pointer + summary.
+   *
+   * `/fix` deliberately does NOT route through this hook — its output
+   * contract (APPLIED/SKIPPED/VERIFIED) is different and warrants a
+   * sibling parser if/when we want to track fix completions in the
+   * spine.
+   */
+  private async handleBuildComplete(info: {
+    responseText: string;
+    model: string;
+    mode: string;
+  }): Promise<void> {
+    // Capture + clear the active feature snapshot regardless of whether
+    // the persistence path succeeds, so a follow-up dispatch isn't
+    // misattributed to the wrong feature.
+    const feature = this.activeBuildFeature ?? "";
+    this.activeBuildFeature = null;
+
+    const report = parseBuildReportTranscript(info.responseText, {
+      mode: info.mode,
+      model: info.model,
+      feature,
+    });
+    this.lastBuildReport = report;
+
+    // ANSI summary first so the user sees the parse outcome even if
+    // the persistence step fails.
+    this.term.write(renderAnsiBuildReport(report));
+
+    if (!this.cwd) {
+      this.term.write(
+        `\r\n\x1b[1;33m[${sanitize(info.mode)}]\x1b[0m \x1b[2mcwd unknown; skipping report write\x1b[0m\r\n`,
+      );
+      return;
+    }
+
+    const markdown = renderBuildReportMarkdown(report);
+    const json = renderBuildReportJson(report);
+    const filename = buildReportFilename(report.generated_at);
+
+    try {
+      const result = await invoke<{
+        path: string;
+        bytes_written: number;
+        json_path?: string | null;
+        json_bytes_written?: number | null;
+      }>("write_build_report", {
+        cwd: this.cwd,
+        filename,
+        content: markdown,
+        jsonContent: json,
+      });
+      const pretty = prettyPath(result.path);
+      this.term.write(
+        `\r\n\x1b[1;32m[${sanitize(info.mode)}]\x1b[0m \x1b[2mreport saved \u2192 \x1b[36m${sanitize(pretty)}\x1b[0m\x1b[2m (${formatBytesShort(result.bytes_written)})\x1b[0m\r\n`,
+      );
+      if (result.json_path) {
+        const prettyJson = prettyPath(result.json_path);
+        this.term.write(
+          `\x1b[2m[${sanitize(info.mode)}] sidecar     \u2192 \x1b[36m${sanitize(prettyJson)}\x1b[0m\x1b[2m (${formatBytesShort(result.json_bytes_written ?? 0)})\x1b[0m\r\n`,
+        );
+        void this.updateLastBuildPointer(report, result.json_path);
+      }
+    } catch (e) {
+      this.term.write(
+        `\r\n\x1b[1;31m[${sanitize(info.mode)}]\x1b[0m report write failed: ${sanitize(String(e))}\r\n`,
+      );
+    }
+  }
+
+  // -- workspace state spine -------------------------------------------------
+
+  /**
+   * On first cwd resolution (or when the user `cd`s into a new project),
+   * load `<cwd>/.prism/state.json` if it exists and rehydrate
+   * `lastAuditReport` and `lastBuildReport` from the pointed-to JSON
+   * sidecars. Best-effort: any failure logs and leaves in-memory state
+   * empty so the next audit/build rewrites it cleanly.
+   *
+   * We deliberately do NOT auto-open the Problems panel here \u2014 a user
+   * who reopens a tab to a clean slate may not want their last audit
+   * shoved in their face. `/problems show` brings it back instantly.
+   */
+  private async hydrateWorkspaceState(): Promise<void> {
+    if (this.workspaceStateHydrated) return;
+    if (!this.cwd) return;
+    this.workspaceStateHydrated = true;
+    let state: PersistedWorkspaceState | null = null;
+    try {
+      state = await invoke<PersistedWorkspaceState | null>(
+        "read_workspace_state",
+        { cwd: this.cwd },
+      );
+    } catch (e) {
+      // Corrupt state file. Surface dimly and continue with no spine.
+      this.term.write(
+        `\r\n\x1b[2m[workspace] could not load state: ${sanitize(String(e))}\x1b[0m\r\n`,
+      );
+      return;
+    }
+    if (!state) return;
+
+    if (state.last_audit?.path) {
+      try {
+        const lookup = await invoke<{ path: string; content: string; bytes: number }>(
+          "read_latest_audit_report",
+          { cwd: this.cwd, path: state.last_audit.path },
+        );
+        const parsed = JSON.parse(lookup.content) as AuditReport;
+        this.lastAuditReport = parsed;
+      } catch (e) {
+        // Pointer stale (file moved/deleted). Leave audit empty; the
+        // pointer will be overwritten on the next /audit completion.
+        console.warn("hydrate last_audit failed", e);
+      }
+    }
+    if (state.last_build?.path) {
+      try {
+        const lookup = await invoke<{ path: string; content: string; bytes: number }>(
+          "read_latest_build_report",
+          { cwd: this.cwd, path: state.last_build.path },
+        );
+        const parsed = JSON.parse(lookup.content) as BuildReport;
+        this.lastBuildReport = parsed;
+      } catch (e) {
+        console.warn("hydrate last_build failed", e);
+      }
+    }
+
+    if (state.layout) {
+      this.layout = clampLayout({
+        sidebar_width: state.layout.sidebar_width ?? this.layout.sidebar_width,
+        problems_width: state.layout.problems_width ?? this.layout.problems_width,
+        preview_height: state.layout.preview_height ?? this.layout.preview_height,
+      });
+      this.applyLayoutToDOM();
+    }
+  }
+
+  /**
+   * Update `state.json.last_audit` with a pointer + summary. Reads the
+   * current state, mutates the audit slot only, writes it back. We do
+   * NOT touch `last_build` or `recent_files` here so two concurrent
+   * completions can't trample each other's slots.
+   */
+  private async updateLastAuditPointer(
+    report: AuditReport,
+    absoluteJsonPath: string,
+  ): Promise<void> {
+    if (!this.cwd) return;
+    const relative = relativeToCwd(absoluteJsonPath, this.cwd);
+    const counts = countByConfidenceShim(report);
+    const last_audit = {
+      path: relative,
+      generated_at: report.generated_at,
+      scope: report.scope,
+      counts: {
+        error: report.summary.errors,
+        warning: report.summary.warnings,
+        info: report.summary.info,
+        confirmed: counts.confirmed,
+        probable: counts.probable,
+        candidate: counts.candidate,
+      },
+    };
+    await this.mergeWorkspaceState((s) => ({ ...s, last_audit }));
+  }
+
+  /** Update `state.json.last_build` with a pointer + summary. */
+  private async updateLastBuildPointer(
+    report: BuildReport,
+    absoluteJsonPath: string,
+  ): Promise<void> {
+    if (!this.cwd) return;
+    const relative = relativeToCwd(absoluteJsonPath, this.cwd);
+    const last_build = buildLastBuildIndex(report, relative);
+    await this.mergeWorkspaceState((s) => ({ ...s, last_build }));
+  }
+
+  /**
+   * Render an ANSI summary of the in-memory workspace state — last
+   * audit + last build, with the same shape `state.json` carries. Pure
+   * (modulo wall clock for the relative-time labels). The xterm-bound
+   * `/last` handler is the only caller today; tests can poke directly
+   * at `lastAuditReport` / `lastBuildReport` to exercise this without
+   * IPC.
+   */
+  private renderLastAnsi(): string {
+    const RESET = "\x1b[0m";
+    const DIM = "\x1b[2m";
+    const BOLD = "\x1b[1m";
+    const CYAN = "\x1b[36m";
+    const GREEN = "\x1b[32m";
+    const YELLOW = "\x1b[33m";
+    const RED = "\x1b[31m";
+    const out: string[] = ["\r\n"];
+    if (!this.lastAuditReport && !this.lastBuildReport) {
+      out.push(
+        `${DIM}[last] no persisted state yet \u2014 run /audit or /build to populate ${CYAN}.prism/state.json${RESET}\r\n`,
+      );
+      return out.join("");
+    }
+    out.push(
+      `${BOLD}Last activity${RESET} ${DIM}\u2014 from ${CYAN}.prism/state.json${RESET}\r\n`,
+    );
+    if (this.lastAuditReport) {
+      const a = this.lastAuditReport;
+      const rel = formatRelativeTime(a.generated_at);
+      out.push(
+        `  ${BOLD}audit${RESET} ${DIM}${rel}${RESET}` +
+          ` ${RED}${a.summary.errors} err${RESET}` +
+          ` ${YELLOW}${a.summary.warnings} warn${RESET}` +
+          ` ${CYAN}${a.summary.info} info${RESET}` +
+          (a.scope ? ` ${DIM}scope ${a.scope}${RESET}` : "") +
+          `\r\n`,
+      );
+    } else {
+      out.push(`  ${DIM}audit \u2014 (none yet; run /audit)${RESET}\r\n`);
+    }
+    if (this.lastBuildReport) {
+      const b = this.lastBuildReport;
+      const rel = formatRelativeTime(b.generated_at);
+      const statusColor =
+        b.status === "completed"
+          ? GREEN
+          : b.status === "incomplete"
+            ? YELLOW
+            : DIM;
+      out.push(
+        `  ${BOLD}build${RESET} ${DIM}${rel}${RESET}` +
+          ` ${statusColor}${b.status}${RESET}` +
+          ` ${DIM}\u00b7 ${CYAN}${b.mode}${RESET}` +
+          (b.feature ? ` ${DIM}\u00b7 ${b.feature}${RESET}` : "") +
+          `\r\n`,
+      );
+      const v = b.verification;
+      if (v.typecheck || v.tests || v.http) {
+        const parts: string[] = [];
+        if (v.typecheck) parts.push(`typecheck ${v.typecheck}`);
+        if (v.tests) parts.push(`tests ${v.tests}`);
+        if (v.http) parts.push(`http ${v.http}`);
+        out.push(`    ${DIM}${parts.join(" \u00b7 ")}${RESET}\r\n`);
+      }
+    } else {
+      out.push(
+        `  ${DIM}build \u2014 (none yet; run /build, /new, /refactor, /test-gen)${RESET}\r\n`,
+      );
+    }
+    return out.join("");
+  }
+
+  /**
+   * Read-modify-write the workspace state file. Encapsulates the
+   * "version stays at 1, recent_files preserved, error best-effort"
+   * pattern so callers can pass a single field-level mutator.
+   */
+  private async mergeWorkspaceState(
+    mutate: (s: PersistedWorkspaceState) => PersistedWorkspaceState,
+  ): Promise<void> {
+    if (!this.cwd) return;
+    let current: PersistedWorkspaceState | null = null;
+    try {
+      current = await invoke<PersistedWorkspaceState | null>(
+        "read_workspace_state",
+        { cwd: this.cwd },
+      );
+    } catch {
+      // Treat a corrupt file the same as missing \u2014 the next write
+      // overwrites the bad bytes with a clean spine.
+      current = null;
+    }
+    const base: PersistedWorkspaceState = current ?? {
+      version: 1,
+      recent_files: [],
+    };
+    const next = mutate(base);
+    if (next.version === 0 || next.version === undefined) next.version = 1;
+    try {
+      await invoke("write_workspace_state", {
+        cwd: this.cwd,
+        state: next,
+      });
+    } catch (e) {
+      console.warn("write_workspace_state failed", e);
     }
   }
 
@@ -1790,6 +2158,7 @@ export class Workspace {
     if (!overlay) return;
     overlay.dataset.visible = "true";
     overlay.setAttribute("aria-hidden", "false");
+    this.setDividerVisible("preview", true);
     overlay.innerHTML =
       `<div class="file-preview-header">` +
       `<span class="file-preview-path">${escapeHtml(path)}</span>` +
@@ -1823,6 +2192,181 @@ export class Workspace {
     overlay.dataset.visible = "false";
     overlay.setAttribute("aria-hidden", "true");
     overlay.innerHTML = "";
+    this.setDividerVisible("preview", false);
+  }
+
+  // -- layout dividers -----------------------------------------------------
+
+  /**
+   * Wire pointer-drag, double-click-to-snap, and keyboard nudge
+   * handlers on the three layout dividers (sidebar / problems-panel /
+   * file-preview). Dividers write CSS custom properties on the
+   * workspace root and persist on commit; visibility is driven
+   * separately by `setDividerVisible` so a hidden panel never
+   * exposes a draggable handle.
+   */
+  private setupLayoutDividers(): void {
+    this.applyLayoutToDOM();
+    const dividers = this.root.querySelectorAll<HTMLElement>(
+      ".layout-divider[data-divider]",
+    );
+    for (const el of Array.from(dividers)) {
+      const kind = (el.dataset.divider ?? "") as DividerKind;
+      if (!isDividerKind(kind)) continue;
+      this.wireDivider(el, kind);
+    }
+
+    // Global Cmd+Opt+[ / Cmd+Opt+] handler. The per-divider handler
+    // already covers the case where a divider has DOM focus; this
+    // catches the much more common case where the user just released
+    // a drag and wants to keep nudging without re-focusing the 4px
+    // handle. Falls back to the sidebar divider as a safe default
+    // when nothing has been touched yet.
+    const onGlobalKey = (e: KeyboardEvent) => {
+      if (!this.root.classList.contains("active")) return;
+      if (!(e.metaKey || e.ctrlKey) || !e.altKey) return;
+      if (e.key !== "[" && e.key !== "]") return;
+      // If a divider is already focused, its own listener handles it.
+      const active = document.activeElement as HTMLElement | null;
+      if (active && active.classList.contains("layout-divider")) return;
+      const kind = this.lastActiveDivider ?? "sidebar";
+      e.preventDefault();
+      this.nudgeDivider(kind, e.key === "]" ? +KEYBOARD_NUDGE_PX : -KEYBOARD_NUDGE_PX);
+    };
+    document.addEventListener("keydown", onGlobalKey, { capture: true });
+    this.disposers.push(() =>
+      document.removeEventListener("keydown", onGlobalKey, { capture: true }),
+    );
+  }
+
+  private wireDivider(el: HTMLElement, kind: DividerKind): void {
+    const onPointerDown = (ev: PointerEvent) => {
+      // Ignore non-primary pointers (right-click, middle-click) so a
+      // user inspecting the divider with devtools doesn't start a drag.
+      if (ev.button !== 0) return;
+      ev.preventDefault();
+      const startX = ev.clientX;
+      const startY = ev.clientY;
+      const startSidebar = this.layout.sidebar_width;
+      const startProblems = this.layout.problems_width;
+      const startPreview = this.layout.preview_height;
+      el.setPointerCapture(ev.pointerId);
+      el.classList.add("dragging");
+      this.lastActiveDivider = kind;
+      this.root.classList.add("layout-dragging");
+      this.root.classList.add(
+        kind === "preview" ? "layout-dragging-row" : "layout-dragging-col",
+      );
+
+      const onMove = (e: PointerEvent) => {
+        if (kind === "sidebar") {
+          // Drag right → wider sidebar.
+          this.layout.sidebar_width = clampSidebar(startSidebar + (e.clientX - startX));
+        } else if (kind === "problems") {
+          // Drag left → wider problems panel.
+          this.layout.problems_width = clampProblems(startProblems - (e.clientX - startX));
+        } else if (kind === "preview") {
+          // The divider sits BELOW the preview; drag down → taller preview.
+          this.layout.preview_height = clampPreview(startPreview + (e.clientY - startY));
+        }
+        this.applyLayoutToDOM();
+        // Refit xterm during the drag so the terminal reflows in real
+        // time — otherwise the user sees the gutter shrink/expand only
+        // after release. Cheap; xterm internally rAFs.
+        this.fitTerminalWithGutter();
+      };
+      const onUp = (e: PointerEvent) => {
+        el.releasePointerCapture(e.pointerId);
+        el.classList.remove("dragging");
+        this.root.classList.remove(
+          "layout-dragging",
+          "layout-dragging-row",
+          "layout-dragging-col",
+        );
+        el.removeEventListener("pointermove", onMove);
+        el.removeEventListener("pointerup", onUp);
+        el.removeEventListener("pointercancel", onUp);
+        void this.persistLayout();
+      };
+      el.addEventListener("pointermove", onMove);
+      el.addEventListener("pointerup", onUp);
+      el.addEventListener("pointercancel", onUp);
+    };
+
+    const onDblClick = (ev: MouseEvent) => {
+      ev.preventDefault();
+      // Snap to the default for this divider only — leave the others
+      // where the user has them.
+      if (kind === "sidebar") this.layout.sidebar_width = DEFAULT_LAYOUT.sidebar_width;
+      else if (kind === "problems") this.layout.problems_width = DEFAULT_LAYOUT.problems_width;
+      else if (kind === "preview") this.layout.preview_height = DEFAULT_LAYOUT.preview_height;
+      this.applyLayoutToDOM();
+      this.fitTerminalWithGutter();
+      void this.persistLayout();
+    };
+
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (!(ev.metaKey || ev.ctrlKey) || !ev.altKey) return;
+      if (ev.key !== "[" && ev.key !== "]") return;
+      ev.preventDefault();
+      this.nudgeDivider(kind, ev.key === "]" ? +KEYBOARD_NUDGE_PX : -KEYBOARD_NUDGE_PX);
+    };
+
+    el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("dblclick", onDblClick);
+    el.addEventListener("keydown", onKeyDown);
+    el.addEventListener("focus", () => {
+      this.lastActiveDivider = kind;
+    });
+  }
+
+  /**
+   * Move the named divider by `delta` pixels in its primary axis.
+   * Positive delta grows the visible adjacent pane (sidebar wider,
+   * problems wider, preview taller).
+   */
+  private nudgeDivider(kind: DividerKind, delta: number): void {
+    if (kind === "sidebar") {
+      this.layout.sidebar_width = clampSidebar(this.layout.sidebar_width + delta);
+    } else if (kind === "problems") {
+      this.layout.problems_width = clampProblems(this.layout.problems_width + delta);
+    } else if (kind === "preview") {
+      this.layout.preview_height = clampPreview(this.layout.preview_height + delta);
+    }
+    this.applyLayoutToDOM();
+    this.fitTerminalWithGutter();
+    void this.persistLayout();
+  }
+
+  /**
+   * Toggle the visibility of a divider in tandem with its sibling pane.
+   * Used when the file preview opens/closes and when the problems panel
+   * is shown/hidden.
+   */
+  private setDividerVisible(kind: DividerKind, visible: boolean): void {
+    const el = this.root.querySelector<HTMLElement>(
+      `.layout-divider[data-divider="${kind}"]`,
+    );
+    if (!el) return;
+    el.dataset.visible = visible ? "true" : "false";
+  }
+
+  /** Push the in-memory layout snapshot onto the workspace root as CSS vars. */
+  private applyLayoutToDOM(): void {
+    this.root.style.setProperty("--sidebar-width", `${this.layout.sidebar_width}px`);
+    this.root.style.setProperty("--problems-width", `${this.layout.problems_width}px`);
+    this.root.style.setProperty("--preview-height", `${this.layout.preview_height}px`);
+  }
+
+  /**
+   * Persist the current layout into `state.json` via the merge helper.
+   * Best-effort: a write failure is logged, never surfaced to the user
+   * — a layout that fails to persist still works for the active session.
+   */
+  private async persistLayout(): Promise<void> {
+    if (!this.cwd) return;
+    const layout = { ...this.layout };
+    await this.mergeWorkspaceState((s) => ({ ...s, layout }));
   }
 
   // -- save chat -----------------------------------------------------------
@@ -1963,6 +2507,135 @@ function parseAuditArgs(raw: string): {
 function shortModelName(model: string): string {
   const slash = model.indexOf("/");
   return slash >= 0 ? model.slice(slash + 1) : model;
+}
+
+/**
+ * Mirror of the Rust `WorkspaceState` struct in
+ * `src-tauri/src/workspace_state.rs`. Kept in lockstep with that file;
+ * additive changes don't need a version bump but renames or removals
+ * do (see the `version` field).
+ */
+interface PersistedWorkspaceState {
+  version: number;
+  last_audit?: {
+    path: string;
+    generated_at: string;
+    scope?: string | null;
+    counts: {
+      error: number;
+      warning: number;
+      info: number;
+      confirmed: number;
+      probable: number;
+      candidate: number;
+    };
+  };
+  last_build?: {
+    path: string;
+    generated_at: string;
+    feature: string;
+    status: "completed" | "incomplete" | "unknown";
+    verification?: {
+      typecheck?: string;
+      tests?: string;
+      http?: string;
+    };
+  };
+  recent_files: { path: string; opened_at: string }[];
+  layout?: {
+    sidebar_width?: number;
+    problems_width?: number;
+    preview_height?: number;
+  };
+}
+
+/** Identifier for one of the three resizable dividers. */
+type DividerKind = "sidebar" | "problems" | "preview";
+
+function isDividerKind(s: string): s is DividerKind {
+  return s === "sidebar" || s === "problems" || s === "preview";
+}
+
+/** In-memory representation of the persisted layout (no optional fields). */
+interface LayoutPrefs {
+  sidebar_width: number;
+  problems_width: number;
+  preview_height: number;
+}
+
+/** Defaults used when state.json carries no layout. */
+const DEFAULT_LAYOUT: LayoutPrefs = {
+  sidebar_width: 240,
+  problems_width: 360,
+  preview_height: 360,
+};
+
+/** Step size for Cmd+Opt+[/] keyboard nudges. */
+const KEYBOARD_NUDGE_PX = 16;
+
+/**
+ * Min/max bounds for each axis. Min values keep the panes usable; max
+ * values prevent a paranoid drag from taking over more than half the
+ * viewport. The frontend clamps on every apply, so a corrupt
+ * `state.json.layout` can't make panes unreachable.
+ */
+function clampSidebar(px: number): number {
+  const max = Math.max(280, Math.floor(window.innerWidth * 0.5));
+  return clampInt(px, 180, max);
+}
+function clampProblems(px: number): number {
+  const max = Math.max(280, Math.floor(window.innerWidth * 0.5));
+  return clampInt(px, 280, max);
+}
+function clampPreview(px: number): number {
+  const max = Math.max(120, Math.floor(window.innerHeight * 0.7));
+  return clampInt(px, 80, max);
+}
+function clampInt(v: number, lo: number, hi: number): number {
+  if (!Number.isFinite(v)) return lo;
+  return Math.max(lo, Math.min(hi, Math.round(v)));
+}
+
+function clampLayout(p: LayoutPrefs): LayoutPrefs {
+  return {
+    sidebar_width: clampSidebar(p.sidebar_width),
+    problems_width: clampProblems(p.problems_width),
+    preview_height: clampPreview(p.preview_height),
+  };
+}
+
+/**
+ * Sidestep the unexported `countByConfidence` in `findings.ts` so the
+ * workspace can compute the same triple for `state.json.last_audit`
+ * without a circular import. This duplicates a tiny amount of logic;
+ * if findings.ts ever exports this directly, swap the call sites.
+ */
+function countByConfidenceShim(
+  report: AuditReport,
+): { confirmed: number; probable: number; candidate: number } {
+  let confirmed = 0;
+  let probable = 0;
+  let candidate = 0;
+  for (const f of report.findings) {
+    if (f.confidence === "confirmed") confirmed++;
+    else if (f.confidence === "probable") probable++;
+    else candidate++;
+  }
+  return { confirmed, probable, candidate };
+}
+
+/**
+ * Convert an absolute path under cwd to a cwd-relative path. The
+ * fallback (return the absolute path) preserves correctness if the
+ * artifact happens to live outside cwd, e.g. when the user passes a
+ * symlinked workspace; consumers will accept either form.
+ */
+function relativeToCwd(absolute: string, cwd: string): string {
+  if (!cwd) return absolute;
+  const cwdNormalized = cwd.endsWith("/") ? cwd : `${cwd}/`;
+  return absolute.startsWith(cwdNormalized)
+    ? absolute.slice(cwdNormalized.length)
+    : absolute;
 }
 
 function sanitize(s: string): string {

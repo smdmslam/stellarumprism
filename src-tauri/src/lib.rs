@@ -22,6 +22,7 @@ pub mod schema;
 mod second_pass;
 mod shell_integration;
 mod tools;
+mod workspace_state;
 
 use agent::{
     agent_cancel, agent_drop_session, agent_get_history, agent_get_session_info,
@@ -31,6 +32,9 @@ use approval::{agent_clear_session_approval, agent_tool_decision, ApprovalState}
 use file_ref::{list_dir_entries, list_directory_tree, read_file_scoped, read_file_snippet};
 use save_chat::save_chat_markdown;
 use second_pass::{read_latest_audit_report, write_audit_report};
+use workspace_state::{
+    read_latest_build_report, read_workspace_state, write_build_report, write_workspace_state,
+};
 use config::{
     get_agent_config, load_or_init, set_agent_model, set_verifier_enabled, set_verifier_model,
     ConfigState,
@@ -70,6 +74,10 @@ pub fn run() {
             save_chat_markdown,
             write_audit_report,
             read_latest_audit_report,
+            read_workspace_state,
+            write_workspace_state,
+            write_build_report,
+            read_latest_build_report,
             read_file_scoped,
             read_file_snippet,
             list_dir_entries,

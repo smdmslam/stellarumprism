@@ -153,9 +153,15 @@ body {
   min-width: 0;
   display: none;
   flex-direction: row;
-  gap: 12px;
+  gap: 4px;
   padding: 12px 14px 14px 14px;
   box-sizing: border-box;
+  /* Layout custom properties — driven by drag-handle pointer events in
+   * workspace.ts and persisted into state.json.layout. Defaults match
+   * the previous fixed values so the v0 look is unchanged on first run. */
+  --sidebar-width: 240px;
+  --problems-width: 360px;
+  --preview-height: 40vh;
 }
 .workspace.active {
   display: flex;
@@ -164,9 +170,8 @@ body {
 /* ---------- blocks sidebar ---------- */
 
 .blocks-sidebar {
-  flex: 0 0 240px;
+  flex: 0 0 var(--sidebar-width);
   min-width: 180px;
-  max-width: 320px;
   display: flex;
   flex-direction: column;
   background-color: #0a0c11;
@@ -522,9 +527,8 @@ body {
  * without overlapping the terminal.
  */
 .problems-panel {
-  flex: 0 0 360px;
-  min-width: 320px;
-  max-width: 480px;
+  flex: 0 0 var(--problems-width);
+  min-width: 280px;
   display: none;
   flex-direction: column;
   background: #0a0c11;
@@ -1471,11 +1475,77 @@ body {
   flex: 0 0 auto;
   display: none;
   flex-direction: column;
-  max-height: 40vh;
+  height: var(--preview-height);
+  max-height: 70vh;
+  min-height: 80px;
   background: #0c1018;
   border-bottom: 1px solid #1f2937;
 }
 .file-preview[data-visible="true"] { display: flex; }
+
+/* ---------- layout dividers (resize handles) ---------- */
+
+.layout-divider {
+  flex: 0 0 4px;
+  align-self: stretch;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+  z-index: 2;
+  transition: background-color 120ms ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.layout-divider::before {
+  content: "";
+  position: absolute;
+  inset: 0 -3px;
+}
+.layout-divider:hover,
+.layout-divider.dragging,
+.layout-divider:focus-visible {
+  background: rgba(125, 211, 252, 0.35);
+  outline: none;
+}
+.layout-divider-preview {
+  flex: 0 0 4px;
+  align-self: stretch;
+  background: transparent;
+  cursor: row-resize;
+  margin-top: -2px;
+  margin-bottom: -2px;
+}
+.layout-divider-preview::before {
+  content: "";
+  position: absolute;
+  inset: -3px 0;
+}
+.layout-divider-preview:hover,
+.layout-divider-preview.dragging,
+.layout-divider-preview:focus-visible {
+  background: rgba(125, 211, 252, 0.35);
+  outline: none;
+}
+/* Hide the preview divider when the preview itself isn't visible. */
+.workspace .file-preview:not([data-visible="true"]) + .layout-divider-preview,
+.workspace .layout-divider-preview[data-visible="false"] {
+  display: none;
+}
+/* Hide the problems-panel divider when the panel is hidden. */
+.workspace .problems-panel:not([data-visible="true"]) ~ .layout-divider-problems,
+.workspace .layout-divider-problems[data-visible="false"] {
+  display: none;
+}
+/* When a drag is in progress, suppress text selection across the whole
+ * workspace so the pointer drag doesn't accidentally select prose. */
+.workspace.layout-dragging,
+.workspace.layout-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  cursor: inherit;
+}
+.workspace.layout-dragging.layout-dragging-col { cursor: col-resize; }
+.workspace.layout-dragging.layout-dragging-row { cursor: row-resize; }
 
 .file-preview-header {
   flex: 0 0 auto;

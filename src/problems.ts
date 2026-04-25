@@ -228,6 +228,16 @@ function renderHeader(
       );
     })
     .join("");
+  // Relative-time subline so the user can tell at a glance whether the
+  // findings reflect their current code or a stale audit. Format mirrors
+  // the conventional "3m ago" shorthand used elsewhere.
+  const subline =
+    `<div class="problems-subline">` +
+    `<span class="problems-when" title="${escapeAttr(report.generated_at)}">audit \u00b7 ${escapeHtml(formatRelativeTime(report.generated_at))}</span>` +
+    (report.scope
+      ? ` <span class="problems-when-scope">scope ${escapeHtml(report.scope)}</span>`
+      : "") +
+    `</div>`;
   return (
     `<div class="problems-header">` +
     `<div class="problems-title">` +
@@ -236,10 +246,35 @@ function renderHeader(
     scope +
     `<button class="problems-close" data-problems-action="close" title="Close panel (Esc)">×</button>` +
     `</div>` +
+    subline +
     `<div class="problems-chips">${sevChips}</div>` +
     `<div class="problems-chips">${confChips}</div>` +
     `</div>`
   );
+}
+
+/**
+ * Render an ISO-8601 timestamp as a coarse-grained "how long ago?"
+ * label. Pure; no wall-clock dependency on the caller. Returns the
+ * input verbatim if it isn't parseable so we never display garbage.
+ */
+export function formatRelativeTime(iso: string, now: Date = new Date()): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return iso;
+  const deltaMs = now.getTime() - t;
+  if (deltaMs < 0) return "just now";
+  const secs = Math.floor(deltaMs / 1000);
+  if (secs < 60) return "just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(days / 365);
+  return `${years}y ago`;
 }
 
 function renderFileGroup(file: string, findings: Finding[]): string {
