@@ -76,6 +76,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: "/help",
     detail: "Show this list",
   },
+  {
+    label: "/problems",
+    detail: "Toggle the Problems panel",
+    info: "Open / close / clear the right-side Problems panel that lists the latest audit's findings grouped by file. Auto-opens after /audit completes. Args: show, hide, toggle (default), clear.",
+    takesArg: true,
+  },
 
   // -- Modes (persona-switched agent turns) -------------------------------
   // Each mode contributes its primary alias as a slash command. Additional

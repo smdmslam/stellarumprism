@@ -26,10 +26,20 @@ import {
   renderJsonReport,
   renderMarkdownReport,
   type AuditReport,
+  type Confidence,
   type RuntimeProbe,
+  type Severity,
 } from "./findings";
 import { buildFixPrompt, filterFindings, parseFixArgs } from "./fix";
 import { buildBuildPrompt, parseBuildArgs } from "./build";
+import {
+  defaultFilter as defaultProblemsFilter,
+  parseProblemsArgs,
+  renderProblemsPanel,
+  toggleConfidence as toggleProblemsConfidence,
+  toggleSeverity as toggleProblemsSeverity,
+  type ProblemsFilter,
+} from "./problems";
 
 /**
  * Pixels of breathing room to reserve on the right of the terminal so the
@@ -89,6 +99,20 @@ export class Workspace {
    * completion or error.
    */
   private activeAuditScope: string | null = null;
+  /**
+   * Most recent audit report parsed in this tab. Drives the Problems
+   * panel; null until the user runs `/audit` for the first time.
+   * Persists across panel hide/show so toggling re-opens the same
+   * findings instead of an empty state.
+   */
+  private lastAuditReport: AuditReport | null = null;
+  /**
+   * Filter state for the Problems panel. Held on the workspace so a
+   * user-toggled chip stays toggled across re-renders.
+   */
+  private problemsFilter: ProblemsFilter = defaultProblemsFilter();
+  /** Whether the Problems panel is currently visible. */
+  private problemsVisible = false;
   private readonly cb: WorkspaceCallbacks;
 
   private term!: Terminal;
@@ -131,6 +155,7 @@ export class Workspace {
           <span class="intent-badge" data-intent="command">CMD</span>
         </div>
       </div>
+      <aside class="problems-panel" data-visible="false" aria-hidden="true"></aside>
     `;
     parent.appendChild(this.root);
 
@@ -270,6 +295,7 @@ export class Workspace {
     this.setupAttachments();
     this.setupSlashFocusHijack();
     this.setupBusyPill();
+    this.setupProblemsPanel();
     this.updateModelBadge();
   }
 
@@ -522,6 +548,13 @@ export class Workspace {
         modelOverride: mode.preferredModel,
         maxToolRounds,
       });
+      return;
+    }
+
+    // /problems [show|hide|toggle|clear] — drive the Problems panel.
+    const problemsMatch = /^\s*\/problems(?:\s+(.*))?$/i.exec(text);
+    if (problemsMatch) {
+      this.handleProblemsCommand((problemsMatch[1] ?? "").trim());
       return;
     }
 
@@ -810,6 +843,127 @@ export class Workspace {
     }
   }
 
+  // -- problems panel ------------------------------------------------------
+
+  /**
+   * Wire panel-level event delegation: chip toggles, finding-row clicks
+   * (copy `path:line` to clipboard), close button, and Escape-to-close.
+   * Visibility is driven separately by `showProblemsPanel` / `hide`.
+   */
+  private setupProblemsPanel(): void {
+    const panel = this.root.querySelector<HTMLElement>(".problems-panel");
+    if (!panel) return;
+    panel.addEventListener("click", (e) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const action = target
+        .closest("[data-problems-action]")
+        ?.getAttribute("data-problems-action");
+      if (action === "close") {
+        this.hideProblemsPanel();
+        return;
+      }
+      const chip = target.closest<HTMLElement>("[data-filter-kind]");
+      if (chip) {
+        const kind = chip.getAttribute("data-filter-kind");
+        const value = chip.getAttribute("data-filter-value") ?? "";
+        if (kind === "severity") {
+          this.problemsFilter = toggleProblemsSeverity(
+            this.problemsFilter,
+            value as Severity,
+          );
+          this.renderProblemsPanelInto();
+        } else if (kind === "confidence") {
+          this.problemsFilter = toggleProblemsConfidence(
+            this.problemsFilter,
+            value as Confidence,
+          );
+          this.renderProblemsPanelInto();
+        }
+        return;
+      }
+      const row = target.closest<HTMLElement>(".problems-row");
+      if (row) {
+        const loc = row.getAttribute("data-loc") ?? "";
+        if (loc) {
+          void navigator.clipboard.writeText(loc).catch(() => {});
+          this.term.write(
+            `\r\n\x1b[2m[problems] copied \x1b[36m${sanitize(loc)}\x1b[0m\x1b[2m to clipboard\x1b[0m\r\n`,
+          );
+        }
+      }
+    });
+    // Escape closes the panel when it's focused / hovered.
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (!this.root.classList.contains("active")) return;
+      if (!this.problemsVisible) return;
+      if (this.isEditorFocused()) return;
+      this.hideProblemsPanel();
+    };
+    document.addEventListener("keydown", onEscape, { capture: true });
+    this.disposers.push(() =>
+      document.removeEventListener("keydown", onEscape, { capture: true }),
+    );
+  }
+
+  private showProblemsPanel(): void {
+    this.problemsVisible = true;
+    const panel = this.root.querySelector<HTMLElement>(".problems-panel");
+    if (!panel) return;
+    panel.dataset.visible = "true";
+    panel.setAttribute("aria-hidden", "false");
+    this.renderProblemsPanelInto();
+  }
+
+  private hideProblemsPanel(): void {
+    this.problemsVisible = false;
+    const panel = this.root.querySelector<HTMLElement>(".problems-panel");
+    if (!panel) return;
+    panel.dataset.visible = "false";
+    panel.setAttribute("aria-hidden", "true");
+  }
+
+  private renderProblemsPanelInto(): void {
+    const panel = this.root.querySelector<HTMLElement>(".problems-panel");
+    if (!panel) return;
+    panel.innerHTML = renderProblemsPanel(
+      this.lastAuditReport,
+      this.problemsFilter,
+    );
+  }
+
+  /** Driver for `/problems [show|hide|toggle|clear]`. */
+  private handleProblemsCommand(rawArgs: string): void {
+    const parsed = parseProblemsArgs(rawArgs);
+    if (parsed.error) {
+      this.term.write(
+        `\r\n\x1b[1;31m[problems]\x1b[0m ${sanitize(parsed.error)}\r\n`,
+      );
+      return;
+    }
+    switch (parsed.action) {
+      case "show":
+        this.showProblemsPanel();
+        break;
+      case "hide":
+        this.hideProblemsPanel();
+        break;
+      case "toggle":
+        if (this.problemsVisible) this.hideProblemsPanel();
+        else this.showProblemsPanel();
+        break;
+      case "clear":
+        this.lastAuditReport = null;
+        this.problemsFilter = defaultProblemsFilter();
+        if (this.problemsVisible) this.renderProblemsPanelInto();
+        this.term.write(
+          `\r\n\x1b[2m[problems] cleared cached report\x1b[0m\r\n`,
+        );
+        break;
+    }
+  }
+
   // -- audit completion → structured findings + markdown report --------
 
   /**
@@ -832,6 +986,10 @@ export class Workspace {
       scope,
       runtime_probes: info.runtimeProbes,
     });
+    // Cache + auto-open the Problems panel so the user sees the
+    // structured findings without running a separate command.
+    this.lastAuditReport = report;
+    this.showProblemsPanel();
 
     // ANSI summary in xterm — even if we fail to write the file, the
     // user gets the parsed view inline. Pads the raw model output with
