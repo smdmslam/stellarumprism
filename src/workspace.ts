@@ -59,6 +59,7 @@ import {
   renderSnippetError,
   type FileSnippet,
 } from "./snippet";
+import { FileEditor } from "./file-editor";
 import {
   emptyTreeState,
   flattenVisibleRows,
@@ -171,6 +172,20 @@ export class Workspace {
    * DOM focus (e.g. user just released the mouse).
    */
   private lastActiveDivider: DividerKind | null = null;
+  /** The currently mounted file editor, if the preview overlay is open. */
+  private fileEditor: FileEditor | null = null;
+  /**
+   * Path of the file the editor is currently bound to (cwd-relative or
+   * absolute, exactly as passed to read_file_text). null when no file
+   * is open.
+   */
+  private openFilePath: string | null = null;
+  /**
+   * On-disk mtime captured at open time, fed back into write_file_text
+   * as the optimistic-concurrency token so we abort instead of
+   * clobbering an external edit.
+   */
+  private openFileMtime = 0;
   /**
    * Filter state for the Problems panel. Held on the workspace so a
    * user-toggled chip stays toggled across re-renders.
@@ -414,6 +429,7 @@ export class Workspace {
     this.setupBusyPill();
     this.setupProblemsPanel();
     this.setupLayoutDividers();
+    this.setupFileEditorKeybindings();
     this.updateModelBadge();
   }
 
@@ -1975,9 +1991,8 @@ export class Workspace {
       if (kind === "dir") {
         void this.handleTreeToggle(path);
       } else {
-        // Single click on a file = preview. Phase 2 will swap this
-        // for a real editor tab.
-        void this.openFilePreview(path);
+        // Single click opens the file in the editable buffer.
+        void this.openFileInEditor(path);
       }
       this.renderFileTree();
     });
@@ -2028,7 +2043,7 @@ export class Workspace {
         if (row.entry.kind === "dir") {
           void this.handleTreeToggle(sel);
         } else {
-          void this.openFilePreview(sel);
+          void this.openFileInEditor(sel);
         }
       }
     });
@@ -2154,53 +2169,180 @@ export class Workspace {
     );
   }
 
-  // -- file preview overlay (phase 1; phase 2 replaces with editor) --------
+  // -- file editor surface ------------------------------------------------
 
   /**
-   * Show a read-only preview of a file. Uses `read_file_snippet` with
-   * a wide window so the user sees the top of the file. Phase 2 will
-   * swap this for a real CodeMirror tab.
+   * Open `path` in the editable file overlay. Reads the full file via
+   * `read_file_text` (binary-safe, capped at 256 KB), mounts a fresh
+   * `FileEditor` in the overlay body, and wires the header chrome
+   * (path label, dirty indicator, Save button, close).
+   *
+   * If a file is already open and dirty, prompts before swapping; the
+   * user can keep editing the current file by cancelling.
    */
-  private async openFilePreview(path: string): Promise<void> {
+  private async openFileInEditor(path: string): Promise<void> {
     const overlay = this.root.querySelector<HTMLElement>(".file-preview");
     if (!overlay) return;
+
+    // Discard-confirmation when the user opens a different file with
+    // unsaved edits. Same file: re-opening is a no-op.
+    if (this.openFilePath === path) {
+      this.fileEditor?.focus();
+      return;
+    }
+    if (this.fileEditor?.isDirty()) {
+      const ok = window.confirm(
+        `Discard unsaved changes to ${this.openFilePath}?`,
+      );
+      if (!ok) return;
+    }
+    this.disposeFileEditor();
+
     overlay.dataset.visible = "true";
     overlay.setAttribute("aria-hidden", "false");
     this.setDividerVisible("preview", true);
     overlay.innerHTML =
       `<div class="file-preview-header">` +
-      `<span class="file-preview-path">${escapeHtml(path)}</span>` +
-      `<button class="file-preview-close" type="button" aria-label="Close preview">\u00d7</button>` +
+      `<span class="file-preview-dirty" data-dirty="false" aria-hidden="true">\u25cf</span>` +
+      `<span class="file-preview-path" title="${escapeAttr(path)}">${escapeHtml(path)}</span>` +
+      `<button class="file-preview-save" type="button" disabled aria-label="Save (\u2318S)" title="Save (\u2318S)">Save</button>` +
+      `<button class="file-preview-close" type="button" aria-label="Close (Esc)" title="Close (Esc)">\u00d7</button>` +
       `</div>` +
       `<div class="file-preview-body"><div class="file-tree-loading">loading\u2026</div></div>`;
+
     overlay.querySelector(".file-preview-close")?.addEventListener(
       "click",
-      () => this.closeFilePreview(),
-      { once: true },
+      () => this.closeFileEditor(),
     );
+    overlay.querySelector(".file-preview-save")?.addEventListener(
+      "click",
+      () => void this.saveOpenFile(),
+    );
+
+    let loaded: { path: string; content: string; mtime_secs: number };
     try {
-      const snippet = await invoke<FileSnippet>("read_file_snippet", {
-        cwd: this.cwd,
-        path,
-        line: 1,
-        before: 0,
-        after: 80,
-      });
-      const body = overlay.querySelector<HTMLElement>(".file-preview-body");
-      if (body) body.innerHTML = renderSnippet(snippet);
+      loaded = await invoke<{
+        path: string;
+        original: string;
+        content: string;
+        size: number;
+        mtime_secs: number;
+      }>("read_file_text", { cwd: this.cwd, path });
     } catch (err) {
       const body = overlay.querySelector<HTMLElement>(".file-preview-body");
       if (body) body.innerHTML = renderSnippetError(String(err), path);
+      this.openFilePath = null;
+      this.openFileMtime = 0;
+      return;
+    }
+
+    const body = overlay.querySelector<HTMLElement>(".file-preview-body");
+    if (!body) return;
+    body.innerHTML = "";
+    this.openFilePath = path;
+    this.openFileMtime = loaded.mtime_secs;
+    this.fileEditor = new FileEditor(body, loaded.content, {
+      onDirtyChange: (dirty) => this.reflectDirty(dirty),
+    });
+    // Cmd+S only fires when the workspace is active AND the editor is
+    // mounted; wired once in setupFileEditorKeybindings (called once
+    // per workspace). Focus the buffer so the user can start typing
+    // immediately.
+    this.fileEditor.focus();
+  }
+
+  /**
+   * Persist the currently open buffer to disk. No-op when nothing is
+   * open or when the buffer is clean. Echoes the result into xterm so
+   * the action is visible.
+   */
+  private async saveOpenFile(): Promise<void> {
+    if (!this.fileEditor || !this.openFilePath) return;
+    if (!this.fileEditor.isDirty()) return;
+    const path = this.openFilePath;
+    const content = this.fileEditor.getValue();
+    try {
+      const result = await invoke<{
+        path: string;
+        bytes_written: number;
+        mtime_secs: number;
+      }>("write_file_text", {
+        cwd: this.cwd,
+        path,
+        content,
+        expectedMtimeSecs: this.openFileMtime || null,
+      });
+      this.openFileMtime = result.mtime_secs;
+      this.fileEditor.markClean(content);
+      this.term.write(
+        `\r\n\x1b[1;32m[edit]\x1b[0m \x1b[2msaved \x1b[36m${sanitize(prettyPath(result.path))}\x1b[0m\x1b[2m (${formatBytesShort(result.bytes_written)})\x1b[0m\r\n`,
+      );
+    } catch (err) {
+      this.term.write(
+        `\r\n\x1b[1;31m[edit]\x1b[0m save failed: ${sanitize(String(err))}\r\n`,
+      );
     }
   }
 
-  private closeFilePreview(): void {
+  /**
+   * Close the editor overlay. Confirms before discarding unsaved
+   * changes. Idempotent.
+   */
+  private closeFileEditor(): void {
+    if (this.fileEditor?.isDirty()) {
+      const ok = window.confirm(
+        `Discard unsaved changes to ${this.openFilePath}?`,
+      );
+      if (!ok) return;
+    }
+    this.disposeFileEditor();
     const overlay = this.root.querySelector<HTMLElement>(".file-preview");
     if (!overlay) return;
     overlay.dataset.visible = "false";
     overlay.setAttribute("aria-hidden", "true");
     overlay.innerHTML = "";
     this.setDividerVisible("preview", false);
+  }
+
+  private disposeFileEditor(): void {
+    this.fileEditor?.destroy();
+    this.fileEditor = null;
+    this.openFilePath = null;
+    this.openFileMtime = 0;
+  }
+
+  /**
+   * Update the dirty indicator + Save button state when the editor
+   * tells us the buffer's dirty status flipped.
+   */
+  private reflectDirty(dirty: boolean): void {
+    const dot = this.root.querySelector<HTMLElement>(".file-preview-dirty");
+    if (dot) dot.dataset.dirty = dirty ? "true" : "false";
+    const save = this.root.querySelector<HTMLButtonElement>(
+      ".file-preview-save",
+    );
+    if (save) save.disabled = !dirty;
+  }
+
+  /**
+   * Document-level Cmd/Ctrl+S handler that triggers a save when this
+   * workspace is active and a file is open. Lives at the document
+   * level so the shortcut works even when focus is in the terminal,
+   * the input bar, or any other surface inside the workspace.
+   */
+  private setupFileEditorKeybindings(): void {
+    const onKey = (e: KeyboardEvent) => {
+      if (!this.root.classList.contains("active")) return;
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key !== "s" && e.key !== "S") return;
+      if (!this.fileEditor || !this.openFilePath) return;
+      e.preventDefault();
+      void this.saveOpenFile();
+    };
+    document.addEventListener("keydown", onKey, { capture: true });
+    this.disposers.push(() =>
+      document.removeEventListener("keydown", onKey, { capture: true }),
+    );
   }
 
   // -- layout dividers -----------------------------------------------------

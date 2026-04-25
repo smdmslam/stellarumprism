@@ -542,6 +542,155 @@ pub fn list_directory_tree(
     })
 }
 
+/// Read a file's full contents for editing in the IDE-shape file editor.
+/// Differs from `read_file_scoped`:
+///   - Returns the bytes verbatim (no truncation marker, no synthetic
+///     comment appended) so save → reload round-trips losslessly.
+///   - Returns the file's mtime so the frontend can detect external
+///     changes between open and save.
+///   - Errors out (instead of truncating) when the file exceeds
+///     `MAX_FILE_BYTES` so the user never silently saves a clipped buffer.
+#[derive(Debug, Serialize)]
+pub struct FileText {
+    /// Absolute resolved path.
+    pub path: String,
+    /// User-supplied path (echoed back).
+    pub original: String,
+    /// UTF-8 file contents.
+    pub content: String,
+    /// File size in bytes.
+    pub size: u64,
+    /// On-disk mtime, expressed as UNIX epoch seconds. Used as a coarse
+    /// optimistic-concurrency token by `write_file_text`.
+    pub mtime_secs: u64,
+}
+
+#[tauri::command]
+pub fn read_file_text(cwd: String, path: String) -> Result<FileText, String> {
+    let resolved = resolve_path(&cwd, &path)?;
+    let metadata = fs::metadata(&resolved)
+        .map_err(|e| format!("cannot stat {}: {}", resolved.display(), e))?;
+    if !metadata.is_file() {
+        return Err(format!("{} is not a regular file", resolved.display()));
+    }
+    let size = metadata.len();
+    if size as usize > MAX_FILE_BYTES {
+        return Err(format!(
+            "{} is {} bytes; editor refuses files over {} bytes to avoid losing data on save",
+            resolved.display(),
+            size,
+            MAX_FILE_BYTES
+        ));
+    }
+    let bytes = fs::read(&resolved)
+        .map_err(|e| format!("cannot read {}: {}", resolved.display(), e))?;
+    let sniff_len = bytes.len().min(8 * 1024);
+    if bytes[..sniff_len].contains(&0) {
+        return Err(format!(
+            "{} looks like a binary file and cannot be edited",
+            resolved.display()
+        ));
+    }
+    let content = String::from_utf8(bytes).map_err(|e| {
+        format!(
+            "{} is not valid UTF-8 ({}); refusing to edit since save would corrupt it",
+            resolved.display(),
+            e
+        )
+    })?;
+    let mtime_secs = mtime_unix_secs(&metadata);
+    Ok(FileText {
+        path: resolved.to_string_lossy().into_owned(),
+        original: path,
+        content,
+        size,
+        mtime_secs,
+    })
+}
+
+#[derive(Debug, Serialize)]
+pub struct WriteFileResult {
+    pub path: String,
+    pub bytes_written: u64,
+    pub mtime_secs: u64,
+}
+
+/// Write `content` to `path`. Atomic via tmp + rename so a partial write
+/// can never leave a half-written buffer on disk.
+///
+/// `expected_mtime_secs`, when supplied, is compared against the
+/// current on-disk mtime BEFORE writing. A mismatch means another
+/// process (or the user themselves outside Prism) modified the file
+/// since we opened it; we abort so the editor can prompt for a
+/// reload-or-overwrite decision rather than silently clobbering work.
+#[tauri::command]
+pub fn write_file_text(
+    cwd: String,
+    path: String,
+    content: String,
+    expected_mtime_secs: Option<u64>,
+) -> Result<WriteFileResult, String> {
+    let resolved = resolve_path(&cwd, &path)?;
+    if let Some(expected) = expected_mtime_secs {
+        if let Ok(meta) = fs::metadata(&resolved) {
+            let current = mtime_unix_secs(&meta);
+            // Allow a 1-second slack since some filesystems (HFS+, FAT)
+            // round mtime to whole seconds. A larger gap means a real
+            // external change.
+            if current.saturating_sub(expected) > 1 || expected.saturating_sub(current) > 1 {
+                return Err(format!(
+                    "{} changed on disk since it was opened (was mtime={}, now mtime={}); reload before saving",
+                    resolved.display(),
+                    expected,
+                    current
+                ));
+            }
+        }
+    }
+    let bytes = content.as_bytes();
+    if bytes.len() > MAX_FILE_BYTES {
+        return Err(format!(
+            "buffer is {} bytes; editor refuses to write over {} bytes",
+            bytes.len(),
+            MAX_FILE_BYTES
+        ));
+    }
+    if let Some(parent) = resolved.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("cannot create {}: {}", parent.display(), e))?;
+        }
+    }
+    let file_name = resolved
+        .file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "file".into());
+    let parent = resolved.parent().unwrap_or_else(|| Path::new("."));
+    let tmp = parent.join(format!(".{}.prism-tmp", file_name));
+    fs::write(&tmp, bytes).map_err(|e| format!("cannot write {}: {}", tmp.display(), e))?;
+    if let Err(e) = fs::rename(&tmp, &resolved) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("cannot rename into {}: {}", resolved.display(), e));
+    }
+    let mtime_secs = fs::metadata(&resolved)
+        .map(|m| mtime_unix_secs(&m))
+        .unwrap_or(0);
+    Ok(WriteFileResult {
+        path: resolved.to_string_lossy().into_owned(),
+        bytes_written: bytes.len() as u64,
+        mtime_secs,
+    })
+}
+
+fn mtime_unix_secs(meta: &fs::Metadata) -> u64 {
+    use std::time::UNIX_EPOCH;
+    meta.modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 /// Resolve a user-typed path with the shell's cwd as the starting point.
 ///
 /// Rules (first match wins):
@@ -925,5 +1074,126 @@ mod tests {
         );
         assert!(r.is_err());
         assert!(r.unwrap_err().contains("is not a directory"));
+    }
+
+    // -- read_file_text / write_file_text -------------------------------
+
+    #[test]
+    fn read_file_text_returns_full_contents_and_mtime() {
+        let dir = fresh_tmp();
+        let body = "line one\nline two\nline three\n";
+        fs::write(dir.join("plain.txt"), body).unwrap();
+        let r = read_file_text(
+            dir.to_string_lossy().to_string(),
+            "plain.txt".to_string(),
+        )
+        .expect("read ok");
+        assert_eq!(r.content, body);
+        assert_eq!(r.size, body.len() as u64);
+        // mtime won't be exact but should be non-zero.
+        assert!(r.mtime_secs > 0);
+    }
+
+    #[test]
+    fn read_file_text_rejects_binary_files() {
+        let dir = fresh_tmp();
+        let mut data = vec![0u8; 16];
+        data.extend_from_slice(b"after nul");
+        fs::write(dir.join("bin"), data).unwrap();
+        let r = read_file_text(
+            dir.to_string_lossy().to_string(),
+            "bin".to_string(),
+        );
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("binary"));
+    }
+
+    #[test]
+    fn read_file_text_rejects_oversized_files() {
+        let dir = fresh_tmp();
+        // 257 KB of plain ASCII — over the 256 KB cap.
+        let body = vec![b'a'; 257 * 1024];
+        fs::write(dir.join("big.txt"), body).unwrap();
+        let r = read_file_text(
+            dir.to_string_lossy().to_string(),
+            "big.txt".to_string(),
+        );
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("refuses files over"));
+    }
+
+    #[test]
+    fn write_file_text_round_trips_with_read_file_text() {
+        let dir = fresh_tmp();
+        fs::write(dir.join("foo.txt"), "original").unwrap();
+        // Read to capture mtime, then write with that mtime as the
+        // expected token.
+        let opened = read_file_text(
+            dir.to_string_lossy().to_string(),
+            "foo.txt".to_string(),
+        )
+        .unwrap();
+        let new_body = "updated body\n";
+        let res = write_file_text(
+            dir.to_string_lossy().to_string(),
+            "foo.txt".to_string(),
+            new_body.to_string(),
+            Some(opened.mtime_secs),
+        )
+        .expect("write ok");
+        assert_eq!(res.bytes_written, new_body.len() as u64);
+        let on_disk = fs::read_to_string(dir.join("foo.txt")).unwrap();
+        assert_eq!(on_disk, new_body);
+    }
+
+    #[test]
+    fn write_file_text_rejects_when_mtime_token_is_stale() {
+        let dir = fresh_tmp();
+        fs::write(dir.join("foo.txt"), "v1").unwrap();
+        // Wait two seconds and rewrite so on-disk mtime advances past
+        // the slack window.
+        std::thread::sleep(std::time::Duration::from_secs(2));
+        fs::write(dir.join("foo.txt"), "v2-from-outside").unwrap();
+        let r = write_file_text(
+            dir.to_string_lossy().to_string(),
+            "foo.txt".to_string(),
+            "clobber attempt".to_string(),
+            Some(1), // intentionally ancient
+        );
+        assert!(r.is_err());
+        assert!(r.unwrap_err().contains("changed on disk"));
+        // File on disk is untouched.
+        assert_eq!(
+            fs::read_to_string(dir.join("foo.txt")).unwrap(),
+            "v2-from-outside"
+        );
+    }
+
+    #[test]
+    fn write_file_text_creates_parent_directories() {
+        let dir = fresh_tmp();
+        let res = write_file_text(
+            dir.to_string_lossy().to_string(),
+            "new/nested/file.txt".to_string(),
+            "hello".to_string(),
+            None,
+        )
+        .expect("write ok");
+        assert_eq!(res.bytes_written, 5);
+        assert!(dir.join("new/nested/file.txt").exists());
+    }
+
+    #[test]
+    fn write_file_text_does_not_leak_tmp_on_success() {
+        let dir = fresh_tmp();
+        write_file_text(
+            dir.to_string_lossy().to_string(),
+            "clean.txt".to_string(),
+            "body".to_string(),
+            None,
+        )
+        .unwrap();
+        let tmp = dir.join(".clean.txt.prism-tmp");
+        assert!(!tmp.exists(), "tmp leaked: {}", tmp.display());
     }
 }
