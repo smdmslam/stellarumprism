@@ -104,6 +104,15 @@ INVESTIGATION ORDER (mandatory):\n\
      [confirmed error] finding with source=test in evidence. Tests \
      can be slow; budget rounds accordingly. Skip when the diff is \
      pure docs / cosmetics.\n\
+  3b. OPTIONAL: when the diff touches an HTTP route, middleware, or \
+     API surface AND the user is running their dev server, call \
+     http_fetch to probe the actual endpoint. A response (any status) \
+     means the route is live; a transport error (connection refused, \
+     timeout) likely means the dev server is not running and you \
+     should NOT flag the endpoint as broken on that basis. When you \
+     get a real response, paste the returned `evidence_detail` as \
+     evidence (source=runtime) and the grader will graduate findings \
+     to confirmed.\n\
   4. After the compiler-backed pass, look for non-compiler wiring gaps \
      the type system can't see:\n\
         - stale barrel re-exports in index files\n\
@@ -178,6 +187,9 @@ OUTPUT CONTRACT (mandatory format):\n\
   - Example shape (test-backed error):\n\
       [error] src/auth.ts \u{2014} login() rejects valid credentials after token-shape change \u{2014} restore the old shape or update the test fixture\n\
       evidence: source=test; detail=\"FAIL src/auth.test.ts > login accepts valid creds: expected 200, got 401\"\n\
+  - Example shape (runtime/http-backed error):\n\
+      [error] src/api/login.ts \u{2014} login endpoint returns 500 after middleware reorder \u{2014} move auth middleware before the validation middleware\n\
+      evidence: source=runtime; detail=\"runtime: POST http://localhost:3000/api/login \u{2192} 500 Internal Server Error (42 ms)\"\n\
   - Example shape (grep-only structural observation \u{2014} must be info):\n\
       [info] src/old.ts \u{2014} symbol foo no longer referenced anywhere \u{2014} consider removing\n\
       evidence: source=grep; detail=\"grep 'foo' = 0 hits across 142 files\"\n\
@@ -307,6 +319,12 @@ INVESTIGATION ORDER (mandatory):\n\
           behavior, optionally run_tests. If failures appear, decide \
           whether the test fixture is stale or your code is wrong; if \
           unsure, surface in the BUILD REPORT and STOP.\n\
+       f. After wiring or modifying an HTTP route / middleware AND \
+          the user is running their dev server, optionally http_fetch \
+          the endpoint to confirm it is live. A real response (any \
+          status) is runtime-tier evidence; a transport error means \
+          the dev server is not running, NOT that the endpoint is \
+          broken \u{2014} do not treat transport errors as build failures.\n\
   4. REPORT. Produce ONE final BUILD REPORT block (format below). No \
      prose narration during execution \u{2014} the tool log already shows \
      what you did.\n\
@@ -915,14 +933,22 @@ pub async fn agent_query(
                         let inv = match decision {
                             ApprovalDecision::Approve | ApprovalDecision::ApproveSession => {
                                 if crate::tools::is_async_tool(&call.function.name) {
-                                    // Currently just web_search — network-
-                                    // backed, needs the async entry point.
+                                    // Network-backed tools dispatch through
+                                    // the async entry point. Today: web_search
+                                    // (Perplexity Sonar) and http_fetch
+                                    // (substrate v4 endpoint probe).
                                     match call.function.name.as_str() {
                                         "web_search" => {
                                             crate::tools::execute_web_search(
                                                 &call.function.arguments,
                                                 &api_key,
                                                 &base_url,
+                                            )
+                                            .await
+                                        }
+                                        "http_fetch" => {
+                                            crate::tools::execute_http_fetch(
+                                                &call.function.arguments,
                                             )
                                             .await
                                         }

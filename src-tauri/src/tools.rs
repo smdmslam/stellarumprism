@@ -347,6 +347,41 @@ pub fn tool_schema() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "http_fetch",
+                "description": "Issue an HTTP request and return the response. Substrate v4: the strongest pre-E2E runtime signal \u{2014} directly probes a user-running endpoint to verify it returns what your code claims it does. Use after wiring a new route or middleware (in /build) to confirm the endpoint is live, or in /audit when the diff touches HTTP code paths and you want runtime evidence. Returns { url, status, status_text, body, response_headers, duration_ms, ok, error, evidence_detail }. A successful response (any status code) means the endpoint exists; transport errors (timeout, connection refused) are substrate failures with ok=false. source='runtime' \u{2192} grader graduates findings to 'confirmed' confidence. Body is capped at 32 KB.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "description": "Absolute URL (e.g. http://localhost:3000/api/foo)."
+                        },
+                        "method": {
+                            "type": "string",
+                            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
+                            "description": "HTTP method. Default GET."
+                        },
+                        "headers": {
+                            "type": "object",
+                            "description": "Optional request headers as a flat key/value object.",
+                            "additionalProperties": { "type": "string" }
+                        },
+                        "body": {
+                            "type": "string",
+                            "description": "Optional request body. For JSON, set Content-Type and pass the JSON-stringified body here."
+                        },
+                        "timeout_secs": {
+                            "type": "integer",
+                            "description": "Per-call timeout in seconds. Default 10."
+                        }
+                    },
+                    "required": ["url"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "run_tests",
                 "description": "Run the project's test suite. Substrate v3: the strongest runtime-correctness signal available without a full app probe. Auto-detects the runner from the repo (npm/pnpm/yarn 'test' script, cargo test, pytest, go test). Returns { passed, failures: [{file, severity, message, evidence: [...]}], raw, exit_code, duration_ms, timed_out }. A failing test \u{2192} source='test' \u{2192} grader graduates findings to 'confirmed' confidence. Use this OPTIONALLY when typecheck is clean but the diff is non-trivial \u{2014} tests catch behavior regressions the compiler does not. Tests can be slow; budget accordingly.",
                 "parameters": {
@@ -468,6 +503,9 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
         "web_search" => Err(
             "web_search is async; dispatch via execute_web_search instead of execute".into(),
         ),
+        "http_fetch" => Err(
+            "http_fetch is async; dispatch via execute_http_fetch instead of execute".into(),
+        ),
         other => Err(format!("unknown tool: {}", other)),
     };
     match result {
@@ -540,7 +578,7 @@ pub fn execute_run_tests(
 
 /// True iff the tool must be dispatched through the async entry point.
 pub fn is_async_tool(name: &str) -> bool {
-    matches!(name, "web_search")
+    matches!(name, "web_search" | "http_fetch")
 }
 
 /// True iff the tool needs config-driven defaults that the generic
@@ -690,6 +728,86 @@ fn err_invocation(msg: String) -> ToolInvocation {
     ToolInvocation {
         ok: false,
         summary: format!("error: {}", msg),
+        payload,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// http_fetch (async \u{2014} substrate v4)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct HttpFetchArgs {
+    url: String,
+    #[serde(default)]
+    method: Option<String>,
+    #[serde(default)]
+    headers: Option<std::collections::HashMap<String, String>>,
+    #[serde(default)]
+    body: Option<String>,
+    #[serde(default)]
+    timeout_secs: Option<u64>,
+}
+
+/// Execute `http_fetch` via the async substrate entry point. Mirrors the
+/// shape of `execute_web_search` so the agent loop's async dispatch can
+/// stay symmetric. The returned ToolInvocation carries a one-line
+/// summary for xterm and the full JSON payload (with evidence_detail)
+/// for the model.
+pub async fn execute_http_fetch(args_json: &str) -> ToolInvocation {
+    let args: HttpFetchArgs = match serde_json::from_str(args_json) {
+        Ok(a) => a,
+        Err(e) => return err_invocation(format!("invalid arguments: {}", e)),
+    };
+    let method = args.method.as_deref().unwrap_or("GET").to_string();
+    let headers: Vec<(String, String)> = args
+        .headers
+        .clone()
+        .map(|m| m.into_iter().collect())
+        .unwrap_or_default();
+    let timeout = args.timeout_secs.map(std::time::Duration::from_secs);
+
+    let result = crate::diagnostics::run_http_fetch(
+        &args.url,
+        &method,
+        &headers,
+        args.body.as_deref(),
+        timeout,
+    )
+    .await;
+    let run = match result {
+        Ok(r) => r,
+        Err(e) => return err_invocation(e),
+    };
+
+    let summary = if run.ok {
+        format!(
+            "http_fetch {} {} \u{2192} {} {} ({} ms)",
+            run.method,
+            run.url,
+            run.status
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "?".into()),
+            run.status_text,
+            run.duration_ms,
+        )
+    } else {
+        format!(
+            "http_fetch {} {} \u{2192} ERROR{}: {}",
+            run.method,
+            run.url,
+            if run.timed_out { " (timed out)" } else { "" },
+            if run.error.len() > 80 {
+                format!("{}\u{2026}", &run.error[..80])
+            } else {
+                run.error.clone()
+            },
+        )
+    };
+    let payload = crate::diagnostics::to_http_fetch_payload(&run).to_string();
+    ToolInvocation {
+        ok: true,
+        summary,
         payload,
     }
 }
@@ -2185,8 +2303,20 @@ mod tests {
     }
 
     #[test]
-    fn is_async_tool_flags_web_search() {
+    fn execute_rejects_http_fetch_synchronously() {
+        let dir = fresh_tmp();
+        let inv = execute(
+            "http_fetch",
+            &json!({ "url": "http://localhost:3000/api/health" }).to_string(),
+            &cwd_of(&dir),
+        );
+        assert!(!inv.ok);
+    }
+
+    #[test]
+    fn is_async_tool_flags_network_tools() {
         assert!(is_async_tool("web_search"));
+        assert!(is_async_tool("http_fetch"));
         assert!(!is_async_tool("grep"));
         assert!(!is_async_tool("find"));
         assert!(!is_async_tool("git_diff"));

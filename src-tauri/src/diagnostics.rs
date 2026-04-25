@@ -798,6 +798,211 @@ fn parse_generic_test_failures(text: &str) -> Vec<Diagnostic> {
     out
 }
 
+// ---------------------------------------------------------------------------
+// http_fetch (substrate v4)
+//
+// Direct HTTP probe of a user-running endpoint. The strongest runtime
+// signal short of a full E2E harness: did the endpoint actually return
+// what the model claims it does? Used by /build to verify a new route
+// after wiring, by /audit when the diff touches HTTP code paths, and by
+// future consumers as a generic runtime check. source="runtime" →
+// confirmed via the existing grader.
+// ---------------------------------------------------------------------------
+
+/// Default timeout for an http_fetch call. Local dev servers respond
+/// quickly; this is generous enough for a cold first request.
+const HTTP_FETCH_DEFAULT_TIMEOUT_SECS: u64 = 10;
+
+/// Maximum response body bytes returned to the LLM. Caps a runaway
+/// payload (e.g. large JSON dump) without losing the most useful slice.
+const HTTP_FETCH_MAX_BODY_BYTES: usize = 32 * 1024;
+
+/// Outcome of one HTTP probe. Network/transport failures are NOT
+/// represented as Diagnostics \u{2014} they are substrate failures (ok=false)
+/// because they don't tell us whether the endpoint is broken or just
+/// unreachable. The model decides what to do with the response.
+#[derive(Debug, Clone, Serialize)]
+pub struct HttpFetchRun {
+    pub url: String,
+    pub method: String,
+    pub status: Option<u16>,
+    pub status_text: String,
+    pub response_headers: Vec<(String, String)>,
+    pub body: String,
+    pub body_truncated: bool,
+    pub duration_ms: u128,
+    pub timed_out: bool,
+    /// True iff we got an HTTP response (any status code). False for
+    /// transport errors, timeouts, DNS failures, etc.
+    pub ok: bool,
+    /// Substrate-level error message when `ok=false`. Empty otherwise.
+    pub error: String,
+}
+
+/// Issue an HTTP request from the spawned task. Async because reqwest's
+/// streaming/async path is what we already use for web_search.
+pub async fn run_http_fetch(
+    url: &str,
+    method: &str,
+    headers: &[(String, String)],
+    body: Option<&str>,
+    timeout: Option<Duration>,
+) -> Result<HttpFetchRun, String> {
+    if url.trim().is_empty() {
+        return Err("url is empty".into());
+    }
+    let timeout = timeout.unwrap_or(Duration::from_secs(HTTP_FETCH_DEFAULT_TIMEOUT_SECS));
+
+    let client = reqwest::Client::builder()
+        .timeout(timeout)
+        .build()
+        .map_err(|e| format!("http client: {}", e))?;
+
+    let method_up = method.to_uppercase();
+    let mut req = match method_up.as_str() {
+        "GET" => client.get(url),
+        "POST" => client.post(url),
+        "PUT" => client.put(url),
+        "PATCH" => client.patch(url),
+        "DELETE" => client.delete(url),
+        "HEAD" => client.head(url),
+        other => {
+            return Err(format!(
+                "unsupported HTTP method '{}' (allowed: GET, POST, PUT, PATCH, DELETE, HEAD)",
+                other
+            ));
+        }
+    };
+    for (k, v) in headers {
+        req = req.header(k.as_str(), v.as_str());
+    }
+    if let Some(b) = body {
+        req = req.body(b.to_string());
+    }
+
+    let started = Instant::now();
+    let resp = req.send().await;
+    let duration_ms = started.elapsed().as_millis();
+
+    let resp = match resp {
+        Ok(r) => r,
+        Err(e) => {
+            // Includes timeouts, DNS failures, connection refused, etc.
+            let timed_out = e.is_timeout();
+            return Ok(HttpFetchRun {
+                url: url.to_string(),
+                method: method_up,
+                status: None,
+                status_text: String::new(),
+                response_headers: Vec::new(),
+                body: String::new(),
+                body_truncated: false,
+                duration_ms,
+                timed_out,
+                ok: false,
+                error: format!("transport error: {}", e),
+            });
+        }
+    };
+
+    let status = resp.status();
+    let response_headers: Vec<(String, String)> = resp
+        .headers()
+        .iter()
+        .map(|(k, v)| (
+            k.to_string(),
+            v.to_str().unwrap_or("<non-utf8>").to_string(),
+        ))
+        .collect();
+
+    let body_bytes = match resp.bytes().await {
+        Ok(b) => b,
+        Err(e) => {
+            return Ok(HttpFetchRun {
+                url: url.to_string(),
+                method: method_up,
+                status: Some(status.as_u16()),
+                status_text: status.canonical_reason().unwrap_or("").to_string(),
+                response_headers,
+                body: String::new(),
+                body_truncated: false,
+                duration_ms,
+                timed_out: false,
+                ok: false,
+                error: format!("failed to read body: {}", e),
+            });
+        }
+    };
+    let mut body_str = String::from_utf8_lossy(&body_bytes).into_owned();
+    let body_truncated = body_str.len() > HTTP_FETCH_MAX_BODY_BYTES;
+    if body_truncated {
+        body_str.truncate(HTTP_FETCH_MAX_BODY_BYTES);
+        body_str.push_str("\n[\u{2026} body truncated]");
+    }
+
+    Ok(HttpFetchRun {
+        url: url.to_string(),
+        method: method_up,
+        status: Some(status.as_u16()),
+        status_text: status.canonical_reason().unwrap_or("").to_string(),
+        response_headers,
+        body: body_str,
+        body_truncated,
+        duration_ms,
+        timed_out: false,
+        ok: true,
+        error: String::new(),
+    })
+}
+
+/// Translate an `HttpFetchRun` into the JSON payload sent back to the LLM.
+/// Includes a pre-formatted `evidence_detail` the model can paste
+/// verbatim into a Finding's `evidence: source=runtime; detail=...` line.
+pub fn to_http_fetch_payload(run: &HttpFetchRun) -> Value {
+    let evidence_detail = if run.ok {
+        format!(
+            "runtime: {} {} \u{2192} {} {} ({} ms{}",
+            run.method,
+            run.url,
+            run.status
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "?".into()),
+            run.status_text,
+            run.duration_ms,
+            if run.body_truncated {
+                ", body truncated)"
+            } else {
+                ")"
+            },
+        )
+    } else {
+        format!(
+            "runtime: {} {} \u{2192} TRANSPORT ERROR {}: {}",
+            run.method,
+            run.url,
+            if run.timed_out { "(timed out)" } else { "" },
+            run.error,
+        )
+    };
+    json!({
+        "url": run.url,
+        "method": run.method,
+        "status": run.status,
+        "status_text": run.status_text,
+        "response_headers": run.response_headers
+            .iter()
+            .map(|(k, v)| json!({ "name": k, "value": v }))
+            .collect::<Vec<_>>(),
+        "body": run.body,
+        "body_truncated": run.body_truncated,
+        "duration_ms": run.duration_ms,
+        "timed_out": run.timed_out,
+        "ok": run.ok,
+        "error": run.error,
+        "evidence_detail": evidence_detail,
+    })
+}
+
 fn parse_generic_path_line_col(line: &str) -> Option<Diagnostic> {
     let mut iter = line.splitn(4, ':');
     let file = iter.next()?.trim().to_string();
@@ -1387,11 +1592,70 @@ mod tests {
     use super::*;
     use std::env;
     use std::fs;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
 
     fn fresh_tmp() -> PathBuf {
         let dir = env::temp_dir().join(format!("prism-diag-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&dir).expect("create tmp dir");
         fs::canonicalize(&dir).expect("canonicalize tmp")
+    }
+
+    fn spawn_http_server(
+        status_line: &str,
+        response_headers: &[(&str, &str)],
+        body: &str,
+    ) -> (String, thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let addr = listener.local_addr().expect("server addr");
+        let status_line = status_line.to_string();
+        let body = body.to_string();
+        let headers: Vec<(String, String)> = response_headers
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept client");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0u8; 4096];
+            let n = stream.read(&mut buf).expect("read request");
+            let request = String::from_utf8_lossy(&buf[..n]).into_owned();
+
+            let mut response = format!(
+                "HTTP/1.1 {}\r\nContent-Length: {}\r\nConnection: close\r\n",
+                status_line,
+                body.len()
+            );
+            for (k, v) in headers {
+                response.push_str(&format!("{}: {}\r\n", k, v));
+            }
+            response.push_str("\r\n");
+            response.push_str(&body);
+            stream
+                .write_all(response.as_bytes())
+                .expect("write response");
+            stream.flush().expect("flush response");
+            request
+        });
+        (format!("http://{}/probe", addr), handle)
+    }
+
+    fn spawn_hanging_http_server(delay: Duration) -> (String, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind hanging server");
+        let addr = listener.local_addr().expect("server addr");
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept client");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            thread::sleep(delay);
+        });
+        (format!("http://{}/slow", addr), handle)
     }
 
     #[test]
@@ -1712,6 +1976,113 @@ FAILED tests/test_y.py::test_logout
     }
 
     // -- end run_tests --
+
+    #[tokio::test]
+    async fn run_http_fetch_returns_response_details_from_local_server() {
+        let (url, handle) = spawn_http_server(
+            "201 Created",
+            &[("Content-Type", "text/plain"), ("X-Test", "runtime")],
+            "hello",
+        );
+        let run = run_http_fetch(
+            &url,
+            "POST",
+            &[("X-Token".into(), "abc".into())],
+            Some("{\"ok\":true}"),
+            Some(Duration::from_secs(3)),
+        )
+        .await
+        .expect("http_fetch should succeed");
+
+        let request = handle.join().expect("join server thread");
+        let request_lower = request.to_ascii_lowercase();
+        assert!(
+            request.starts_with("POST /probe HTTP/1.1"),
+            "unexpected request: {}",
+            request
+        );
+        assert!(
+            request_lower.contains("x-token: abc"),
+            "missing request header: {}",
+            request
+        );
+        assert!(
+            request.contains("{\"ok\":true}"),
+            "missing request body: {}",
+            request
+        );
+
+        assert!(run.ok);
+        assert_eq!(run.url, url);
+        assert_eq!(run.method, "POST");
+        assert_eq!(run.status, Some(201));
+        assert_eq!(run.status_text, "Created");
+        assert_eq!(run.body, "hello");
+        assert!(!run.body_truncated);
+        assert!(!run.timed_out);
+        assert!(run.error.is_empty());
+        assert!(
+            run.response_headers
+                .iter()
+                .any(|(k, v)| k == "content-type" && v == "text/plain")
+        );
+        assert!(
+            run.response_headers
+                .iter()
+                .any(|(k, v)| k == "x-test" && v == "runtime")
+        );
+    }
+
+    #[tokio::test]
+    async fn run_http_fetch_times_out_without_promoting_transport_failure() {
+        let (url, handle) = spawn_hanging_http_server(Duration::from_millis(250));
+        let run = run_http_fetch(&url, "GET", &[], None, Some(Duration::from_millis(75)))
+            .await
+            .expect("http_fetch should return substrate failure, not Err");
+        handle.join().expect("join hanging server thread");
+
+        assert!(!run.ok);
+        assert!(run.timed_out);
+        assert_eq!(run.status, None);
+        assert!(run.body.is_empty());
+        assert!(
+            run.error.contains("transport error"),
+            "unexpected error: {}",
+            run.error
+        );
+    }
+
+    #[test]
+    fn to_http_fetch_payload_emits_expected_keys_and_evidence() {
+        let run = HttpFetchRun {
+            url: "http://localhost:3000/api/health".into(),
+            method: "GET".into(),
+            status: Some(200),
+            status_text: "OK".into(),
+            response_headers: vec![("content-type".into(), "application/json".into())],
+            body: "{\"ok\":true}".into(),
+            body_truncated: false,
+            duration_ms: 42,
+            timed_out: false,
+            ok: true,
+            error: String::new(),
+        };
+        let v = to_http_fetch_payload(&run);
+        let evidence = v["evidence_detail"]
+            .as_str()
+            .expect("evidence_detail should be a string");
+
+        assert_eq!(v["url"], "http://localhost:3000/api/health");
+        assert_eq!(v["method"], "GET");
+        assert_eq!(v["status"], 200);
+        assert_eq!(v["status_text"], "OK");
+        assert_eq!(v["ok"], true);
+        assert_eq!(v["response_headers"][0]["name"], "content-type");
+        assert_eq!(v["response_headers"][0]["value"], "application/json");
+        assert!(evidence.contains("runtime: GET http://localhost:3000/api/health"));
+        assert!(evidence.contains("200 OK"));
+        assert!(evidence.contains("42 ms"));
+    }
 
     #[test]
     fn to_finding_payload_emits_expected_keys() {
