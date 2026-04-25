@@ -152,6 +152,13 @@ export class Workspace {
   private fileTreeRootLoaded = false;
   /** Last cwd we built the tree for, so we can detect cwd changes. */
   private fileTreeLastCwd = "";
+  /**
+   * Whether the file tree includes hidden dotfiles (`.git`,
+   * `.gitignore`, etc.). Default false; toggled by the eye-icon
+   * button next to the Files tab. `.prism/` is always shown
+   * regardless of this flag (handled by the backend allowlist).
+   */
+  private showHiddenFiles = false;
   private readonly cb: WorkspaceCallbacks;
 
   private term!: Terminal;
@@ -178,6 +185,8 @@ export class Workspace {
         <div class="sidebar-tabs" role="tablist" aria-label="Sidebar">
           <button class="sidebar-tab active" data-tab="blocks" role="tab" aria-selected="true">Blocks <span class="sidebar-tab-count blocks-count">0</span></button>
           <button class="sidebar-tab" data-tab="files" role="tab" aria-selected="false">Files</button>
+          <span class="sidebar-tabs-spacer"></span>
+          <button class="sidebar-tab-action" data-action="toggle-hidden" type="button" title="Show hidden files (.git, .env, \u2026)" aria-label="Show hidden files" aria-pressed="false" hidden>\u25cb</button>
         </div>
         <div class="sidebar-pane sidebar-pane-blocks" data-tab="blocks">
           <ul class="blocks-list"></ul>
@@ -1455,14 +1464,61 @@ export class Workspace {
     const tabsEl = this.root.querySelector<HTMLElement>(".sidebar-tabs");
     if (!tabsEl) return;
     tabsEl.addEventListener("click", (e) => {
-      const btn = (e.target as HTMLElement | null)?.closest<HTMLButtonElement>(
-        ".sidebar-tab",
+      const target = e.target as HTMLElement | null;
+      const action = target?.closest<HTMLButtonElement>(
+        ".sidebar-tab-action[data-action]",
       );
+      if (action) {
+        const a = action.dataset.action;
+        if (a === "toggle-hidden") {
+          this.toggleShowHiddenFiles();
+        }
+        return;
+      }
+      const btn = target?.closest<HTMLButtonElement>(".sidebar-tab");
       if (!btn) return;
       const tab = btn.dataset.tab as "blocks" | "files" | undefined;
       if (!tab) return;
       this.setSidebarTab(tab);
     });
+  }
+
+  /**
+   * Flip the show-hidden-files flag. We reset the tree state (children
+   * and load states) because expanded dirs were listed under the old
+   * filter; preserving them would mix dotfile rows in inconsistently.
+   * The expanded set is preserved so the user's navigation comes back
+   * after the re-fetch.
+   */
+  private toggleShowHiddenFiles(): void {
+    this.showHiddenFiles = !this.showHiddenFiles;
+    // Force a fresh load on next view.
+    this.fileTreeRootLoaded = false;
+    // Drop cached children so re-expanded dirs re-fetch under the new filter.
+    this.treeState = {
+      ...this.treeState,
+      childrenByPath: new Map(),
+      loadStateByPath: new Map(),
+    };
+    this.updateHiddenToggleVisualState();
+    void this.refreshFileTreeRoot();
+  }
+
+  /** Sync the toggle button's aria + glyph with the current state. */
+  private updateHiddenToggleVisualState(): void {
+    const btn = this.root.querySelector<HTMLButtonElement>(
+      '.sidebar-tab-action[data-action="toggle-hidden"]',
+    );
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", this.showHiddenFiles ? "true" : "false");
+    btn.classList.toggle("sidebar-tab-action-on", this.showHiddenFiles);
+    // Filled circle when on; outlined when off. Compact glyph that
+    // doesn't lean too "eye"-iconographic since the metaphor is
+    // "include hidden" not "toggle visibility of the tree itself".
+    btn.textContent = this.showHiddenFiles ? "\u25cf" : "\u25cb";
+    btn.title = this.showHiddenFiles
+      ? "Hide hidden files (.git, .env, \u2026 will be hidden again; .prism/ is always shown)"
+      : "Show hidden files (.git, .env, \u2026; .prism/ is always shown)";
   }
 
   /**
@@ -1492,6 +1548,18 @@ export class Workspace {
         p.setAttribute("hidden", "");
       }
     });
+    // The hidden-files toggle only makes sense in the Files tab.
+    const hiddenBtn = this.root.querySelector<HTMLButtonElement>(
+      '.sidebar-tab-action[data-action="toggle-hidden"]',
+    );
+    if (hiddenBtn) {
+      if (tab === "files") {
+        hiddenBtn.removeAttribute("hidden");
+        this.updateHiddenToggleVisualState();
+      } else {
+        hiddenBtn.setAttribute("hidden", "");
+      }
+    }
     if (tab === "files") {
       // Lazy-load on first view (or when cwd changed since last view).
       if (!this.fileTreeRootLoaded || this.fileTreeLastCwd !== this.cwd) {
@@ -1604,7 +1672,7 @@ export class Workspace {
       const listing = await invoke<RawTreeListing>("list_directory_tree", {
         cwd: this.cwd,
         path: null,
-        showHidden: false,
+        showHidden: this.showHiddenFiles,
       });
       this.treeState = setTreeRoot(this.treeState, listing);
       this.fileTreeRootLoaded = true;
@@ -1634,7 +1702,7 @@ export class Workspace {
         const listing = await invoke<RawTreeListing>("list_directory_tree", {
           cwd: this.cwd,
           path,
-          showHidden: false,
+          showHidden: this.showHiddenFiles,
         });
         this.treeState = setChildren(this.treeState, path, listing);
       } catch (err) {

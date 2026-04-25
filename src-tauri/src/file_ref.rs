@@ -414,6 +414,14 @@ pub struct TreeListing {
 /// tool's per-call results cap.
 const TREE_MAX_ENTRIES: usize = 5000;
 
+/// Hidden directory names that ALWAYS surface in the file tree, even
+/// when `show_hidden` is false. Prism's own output dir is the canonical
+/// case: audit reports + JSON sidecars under `.prism/second-pass/` are
+/// user-facing artifacts the file tree has to expose.
+///
+/// Adding entries here is a deliberate UX call \u2014 keep it short.
+const HIDDEN_ALWAYS_SHOWN: &[&str] = &[".prism"];
+
 /// List one level of the directory tree at `path` (or `cwd` if path is
 /// omitted). gitignore + global-gitignore + git-exclude are honored
 /// so node_modules / target / __pycache__ stay out of the way.
@@ -443,9 +451,14 @@ pub fn list_directory_tree(
     // is filtered out below. WalkBuilder still respects nested
     // .gitignore files on subsequent calls (the frontend lazy-loads
     // each subdir, so each call is its own scoped walk).
+    //
+    // We disable WalkBuilder's hidden filter and apply our own below
+    // so the `HIDDEN_ALWAYS_SHOWN` allowlist (e.g. `.prism/`) can
+    // bypass the dotfile filter while still hiding `.git/` and
+    // friends by default.
     let mut builder = ignore::WalkBuilder::new(&resolved);
     builder
-        .hidden(!show_hidden)
+        .hidden(false)
         .git_ignore(true)
         .git_global(true)
         .git_exclude(true)
@@ -472,6 +485,13 @@ pub fn list_directory_tree(
             .file_name()
             .to_string_lossy()
             .into_owned();
+        // Apply our own dotfile filter so the allowlist can override.
+        if !show_hidden
+            && name.starts_with('.')
+            && !HIDDEN_ALWAYS_SHOWN.contains(&name.as_str())
+        {
+            continue;
+        }
         let file_type = entry.file_type();
         let kind: &'static str = match file_type {
             Some(t) if t.is_dir() => "dir",
@@ -777,6 +797,55 @@ mod tests {
             .collect();
         assert!(names.contains(&"visible.txt".to_string()));
         assert!(names.contains(&".hidden".to_string()));
+    }
+
+    #[test]
+    fn tree_always_shows_dot_prism_even_when_hidden_is_off() {
+        // .prism/ is the user's audit-output directory. Even when
+        // show_hidden=false, it must surface in the tree so users
+        // can browse old audit reports + JSON sidecars without
+        // toggling the hidden filter.
+        let dir = fresh_tmp();
+        fs::write(dir.join("keep.txt"), "hi").unwrap();
+        fs::create_dir(dir.join(".prism")).unwrap();
+        fs::write(dir.join(".prism/audit-2026.json"), "{}").unwrap();
+        fs::create_dir(dir.join(".secret")).unwrap();
+
+        let listing = list_directory_tree(
+            dir.to_string_lossy().to_string(),
+            None,
+            None,
+        )
+        .expect("tree");
+        let names: Vec<&str> = listing
+            .entries
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert!(
+            names.contains(&".prism"),
+            ".prism/ must always be visible: {:?}",
+            names
+        );
+        // .secret is just a generic dotdir \u2014 it stays hidden.
+        assert!(
+            !names.contains(&".secret"),
+            ".secret/ must stay hidden by default: {:?}",
+            names
+        );
+        // Lazy-listing the .prism subdirectory still works.
+        let inner = list_directory_tree(
+            dir.to_string_lossy().to_string(),
+            Some(".prism".to_string()),
+            None,
+        )
+        .expect("prism subdir");
+        let inner_names: Vec<&str> = inner
+            .entries
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect();
+        assert_eq!(inner_names, vec!["audit-2026.json"]);
     }
 
     #[test]

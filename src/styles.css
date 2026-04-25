@@ -1327,6 +1327,37 @@ body {
   text-transform: none;
 }
 
+.sidebar-tabs-spacer {
+  flex: 1 1 auto;
+}
+.sidebar-tab-action {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-bottom: 0;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  font-family: inherit;
+}
+.sidebar-tab-action:hover {
+  background: #1f2937;
+  color: #d1d5db;
+}
+.sidebar-tab-action.sidebar-tab-action-on {
+  color: #7dd3fc;
+  background: rgba(125, 211, 252, 0.1);
+}
+.sidebar-tab-action[hidden] { display: none; }
+
 .sidebar-pane {
   flex: 1 1 auto;
   min-height: 0;
