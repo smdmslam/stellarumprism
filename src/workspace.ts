@@ -32,6 +32,7 @@ import {
 } from "./findings";
 import { buildFixPrompt, filterFindings, parseFixArgs } from "./fix";
 import { buildBuildPrompt, parseBuildArgs } from "./build";
+import { buildRefactorPrompt, parseRefactorArgs } from "./refactor";
 import {
   defaultFilter as defaultProblemsFilter,
   parseProblemsArgs,
@@ -555,6 +556,43 @@ export class Workspace {
     const problemsMatch = /^\s*\/problems(?:\s+(.*))?$/i.exec(text);
     if (problemsMatch) {
       this.handleProblemsCommand((problemsMatch[1] ?? "").trim());
+      return;
+    }
+
+    // /refactor <oldName> <newName> [--scope=path] [--max-rounds=N]
+    const refactorMatch = /^\s*\/refactor(?:\s+(.*))?$/i.exec(text);
+    if (refactorMatch) {
+      const rawArgs = (refactorMatch[1] ?? "").trim();
+      const mode = findMode("/refactor");
+      if (!mode) {
+        this.term.write(
+          `\r\n\x1b[1;31m[refactor]\x1b[0m mode registry misconfigured\r\n`,
+        );
+        return;
+      }
+      const parsed = parseRefactorArgs(rawArgs);
+      if (parsed.error) {
+        this.term.write(
+          `\r\n\x1b[1;31m[refactor]\x1b[0m ${sanitize(parsed.error)}\r\n`,
+        );
+        return;
+      }
+      const refactorPrompt = buildRefactorPrompt({
+        oldName: parsed.oldName,
+        newName: parsed.newName,
+        scope: parsed.scope,
+      });
+      this.setTitleFromText(
+        `refactor ${parsed.oldName} \u2192 ${parsed.newName}`,
+      );
+      this.term.write(
+        `\r\n\x1b[2m[refactor] renaming \x1b[36m${sanitize(parsed.oldName)}\x1b[0m\x1b[2m \u2192 \x1b[36m${sanitize(parsed.newName)}\x1b[0m\x1b[2m${parsed.scope ? ` in \x1b[36m${sanitize(parsed.scope)}\x1b[0m\x1b[2m` : ""}\x1b[0m\r\n`,
+      );
+      void this.dispatchAgentQuery(refactorPrompt, {
+        mode: mode.name,
+        modelOverride: mode.preferredModel,
+        maxToolRounds: parsed.maxToolRounds,
+      });
       return;
     }
 

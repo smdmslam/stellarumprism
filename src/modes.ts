@@ -69,6 +69,22 @@ export const MODES: Mode[] = [
     preferredModel: "anthropic/claude-haiku-4.5",
   },
   {
+    name: "refactor",
+    aliases: ["/refactor"],
+    description: "Rename an identifier across the project safely",
+    info:
+      "Substrate-gated identifier rename. Uses ast_query to locate the " +
+      "declaration, grep to enumerate candidate references, and ast_query " +
+      "again at each site to confirm same-symbol resolution (so shadowed " +
+      "locals and unrelated symbols with the same spelling are left alone). " +
+      "Edits go through the existing approval flow; a final typecheck " +
+      "verifies the rename didn't break the build. Usage: '/refactor " +
+      "<oldName> <newName>'. Add '--scope=<path>' to limit to one file or " +
+      "directory; '--max-rounds=N' for very wide renames. Uses " +
+      "claude-haiku-4.5 by default for precise multi-file edits.",
+    preferredModel: "anthropic/claude-haiku-4.5",
+  },
+  {
     name: "audit",
     aliases: ["/audit", "/second-pass"],
     description: "Verify code via the diagnostic substrate (read-only)",
