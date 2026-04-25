@@ -1189,9 +1189,16 @@ fn detect_node_typecheck(cwd: &Path) -> Option<Vec<String>> {
     // trivially because no files are compiled. Detect that signature
     // and target the app config directly.
     if cwd.join("tsconfig.app.json").is_file() {
+        // The `--` separator is critical: without it, `npm exec -p ...`
+        // and `pnpm exec -p ...` interpret `-p` as their own
+        // `--package` flag and look for a package named
+        // 'tsconfig.app.json' on the registry, exiting 2 with no
+        // diagnostics. With `--`, every token after it is forwarded
+        // verbatim to tsc.
         return Some(vec![
             pm.bin().into(),
             "exec".into(),
+            "--".into(),
             "tsc".into(),
             "-p".into(),
             "tsconfig.app.json".into(),
@@ -2092,7 +2099,8 @@ error[E0599]: no method named `foo` found for struct `Bar`
         // a project-references tsconfig.json that doesn't compile any
         // files itself. Bare `tsc --noEmit` against the root passes
         // even when src/ has type errors. The substrate must target
-        // tsconfig.app.json directly.
+        // tsconfig.app.json directly, with `--` so the package manager
+        // doesn't eat the `-p` flag.
         let dir = fresh_tmp();
         fs::write(dir.join("package.json"), r#"{"scripts": {}}"#).unwrap();
         fs::write(
@@ -2109,6 +2117,7 @@ error[E0599]: no method named `foo` found for struct `Bar`
             vec![
                 "pnpm".to_string(),
                 "exec".to_string(),
+                "--".to_string(),
                 "tsc".to_string(),
                 "-p".to_string(),
                 "tsconfig.app.json".to_string(),
