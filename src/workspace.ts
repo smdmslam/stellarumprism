@@ -26,6 +26,7 @@ import {
   renderJsonReport,
   renderMarkdownReport,
   type AuditReport,
+  type RuntimeProbe,
 } from "./findings";
 import { buildFixPrompt, filterFindings, parseFixArgs } from "./fix";
 import { buildBuildPrompt, parseBuildArgs } from "./build";
@@ -821,6 +822,7 @@ export class Workspace {
   private async handleAuditComplete(info: {
     responseText: string;
     model: string;
+    runtimeProbes: RuntimeProbe[];
   }): Promise<void> {
     const scope = this.activeAuditScope;
     this.activeAuditScope = null;
@@ -828,6 +830,7 @@ export class Workspace {
     const report = parseAuditTranscript(info.responseText, {
       model: info.model,
       scope,
+      runtime_probes: info.runtimeProbes,
     });
 
     // ANSI summary in xterm — even if we fail to write the file, the

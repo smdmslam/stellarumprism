@@ -5,8 +5,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseFixArgs, filterFindings } from "../src/fix.ts";
-import type { Finding } from "../src/findings.ts";
+import { parseFixArgs, filterFindings, buildFixPrompt } from "../src/fix.ts";
+import type { AuditReport, Finding, RuntimeProbe } from "../src/findings.ts";
 
 function fixture(): Finding[] {
   return [
@@ -272,4 +272,61 @@ test("filter all on empty list returns empty without error", () => {
   const r = filterFindings([], { kind: "all" });
   assert.equal(r.findings.length, 0);
   assert.equal(r.error, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// buildFixPrompt \u2014 runtime-probe surfacing
+// ---------------------------------------------------------------------------
+
+function makeReport(probes: RuntimeProbe[] = []): AuditReport {
+  return {
+    schema_version: 1,
+    tool: "prism-second-pass",
+    generated_at: "2026-04-25T00:00:00.000Z",
+    scope: "HEAD~1..HEAD",
+    model: "m",
+    summary: { errors: 1, warnings: 0, info: 0, total: 1 },
+    findings: fixture().slice(0, 1),
+    runtime_probes: probes,
+    raw_transcript: "",
+  };
+}
+
+test("buildFixPrompt surfaces runtime probes when present", () => {
+  const probes: RuntimeProbe[] = [
+    {
+      url: "http://localhost:3000/api/login",
+      method: "POST",
+      summary: "http_fetch POST /api/login \u2192 401 Unauthorized (24 ms)",
+      ok: true,
+      round: 1,
+    },
+  ];
+  const report = makeReport(probes);
+  const out = buildFixPrompt(report, report.findings, "audit.json");
+  assert.match(out, /Runtime probes captured during the audit/);
+  assert.match(out, /POST http:\/\/localhost:3000\/api\/login/);
+  assert.match(out, /401 Unauthorized/);
+});
+
+test("buildFixPrompt omits the runtime block when no probes captured", () => {
+  const report = makeReport([]);
+  const out = buildFixPrompt(report, report.findings, "audit.json");
+  assert.doesNotMatch(out, /Runtime probes captured/);
+});
+
+test("buildFixPrompt marks transport-failed probes distinctly", () => {
+  const probes: RuntimeProbe[] = [
+    {
+      url: "http://localhost:3000/api/missing",
+      method: "GET",
+      summary: "http_fetch GET /api/missing \u2192 ERROR: connection refused",
+      ok: false,
+      round: 1,
+    },
+  ];
+  const report = makeReport(probes);
+  const out = buildFixPrompt(report, report.findings, "audit.json");
+  assert.match(out, /transport/);
+  assert.match(out, /api\/missing/);
 });

@@ -80,6 +80,33 @@ export interface Finding {
   evidence: Evidence[];
 }
 
+/**
+ * One HTTP probe captured during the audit. Each entry corresponds to a
+ * single `http_fetch` tool call the auditor issued. Surfacing these in
+ * the report (alongside `findings`) preserves runtime evidence even when
+ * the model forgets to paste an `evidence:` stanza into a finding line.
+ *
+ * Consumers (`/fix`, future IDE problems panel, future CI gates) read
+ * this list to reason about live endpoint state without re-running the
+ * probe. The grader still requires the model to cite `source=runtime`
+ * for a *finding* to graduate; the probe list is a sibling record, not
+ * a backdoor for confidence promotion.
+ */
+export interface RuntimeProbe {
+  /** URL exactly as passed to http_fetch. */
+  url: string;
+  /** HTTP method (GET, POST, ...). */
+  method: string;
+  /** Pre-formatted single-line summary from the tool result. */
+  summary: string;
+  /** True iff the tool call itself succeeded (got a response). False
+   * for transport errors (timeouts, connection refused). */
+  ok: boolean;
+  /** 1-based round in which the call was issued. Helpful when
+   * correlating with the surrounding tool log. */
+  round: number;
+}
+
 /** Fully parsed audit report, ready to render in any form. */
 export interface AuditReport {
   schema_version: 1;
@@ -96,6 +123,13 @@ export interface AuditReport {
     total: number;
   };
   findings: Finding[];
+  /**
+   * Every http_fetch call the auditor issued during this run. Empty
+   * when the audit didn't touch HTTP code paths, when the dev server
+   * wasn't running, or when the run pre-dates substrate v4. Always an
+   * array (never undefined) so consumers don't need null-guards.
+   */
+  runtime_probes: RuntimeProbe[];
   /** The raw text the parser read. Always retained for debugging / recovery. */
   raw_transcript: string;
 }
@@ -207,7 +241,17 @@ interface ParsedBlock {
  */
 export function parseAuditTranscript(
   text: string,
-  meta: { model: string; scope: string | null },
+  meta: {
+    model: string;
+    scope: string | null;
+    /**
+     * Every `http_fetch` tool call captured during the audit turn,
+     * if any. Forwarded verbatim into `AuditReport.runtime_probes`.
+     * Optional so older callers (and tests) keep working without
+     * passing it; treat omission as 'no probes'.
+     */
+    runtime_probes?: RuntimeProbe[];
+  },
 ): AuditReport {
   const blocks: ParsedBlock[] = [{ claimed: null, findings: [] }];
   let runningIndex = 0;
@@ -275,6 +319,7 @@ export function parseAuditTranscript(
     model: meta.model,
     summary,
     findings,
+    runtime_probes: meta.runtime_probes ?? [],
     raw_transcript: text,
   };
 }
@@ -503,6 +548,15 @@ export function renderAnsiFindings(report: AuditReport): string {
   out.push(
     `\r\n${BOLD}FINDINGS (${report.summary.total})${RESET} ${DIM}\u2014 ${report.summary.errors} error, ${report.summary.warnings} warning, ${report.summary.info} info | ${cs.confirmed} confirmed, ${cs.probable} probable, ${cs.candidate} candidate${RESET}\r\n`,
   );
+  // One-line probe summary so the user sees runtime activity even when
+  // the model didn't surface it in a finding's evidence trail.
+  if (report.runtime_probes.length > 0) {
+    const okCount = report.runtime_probes.filter((p) => p.ok).length;
+    const failCount = report.runtime_probes.length - okCount;
+    out.push(
+      `${DIM}runtime probes: ${report.runtime_probes.length}${RESET} ${DIM}\u2014 ${GREEN}${okCount} ok${RESET}${DIM}${failCount > 0 ? `, ${RED}${failCount} transport failure${failCount === 1 ? "" : "s"}${RESET}` : ""}${RESET}\r\n`,
+    );
+  }
   if (report.findings.length === 0) {
     out.push(
       `${DIM}No wiring gaps surfaced. See raw transcript in the markdown report for details.${RESET}\r\n`,
@@ -590,6 +644,25 @@ export function renderMarkdownReport(report: AuditReport): string {
     "> **Confidence legend.** _confirmed_ = backed by typecheck/LSP/runtime/test. _probable_ = backed by AST/structural analysis. _candidate_ = grep, regex, or LLM inference only \u2014 needs verification.",
   );
   fm.push("");
+
+  // Runtime probes section. Rendered before the findings list so a reader
+  // skimming the report sees the live-endpoint evidence the auditor
+  // captured, even when no finding directly cites it.
+  if (report.runtime_probes.length > 0) {
+    fm.push("## Runtime probes");
+    fm.push("");
+    const okCount = report.runtime_probes.filter((p) => p.ok).length;
+    const failCount = report.runtime_probes.length - okCount;
+    fm.push(
+      `${report.runtime_probes.length} probe${report.runtime_probes.length === 1 ? "" : "s"} captured \u2014 ${okCount} ok, ${failCount} transport failure${failCount === 1 ? "" : "s"}.`,
+    );
+    fm.push("");
+    for (const p of report.runtime_probes) {
+      const status = p.ok ? "\u2713" : "\u2717";
+      fm.push(`- ${status} \`${p.method} ${p.url}\` \u2014 ${p.summary}`);
+    }
+    fm.push("");
+  }
 
   if (report.findings.length > 0) {
     fm.push("## Findings");

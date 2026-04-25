@@ -6,7 +6,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { gradeFinding, parseAuditTranscript } from "../src/findings.ts";
+import {
+  gradeFinding,
+  parseAuditTranscript,
+  renderJsonReport,
+  renderMarkdownReport,
+} from "../src/findings.ts";
+import type { RuntimeProbe } from "../src/findings.ts";
 
 // ---------------------------------------------------------------------------
 // Bug fixed: trailing `FINDINGS (0)` summary used to silently overwrite the
@@ -283,4 +289,72 @@ test("parser: multiple evidence receipts split by '|'", () => {
     r.findings[0].evidence.map((e) => e.source),
     ["typecheck", "grep"],
   );
+});
+
+// ---------------------------------------------------------------------------
+// Runtime probes (substrate v4 \u2014 surfaced alongside findings)
+// ---------------------------------------------------------------------------
+
+function probe(over: Partial<RuntimeProbe> = {}): RuntimeProbe {
+  return {
+    url: over.url ?? "http://localhost:3000/api/health",
+    method: over.method ?? "GET",
+    summary: over.summary ?? "http_fetch GET /api/health \u2192 200 OK (12 ms)",
+    ok: over.ok ?? true,
+    round: over.round ?? 1,
+  };
+}
+
+test("parseAuditTranscript stores runtime_probes verbatim", () => {
+  const probes: RuntimeProbe[] = [
+    probe({ url: "http://localhost:5173/api/users", method: "POST" }),
+    probe({ url: "http://localhost:5173/api/health", ok: false, round: 3 }),
+  ];
+  const r = parseAuditTranscript("FINDINGS (0)", {
+    model: "m",
+    scope: null,
+    runtime_probes: probes,
+  });
+  assert.equal(r.runtime_probes.length, 2);
+  assert.deepEqual(r.runtime_probes, probes);
+});
+
+test("runtime_probes default to empty array when meta omits them", () => {
+  const r = parseAuditTranscript("FINDINGS (0)", { model: "m", scope: null });
+  assert.deepEqual(r.runtime_probes, []);
+});
+
+test("renderJsonReport includes runtime_probes", () => {
+  const r = parseAuditTranscript("FINDINGS (0)", {
+    model: "m",
+    scope: null,
+    runtime_probes: [probe()],
+  });
+  const json = JSON.parse(renderJsonReport(r));
+  assert.ok(Array.isArray(json.runtime_probes));
+  assert.equal(json.runtime_probes.length, 1);
+  assert.equal(json.runtime_probes[0].url, "http://localhost:3000/api/health");
+  assert.equal(json.runtime_probes[0].method, "GET");
+  assert.equal(json.runtime_probes[0].ok, true);
+});
+
+test("renderMarkdownReport adds a Runtime probes section when probes exist", () => {
+  const r = parseAuditTranscript("FINDINGS (0)", {
+    model: "m",
+    scope: null,
+    runtime_probes: [
+      probe({ url: "http://localhost:3000/api/login", method: "POST" }),
+      probe({ url: "http://localhost:3000/api/missing", ok: false, round: 2 }),
+    ],
+  });
+  const md = renderMarkdownReport(r);
+  assert.match(md, /## Runtime probes/);
+  assert.match(md, /POST http:\/\/localhost:3000\/api\/login/);
+  assert.match(md, /1 ok, 1 transport failure/);
+});
+
+test("renderMarkdownReport omits the section when no probes captured", () => {
+  const r = parseAuditTranscript("FINDINGS (0)", { model: "m", scope: null });
+  const md = renderMarkdownReport(r);
+  assert.doesNotMatch(md, /## Runtime probes/);
 });

@@ -366,6 +366,20 @@ export function buildFixPrompt(
   if (report.scope) {
     lines.push(`Audit scope: ${report.scope}`);
   }
+  // Surface runtime probes the auditor captured so the fix consumer
+  // sees the live-endpoint evidence even when the corresponding finding
+  // didn't carry an explicit `evidence:` stanza. Treated as authoritative
+  // runtime context, parallel to `findings`.
+  if (report.runtime_probes.length > 0) {
+    lines.push("");
+    lines.push(
+      `Runtime probes captured during the audit (treat as live evidence \u2014 do NOT re-probe):`,
+    );
+    for (const p of report.runtime_probes) {
+      const status = p.ok ? "\u2713" : "\u2717 (transport)";
+      lines.push(`- ${status} ${p.method} ${p.url} \u2014 ${p.summary}`);
+    }
+  }
   lines.push("");
   lines.push("Findings to apply (authoritative; do not re-investigate):");
   lines.push("");

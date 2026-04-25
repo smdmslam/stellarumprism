@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { BlockManager } from "./blocks";
 import { route as routeModel, parseAutoSlug, PRESETS } from "./router";
 import { modelSupportsToolUse } from "./models";
+import type { RuntimeProbe } from "./findings";
 
 /**
  * Universal tool-capable fallback used when the resolved model can't do
@@ -105,8 +106,17 @@ export interface AgentControllerOptions {
    * response has been assembled. The workspace uses this to parse the
    * structured findings and persist the markdown report. Not fired for
    * cancelled or errored turns.
+   *
+   * `runtimeProbes` carries every `http_fetch` tool call the auditor
+   * issued during the turn so the parsed report can preserve runtime
+   * evidence even when the model forgets to cite it in a finding's
+   * `evidence:` stanza. Empty array if no HTTP probes ran.
    */
-  onAuditComplete?: (info: { responseText: string; model: string }) => void;
+  onAuditComplete?: (info: {
+    responseText: string;
+    model: string;
+    runtimeProbes: RuntimeProbe[];
+  }) => void;
 }
 
 /**
@@ -142,6 +152,13 @@ export class AgentController {
   private currentMode: string | null = null;
   /** Resolved model slug for the in-flight request. Used for onAuditComplete metadata. */
   private currentResolvedModel: string | null = null;
+  /**
+   * Every `http_fetch` tool call captured during the in-flight turn.
+   * Reset at the start of each query and handed to the audit-complete
+   * callback so the parsed report can record runtime evidence. Always
+   * an array; empty when the agent didn't probe any endpoints.
+   */
+  private currentRuntimeProbes: RuntimeProbe[] = [];
 
   constructor(opts: AgentControllerOptions) {
     this.opts = opts;
@@ -302,6 +319,7 @@ export class AgentController {
     }
     this.clearListeners();
     this.responseBuffer = "";
+    this.currentRuntimeProbes = [];
     this.clearActionBar();
 
     // Enter busy state now. Anything that short-circuits below must call
@@ -545,6 +563,13 @@ export class AgentController {
     round: number;
   }): void {
     this.resetStallTimer();
+    // Capture http_fetch invocations into a sibling probe trail so the
+    // audit report can preserve runtime evidence even when the model
+    // forgets the `evidence:` stanza on a finding line.
+    if (info.name === "http_fetch") {
+      const probe = parseHttpFetchProbe(info.args, info.summary, info.ok, info.round);
+      if (probe) this.currentRuntimeProbes.push(probe);
+    }
     // Dim cyan arrow, tool name in bold cyan, args truncated so a huge file
     // content arg doesn't blow up the line. Result summary on a dim second
     // line so the user sees what actually happened.
@@ -578,10 +603,14 @@ export class AgentController {
     this.currentMode = null;
     this.currentResolvedModel = null;
     if (audit) {
+      // Snapshot the probes BEFORE clearing so the workspace handler
+      // gets the immutable list this turn captured.
+      const probesForHook = this.currentRuntimeProbes.slice();
       try {
         this.opts.onAuditComplete?.({
           responseText: respText,
           model: modelForHook,
+          runtimeProbes: probesForHook,
         });
       } catch (e) {
         console.error("onAuditComplete threw", e);
@@ -827,10 +856,43 @@ function shortSlug(slug: string): string {
 
 /** Compact a JSON tool-call argument blob for single-line terminal display. */
 function shortenArgs(json: string): string {
-  // Collapse whitespace and truncate — tool args are usually tiny, but if a
+  // Collapse whitespace and truncate \u2014 tool args are usually tiny, but if a
   // model passes a huge path or payload we don't want to spam the terminal.
   const collapsed = json.replace(/\s+/g, " ").trim();
   const MAX = 120;
   if (collapsed.length <= MAX) return collapsed;
   return collapsed.slice(0, MAX - 1) + "\u2026";
+}
+
+/**
+ * Parse the args + summary of an `http_fetch` tool-call event into a
+ * `RuntimeProbe` record. Returns null when the args don't carry a URL
+ * (which means the call was rejected before reaching the substrate, so
+ * there's no probe to record).
+ *
+ * Args come over the wire as a JSON string \u2014 e.g.
+ *   `{"url":"http://localhost:3000/api/health","method":"GET"}`
+ * but we tolerate malformed or non-JSON args by falling back to a
+ * minimal record so the probe trail never silently disappears.
+ */
+function parseHttpFetchProbe(
+  args: string,
+  summary: string,
+  ok: boolean,
+  round: number,
+): RuntimeProbe | null {
+  let url = "";
+  let method = "GET";
+  try {
+    const parsed = JSON.parse(args) as { url?: unknown; method?: unknown };
+    if (typeof parsed.url === "string") url = parsed.url.trim();
+    if (typeof parsed.method === "string" && parsed.method.trim()) {
+      method = parsed.method.trim().toUpperCase();
+    }
+  } catch {
+    // Non-JSON args (shouldn't happen from the agent loop) \u2014 swallow
+    // and let url stay empty so we drop the probe below.
+  }
+  if (!url) return null;
+  return { url, method, summary, ok, round };
 }
