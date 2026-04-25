@@ -94,6 +94,19 @@ pub struct AgentConfig {
     /// `["alembic", "check"]`.
     #[serde(default)]
     pub schema_command: Option<Vec<String>>,
+    /// Optional allowlist of program names that `run_shell` is
+    /// permitted to invoke. Matched against `argv[0]` by basename
+    /// (so `/usr/bin/git` matches an entry of `"git"`). When the
+    /// list is empty (the default), every `run_shell` call still
+    /// hits the user-approval card; setting an allowlist makes
+    /// non-matching programs hard-rejected at the substrate layer
+    /// BEFORE approval is requested. Hardcoded destructive patterns
+    /// (`rm -rf /`, fork bomb, `dd of=/dev/`, etc.) are rejected
+    /// regardless of this setting and cannot be allowlisted.
+    /// Example: `["rsync", "git", "npm", "pnpm", "yarn", "mkdir",
+    /// "mv", "cp", "chmod"]`.
+    #[serde(default)]
+    pub run_shell_allowlist: Vec<String>,
     /// Base URL of the user's dev server, used by the `http_fetch`
     /// substrate cell when /audit and /build probe live endpoints.
     /// When unset, `diagnostics::detect_dev_server_url` infers a sensible
@@ -121,6 +134,7 @@ impl Default for AgentConfig {
             lsp_command: None,
             schema_timeout_secs: default_schema_timeout_secs(),
             schema_command: None,
+            run_shell_allowlist: Vec::new(),
             dev_server_url: None,
             verifier: VerifierConfig::default(),
         }

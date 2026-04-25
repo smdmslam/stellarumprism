@@ -1376,6 +1376,10 @@ pub async fn agent_query(
     // Same for the schema-inspection substrate cell.
     let schema_command = snapshot.agent.schema_command.clone();
     let schema_timeout_secs = snapshot.agent.schema_timeout_secs;
+    // Allowlist for the run_shell substrate cell. Empty = every call
+    // still hits the approval card; a non-empty list hard-rejects
+    // non-matching argv[0] before the card is rendered.
+    let run_shell_allowlist = snapshot.agent.run_shell_allowlist.clone();
 
     // Clone the approval maps (Arc bumps) so the spawned task can gate
     // write tool calls on user consent without holding Tauri State.
@@ -1514,6 +1518,20 @@ pub async fn agent_query(
                                         "e2e_run" => {
                                             crate::tools::execute_e2e_run(
                                                 &call.function.arguments,
+                                            )
+                                            .await
+                                        }
+                                        "run_shell" => {
+                                            let allowlist: Option<&[String]> =
+                                                if run_shell_allowlist.is_empty() {
+                                                    None
+                                                } else {
+                                                    Some(&run_shell_allowlist)
+                                                };
+                                            crate::tools::execute_run_shell(
+                                                &call.function.arguments,
+                                                &cwd_for_tools,
+                                                allowlist,
                                             )
                                             .await
                                         }

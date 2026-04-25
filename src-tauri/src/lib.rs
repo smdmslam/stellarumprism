@@ -1,3 +1,10 @@
+// The `tool_schema()` literal in tools.rs is a single `json!` macro
+// invocation that crossed the default 128-token expansion budget when
+// the eighth tool (run_shell, substrate v8) was added. Bumping to 256
+// gives the schema room to grow without forcing us to fragment the
+// literal across helper functions.
+#![recursion_limit = "256"]
+
 mod agent;
 mod approval;
 mod config;
@@ -10,6 +17,7 @@ mod file_ref;
 pub mod lsp;
 mod pty;
 mod save_chat;
+pub mod run_shell;
 pub mod schema;
 mod second_pass;
 mod shell_integration;

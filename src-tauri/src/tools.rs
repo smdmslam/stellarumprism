@@ -47,7 +47,7 @@ const GIT_LOG_LIMIT_CAP: usize = 100;
 /// Tools that must NOT auto-execute. Consulted by the tool loop in
 /// `agent.rs` before each call. Wired to the approval UI.
 pub fn requires_approval(tool_name: &str) -> bool {
-    matches!(tool_name, "write_file" | "edit_file")
+    matches!(tool_name, "write_file" | "edit_file" | "run_shell")
 }
 
 /// Generate a human-readable preview of what a write tool would do.
@@ -90,6 +90,44 @@ pub fn preview_write(tool_name: &str, args_json: &str) -> String {
                 if replace_all { " (replace_all)" } else { "" },
                 truncate_preview(old, 400),
                 truncate_preview(new, 400),
+            )
+        }
+        "run_shell" => {
+            // Render the argv as a single shell-ish line for the approval
+            // card. We deliberately don't shell-quote each piece (the
+            // user already sees the argv array as the literal preview);
+            // the visible string is for human eyeballing only and is not
+            // re-parsed before execution.
+            let argv: Vec<String> = parsed
+                .get("command")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let cwd = parsed
+                .get("cwd")
+                .and_then(|v| v.as_str())
+                .unwrap_or(".");
+            let timeout = parsed
+                .get("timeout_secs")
+                .and_then(|v| v.as_u64())
+                .map(|n| format!("{}s", n))
+                .unwrap_or_else(|| {
+                    format!("{}s (default)", crate::run_shell::DEFAULT_TIMEOUT_SECS)
+                });
+            let argv_line = if argv.is_empty() {
+                "<empty argv>".to_string()
+            } else {
+                argv.join(" ")
+            };
+            format!(
+                "run_shell:\n  argv: {}\n  cwd:  {}\n  timeout: {}",
+                truncate_preview(&argv_line, 800),
+                cwd,
+                timeout,
             )
         }
         _ => args_json.to_string(),
@@ -198,6 +236,32 @@ pub fn tool_schema() -> Value {
                         }
                     },
                     "required": ["path", "old_string", "new_string"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "run_shell",
+                "description": "Execute a shell command in the project's cwd (or a relative subdirectory) and return its stdout / stderr / exit code / duration / timed-out status. Substrate v8: the long-missing shell-execution tool. Gated on user approval (every call); a hardcoded deny-list (rm -rf /, fork bomb, dd of=/dev/, mkfs, etc.) rejects destructive patterns BEFORE the approval card and cannot be bypassed via session-approval. Argv-array required \u{2014} no shell strings; for pipelines / redirection use [\"bash\", \"-c\", \"<expr>\"] so the full expression is visible in the approval card. Output is capped at 32 KB per stream; default timeout is 60s, max 600s. Use this for short-lived commands (rsync, mkdir, mv, git init, npm install). For long-running services (npm run dev), the existing terminal PTY is the right surface, NOT this tool.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "argv-array (e.g. [\"rsync\", \"-av\", \"src/\", \"dst/\"]). argv[0] is the program; argv[1..] are arguments. Empty arrays and shell-metacharacter program names are rejected."
+                        },
+                        "cwd": {
+                            "type": "string",
+                            "description": "Optional working directory, relative to the project cwd (or absolute, but must resolve under it). Defaults to the project cwd. Paths containing `..` are rejected."
+                        },
+                        "timeout_secs": {
+                            "type": "integer",
+                            "description": "Per-call timeout in seconds. Defaults to 60. Capped at 600."
+                        }
+                    },
+                    "required": ["command"]
                 }
             }
         },
@@ -626,6 +690,9 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
         "e2e_run" => Err(
             "e2e_run is async; dispatch via execute_e2e_run instead of execute".into(),
         ),
+        "run_shell" => Err(
+            "run_shell is async; dispatch via execute_run_shell instead of execute".into(),
+        ),
         other => Err(format!("unknown tool: {}", other)),
     };
     match result {
@@ -725,7 +792,10 @@ pub fn execute_lsp_diagnostics(
 
 /// True iff the tool must be dispatched through the async entry point.
 pub fn is_async_tool(name: &str) -> bool {
-    matches!(name, "web_search" | "http_fetch" | "e2e_run")
+    matches!(
+        name,
+        "web_search" | "http_fetch" | "e2e_run" | "run_shell"
+    )
 }
 
 /// True iff the tool needs config-driven defaults that the generic
@@ -990,6 +1060,72 @@ struct E2eRunArgs {
     vars: Option<std::collections::HashMap<String, String>>,
     #[serde(default)]
     timeout_secs: Option<u64>,
+}
+
+/// Execute `run_shell` via the async substrate entry point. Same
+/// dispatch shape as `e2e_run` / `http_fetch` / `web_search`. The
+/// returned ToolInvocation carries a one-line summary for xterm and
+/// the full JSON payload (stdout / stderr / exit_code / duration / etc.)
+/// for the model.
+///
+/// `cwd` is the project cwd (constrained); `allowlist`, when present
+/// + non-empty, restricts which argv[0] values run without per-call
+/// allowlist-rejection. Both come from the agent loop's config
+/// snapshot.
+pub async fn execute_run_shell(
+    args_json: &str,
+    cwd: &str,
+    allowlist: Option<&[String]>,
+) -> ToolInvocation {
+    let spec: crate::run_shell::RunShellSpec = match serde_json::from_str(args_json) {
+        Ok(s) => s,
+        Err(e) => return err_invocation(format!("invalid arguments: {}", e)),
+    };
+    // Run the (blocking) subprocess on tokio's blocking pool so we
+    // don't pin a worker thread for the duration of the call.
+    let cwd_owned = cwd.to_string();
+    let allowlist_owned: Option<Vec<String>> = allowlist.map(|s| s.to_vec());
+    let result = tokio::task::spawn_blocking(move || {
+        crate::run_shell::run_shell(spec, &cwd_owned, allowlist_owned.as_deref())
+    })
+    .await
+    .map_err(|e| format!("join error: {}", e))
+    .and_then(|r| r);
+
+    let run = match result {
+        Ok(r) => r,
+        Err(e) => return err_invocation(e),
+    };
+
+    let argv_preview = if run.command.is_empty() {
+        "<empty>".to_string()
+    } else {
+        let joined = run.command.join(" ");
+        if joined.chars().count() > 80 {
+            let mut s: String = joined.chars().take(80).collect();
+            s.push('\u{2026}');
+            s
+        } else {
+            joined
+        }
+    };
+    let exit_str = match run.exit_code {
+        Some(c) => c.to_string(),
+        None => "?".into(),
+    };
+    let summary = format!(
+        "run_shell `{}` \u{2192} exit {}{} ({} ms)",
+        argv_preview,
+        exit_str,
+        if run.timed_out { " [timed out]" } else { "" },
+        run.duration_ms,
+    );
+    let payload = crate::run_shell::to_run_shell_payload(&run).to_string();
+    ToolInvocation {
+        ok: true,
+        summary,
+        payload,
+    }
 }
 
 /// Execute `e2e_run` via the async substrate entry point. Same dispatch
