@@ -1,18 +1,18 @@
-# Prism — Second Pass
+# Prism — Substrate-Gated Development
 
-*A verification layer for AI-generated code. Catches the wiring gaps your editor missed.*
+*A diagnostic substrate for AI-assisted coding. Catches the wiring gaps your editor missed; gates every edit on the substrate before it lands.*
 
-> **Cursor edits. Antigravity executes. Prism verifies.**
+> **Cursor edits. Antigravity executes. Prism verifies — and now builds, refactors, scaffolds, and tests on the same substrate.**
 
 ## TL;DR
 
 AI coding tools (Cursor, Antigravity, Copilot) are now good enough to execute large refactors. They are **not** good enough to execute them completely. Every meaningful refactor ships with incomplete renames, dangling references, half-rewired call sites, and dead imports — and the very tool that made the refactor is the wrong tool to audit it.
 
-**Prism Second Pass** is a terminal-native AI verifier whose entire job is to catch what the editor missed. It reads the whole repo (or the specific diff), runs the actual compiler, cross-references every symbol touched by the refactor, and produces a structured findings report: *what's broken, where, and how to fix it*.
+**Prism** is a terminal-native AI development environment built around a single insight: **deterministic checks should run BELOW the LLM, not above it.** The substrate (compile, cross-reference, type resolution, runtime probe, schema inspection, LSP analysis, end-to-end flow) runs first. The LLM only writes findings the substrate can confirm. The grader, not the model, picks the confidence tier.
 
-Underneath, it's something more durable than a verifier. Prism is a **diagnostic substrate** — a stack of deterministic checks (compile, cross-reference, type-shape match, runtime probe) that any consumer can query. Today the consumer is `/audit`. Tomorrow it's `/fix`, a pre-commit hook, an in-editor problems panel. Same checks, different surfaces. That's the substrate the IDE phase will be built on.
+That substrate now powers six consumers — `/audit`, `/fix`, `/build`, `/refactor`, `/test-gen`, `/new` — plus a CI-friendly CLI (`prism-audit`) and an emerging IDE shell (file tree + Problems panel today; tabbed editor + inline squiggles + run/debug surface in flight). Same seven cells, six surfaces. That's the architectural bet: **build the substrate once, ride it across every workflow.**
 
-It's not an IDE today. It's the tool you run **after** your IDE — and the foundation on which our IDE, when it ships, will be the only one where every edit is verified before it's accepted.
+The wedge is verification. The vector is everything that follows verification. The defensibility is that competitors built editors first and have to retrofit a substrate; we built the substrate first and can grow editor surfaces on top of it without giving up the correctness floor.
 
 ---
 
@@ -39,13 +39,28 @@ The result: every major AI-assisted refactor carries hidden debt. The industry h
 
 ## The solution
 
-Prism Second Pass is a *diagnostic substrate* with a thin LLM consumer on top. The substrate runs deterministic checks the LLM can't fake: compile the project, walk imports, diff against any ref, query the filesystem. The consumer ranks, dedupes, and writes the findings report. Pushing the deterministic work below the LLM is what makes the output trustworthy — the model can only flag what the substrate confirms.
+Prism is a *diagnostic substrate* with thin LLM consumers on top. The substrate runs deterministic checks the LLM can't fake: compile the project, resolve symbols, run tests, probe HTTP endpoints, walk migrations, query an LSP server, replay end-to-end flows. The consumers (audit, fix, build, refactor, test-gen, new) interpret those results, dedupe, and either write a findings report or generate code that's gated on the substrate. Pushing the deterministic work below the LLM is what makes the output trustworthy — the model can only emit findings or edits the substrate can confirm.
 
-It pairs that substrate with three things the editor doesn't have:
+**The substrate today (seven cells, all shipping):**
 
-1. **Audit-tuned tooling and a build runner.** `grep`, `find`, `git_diff`, `bulk_read`, plus a `typecheck` tool that runs the project's actual `tsc` / `cargo check` / `pyright` / `go build` and parses real diagnostics. Cursor and Antigravity can't afford to do this on every edit — their UX optimizes for inline-completion latency. We can, because terminal users already accept a per-turn budget.
-2. **Long-context routing by default.** Audits route to 1M–2M context models (Grok 4 Fast, GPT-5.4) so the whole repo fits. No chunking, no progressive-rediscovery tax.
-3. **A review persona, not an edit persona.** The system prompt explicitly forbids edits and instructs the agent to produce a structured findings list: `[severity] file:line — description — suggested fix`. The output isn't prose; it's a checklist you work through.
+1. `typecheck` — runs the project's actual `tsc` / `cargo check` / `pyright` / `go build` and parses real diagnostics. Compiler-grounded findings are the highest-confidence tier in the grader.
+2. `ast_query` — TypeScript-compiler-backed symbol resolution. The deterministic answer to "does this identifier exist in scope?" — the question grep cannot answer.
+3. `run_tests` — runs the project's test suite (vitest / jest / cargo test / pytest / go test). Behavior regressions become confirmed evidence.
+4. `lsp_diagnostics` — language-agnostic LSP analysis (rust-analyzer / pyright / gopls / typescript-language-server). Catches what bare `cargo check` misses.
+5. `http_fetch` — runtime probe against the dev server. Live response is runtime-tier evidence.
+6. `e2e_run` — multi-step stateful flows (login → action → assert), JSON-path extraction across requests. Strongest runtime signal Prism produces.
+7. `schema_inspect` — Prisma / Drizzle / SQLAlchemy / Django / Rails migration-state inspection. Catches the "works on my machine, broken in prod" class of bug.
+
+**The consumers riding the substrate (six modes today):**
+
+- `/audit` — read-only verification. Runs the substrate, produces a structured findings report.
+- `/fix` — applies findings from a prior audit through the existing approval flow.
+- `/build` — generates new features against the substrate (plan → execute → verify → iterate).
+- `/refactor` — same-symbol rename across the project, gated on `ast_query` resolution at every site.
+- `/test-gen` — generates tests for an existing symbol, post-verifies with `run_tests`.
+- `/new` — scaffolds new projects from a stack description, hand-rolled (no shell-execution tool by design).
+
+Each consumer is the same agent + tool surface, specialized by system prompt and a per-mode round budget. New consumers are days of work, not weeks.
 
 The core workflow:
 
@@ -225,17 +240,22 @@ Recommendation: **Second Pass** as the product brand, `/audit` as the in-app com
 
 ## Current state
 
-- Prism the underlying tool exists and is usable: multi-model agent, tool loop with read/write/web_search, approval flow, shell integration, multi-tab.
-- Second Pass as a dedicated capability is Phase 4 on the roadmap — not yet built.
-- Phase 4 scope:
-  - Four new Rust tools: `grep`, `find`, `git_diff`, `bulk_read`
-  - Mode registry (persona + system prompt + preferred preset, reusable for future `/explain`, `/review-pr`, `/test-gen`, `/debug`)
-  - `/audit` mode with specialized system prompt and long-context default preset (Grok 4 Fast, GPT-5.4)
-  - Structured findings schema + ANSI renderer for xterm
-  - **Markdown report output** to `./.prism/second-pass/audit-<timestamp>.md` — the durable handoff artifact
-  - **Skills loader**: `~/.prism/skills/` + `./.prism/skills/` conventions, `/skill <name>` command, optional auto-load via frontmatter
-  - `/fix <range>` follow-up command that lets Prism fix findings in-app via the existing approval flow
-- Estimated build time: 2–3 focused weeks to a shippable v1.
+The project has moved well past the original Phase 4 plan. As of 2026-04-25, the substrate, consumers, CLI, and IDE-shape phase 1 are all shipping. Test status: 172 cargo + 172 TypeScript + 9 prism-audit binary tests passing; tsc clean.
+
+**Substrate (seven cells, all shipping, Rust):** typecheck, ast_query, run_tests, http_fetch, e2e_run, lsp_diagnostics, schema_inspect. Each cell has its own argv-override + per-call timeout knobs in `~/.config/prism/config.toml`, returns a structured payload (not free text), and contributes to a deterministic confidence grader. The grader — not the LLM — decides confidence: `confirmed` (compiler / LSP / runtime / test / schema), `probable` (AST), `candidate` (grep- or LLM-only).
+
+**Consumers (six modes, all shipping):** `/audit`, `/fix`, `/build`, `/refactor`, `/test-gen`, `/new`. Each ships with its own system prompt + prompt-contract tests pinning the language so future copy-edits can't silently regress the discipline.
+
+**CLI (`prism-audit`):** standalone Rust binary that runs the substrate cells without an LLM. Three output formats (text / JSON / GitHub Actions). Exit codes 0/2 per a `--fail-on` policy. Same JSON sidecar shape as the GUI — interchangeable with `/fix`. Designed for CI gates.
+
+**IDE shell:**
+- Problems panel (right-side): renders findings grouped by file with severity + confidence + source chips. Click any finding → inline code window with the target line highlighted.
+- File tree (left-side, IDE-shape phase 1, shipped today): gitignore-honored, lazy-loaded, keyboard-navigable. Click-to-preview overlay above the terminal. `.prism/` always visible (audit reports + sidecars surface natively); a Show-hidden toggle reveals other dotfiles when needed.
+- Phases 2–4 in flight: tabbed CodeMirror editor with save-via-approval, inline squiggles fed by the same substrate, run/debug button row tied to the existing PTY blocks.
+
+**Workflow infrastructure:** filesystem-as-database (`./.prism/second-pass/audit-*.md` + JSON sidecar per run); skills loader (`~/.prism/skills/` global + `./.prism/skills/` per-project); approval flow on every write; runtime-probe URL auto-detection; LSP server auto-detection from project shape; ORM auto-detection for schema_inspect.
+
+**What's NOT built yet (deliberate):** in-editor inline squiggles (phase 3), run/debug surface (phase 4), telemetry / log probe (substrate v8), real multi-file refactor beyond rename, deploy/preview integration.
 
 ## The ask
 
@@ -243,4 +263,4 @@ Recommendation: **Second Pass** as the product brand, `/audit` as the in-app com
 
 ---
 
-*Document owner: Steven Morales. Last updated: 2026-04-24.*
+*Document owner: Steven Morales. Last updated: 2026-04-25.*
