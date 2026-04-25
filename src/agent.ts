@@ -169,6 +169,15 @@ export class AgentController {
    * nothing).
    */
   private currentSubstrateRuns: SubstrateRun[] = [];
+  /**
+   * True iff at least one tool call has fired during this turn AND no
+   * assistant tokens have arrived since. Drives the dim `\u2500\u2500\u2500 answer
+   * \u2500\u2500\u2500` rule we render before the final-answer prose so the user's
+   * eye finds it without scanning the tool log. Reset to false on
+   * every token; flipped to true on every tool call. The rule fires
+   * exactly once per tool-loop \u2192 prose transition.
+   */
+  private expectingAnswerRule = false;
 
   constructor(opts: AgentControllerOptions) {
     this.opts = opts;
@@ -478,6 +487,16 @@ export class AgentController {
   private onToken(piece: string): void {
     this.responseBuffer += piece;
     this.resetStallTimer();
+    // Phase rule: when the first assistant token arrives after a tool
+    // call, emit a dim `\u2500\u2500\u2500 answer \u2500\u2500\u2500` rule so the user's eye finds
+    // the final prose without scanning the tool log. Skipped when the
+    // turn has had no tool calls (chat turns get straight prose).
+    if (this.expectingAnswerRule && piece.length > 0) {
+      this.expectingAnswerRule = false;
+      this.opts.term.write(
+        `\r\n\x1b[2m\u2500\u2500\u2500 answer \u2500\u2500\u2500\x1b[0m\r\n`,
+      );
+    }
     // xterm expects CRLF for newlines. Bare \n moves the cursor down without
     // returning to column 0, so lines stair-step. Normalize on write.
     const normalized = piece.replace(/\r?\n/g, "\r\n");
@@ -596,20 +615,26 @@ export class AgentController {
         round: info.round,
       });
     }
-    // Dim cyan arrow, tool name in bold cyan, args truncated so a huge file
-    // content arg doesn't blow up the line. Result summary on a dim second
-    // line so the user sees what actually happened.
+    // Mark the next onToken to emit the `\u2500\u2500\u2500 answer \u2500\u2500\u2500` phase
+    // rule. The flag lives across multiple tool calls in the same turn
+    // and is consumed by whichever token arrives first after the loop
+    // settles back into prose.
+    this.expectingAnswerRule = true;
+    // Whole-line dim so the tool log recedes visually and the final
+    // answer (default brightness) pops. Tool name kept dim-cyan (no
+    // bold) so it's still scannable but doesn't compete with the
+    // assistant's prose for the eye.
     const DIM = "\x1b[2m";
     const CYAN = "\x1b[36m";
-    const BOLD = "\x1b[1m";
     const GREEN = "\x1b[32m";
     const RED = "\x1b[31m";
     const RESET = "\x1b[0m";
-    const prettyArgs = shortenArgs(info.args);
-    const statusColor = info.ok ? GREEN : RED;
+    const prettyArgs = prettyToolArgs(info.name, info.args);
+    const argSegment = prettyArgs ? ` ${DIM}${prettyArgs}${RESET}` : "";
+    const statusGlyph = info.ok ? `${GREEN}\u2713${RESET}` : `${RED}\u2717${RESET}`;
     this.opts.term.write(
-      `\r\n${DIM}\u2192${RESET} ${BOLD}${CYAN}${info.name}${RESET}${DIM}(${prettyArgs})${RESET}` +
-        `\r\n  ${statusColor}\u2190${RESET} ${DIM}${info.summary}${RESET}\r\n`,
+      `\r\n${DIM}\u2192${RESET} ${DIM}${CYAN}${info.name}${RESET}${argSegment}` +
+        `\r\n  ${statusGlyph} ${DIM}${info.summary}${RESET}\r\n`,
     );
   }
 
@@ -890,6 +915,136 @@ function shortenArgs(json: string): string {
   const MAX = 120;
   if (collapsed.length <= MAX) return collapsed;
   return collapsed.slice(0, MAX - 1) + "\u2026";
+}
+
+/**
+ * Argv-style one-line preview for a tool-call argument blob. Each tool
+ * gets a hand-rolled formatter that picks the most relevant arg(s) and
+ * displays them in a shape closer to how a human would type them, e.g.
+ * `web_search "AI code verification 2026"` instead of
+ * `web_search({"query":"AI code verification 2026"})`.
+ *
+ * Falls back to `shortenArgs` for tools we haven't special-cased so
+ * nothing ever silently disappears. Returns an empty string when the
+ * args are empty (nothing to display).
+ */
+function prettyToolArgs(toolName: string, json: string): string {
+  const trimmed = json.trim();
+  if (!trimmed || trimmed === "{}" || trimmed === "null") return "";
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    const v = JSON.parse(trimmed);
+    if (v && typeof v === "object" && !Array.isArray(v)) {
+      parsed = v as Record<string, unknown>;
+    }
+  } catch {
+    // fall through to the raw shortener.
+  }
+  if (!parsed) return shortenArgs(json);
+
+  const str = (k: string): string | undefined => {
+    const v = parsed![k];
+    return typeof v === "string" ? v : undefined;
+  };
+  const arrStr = (k: string): string[] | undefined => {
+    const v = parsed![k];
+    if (!Array.isArray(v)) return undefined;
+    return v.filter((x): x is string => typeof x === "string");
+  };
+  const num = (k: string): number | undefined => {
+    const v = parsed![k];
+    return typeof v === "number" ? v : undefined;
+  };
+  const quote = (s: string): string =>
+    `\u201c${s.length > 80 ? s.slice(0, 79) + "\u2026" : s}\u201d`;
+  const path = (s: string): string =>
+    s.length > 80 ? `\u2026${s.slice(s.length - 79)}` : s;
+
+  switch (toolName) {
+    case "read_file":
+    case "write_file":
+    case "edit_file":
+    case "list_directory":
+    case "list_directory_tree":
+    case "read_file_snippet": {
+      const p = str("path");
+      return p ? path(p) : "";
+    }
+    case "web_search": {
+      const q = str("query");
+      return q ? quote(q) : "";
+    }
+    case "grep": {
+      const pat = str("pattern");
+      const inPath = str("path");
+      return pat
+        ? inPath
+          ? `${quote(pat)} in ${path(inPath)}`
+          : quote(pat)
+        : "";
+    }
+    case "find": {
+      const pat = str("pattern");
+      return pat ? quote(pat) : "";
+    }
+    case "git_diff": {
+      const range = str("range");
+      const p = str("path");
+      const parts: string[] = [];
+      if (range) parts.push(range);
+      if (p) parts.push(`-- ${path(p)}`);
+      return parts.join(" ");
+    }
+    case "git_log": {
+      const refStr = str("ref") ?? "HEAD";
+      const limit = num("limit");
+      return limit !== undefined ? `${refStr} -${limit}` : refStr;
+    }
+    case "bulk_read": {
+      const paths = arrStr("paths");
+      if (!paths || paths.length === 0) return "";
+      if (paths.length === 1) return path(paths[0]);
+      return `${paths.length} files: ${path(paths[0])} + ${paths.length - 1} more`;
+    }
+    case "http_fetch": {
+      const url = str("url");
+      const method = str("method") ?? "GET";
+      return url ? `${method.toUpperCase()} ${url}` : "";
+    }
+    case "e2e_run": {
+      const flow = str("flow_name");
+      return flow ? quote(flow) : "";
+    }
+    case "typecheck":
+    case "run_tests":
+    case "lsp_diagnostics":
+    case "schema_inspect": {
+      // These tools' interesting state is the override command (when
+      // provided); otherwise they auto-detect and the tool name alone
+      // is enough.
+      const cmd = arrStr("command");
+      return cmd && cmd.length > 0 ? cmd.join(" ") : "";
+    }
+    case "ast_query": {
+      const op = str("op") ?? "resolve";
+      const sym = str("symbol");
+      const file = str("file");
+      const parts: string[] = [op];
+      if (sym) parts.push(quote(sym));
+      if (file) parts.push(`@${path(file)}`);
+      return parts.join(" ");
+    }
+    case "run_shell": {
+      const argv = arrStr("command");
+      if (!argv || argv.length === 0) return "";
+      const joined = argv.join(" ");
+      return joined.length > 80 ? joined.slice(0, 79) + "\u2026" : joined;
+    }
+    case "get_cwd":
+      return "";
+    default:
+      return shortenArgs(json);
+  }
 }
 
 /**
