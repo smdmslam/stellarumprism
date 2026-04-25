@@ -288,6 +288,7 @@ function makeReport(probes: RuntimeProbe[] = []): AuditReport {
     summary: { errors: 1, warnings: 0, info: 0, total: 1 },
     findings: fixture().slice(0, 1),
     runtime_probes: probes,
+    substrate_runs: [],
     raw_transcript: "",
   };
 }

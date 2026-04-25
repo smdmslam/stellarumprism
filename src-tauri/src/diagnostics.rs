@@ -317,6 +317,7 @@ pub fn aggregate_audit_report(
         },
         "findings": findings,
         "runtime_probes": [],
+        "substrate_runs": [],
         "raw_transcript": "",
     })
 }
@@ -1154,7 +1155,13 @@ pub fn detect_typecheck_command(cwd: &Path) -> Option<Vec<String>> {
 /// Look for a Node typecheck command. Priority:
 ///   1. package.json has a "typecheck" or "type-check" script → run it
 ///      via the detected package manager.
-///   2. tsconfig.json exists → run `<pm> exec tsc --noEmit`.
+///   2. Vite-style project-references layout (sibling tsconfig.app.json
+///      next to tsconfig.json) → run `<pm> exec tsc -p tsconfig.app.json
+///      --noEmit`. The bare `tsc --noEmit` against the root config in
+///      this layout is a no-op because the root is a project-references
+///      hub that doesn't actually compile any files — silently producing
+///      'clean' audits on projects that genuinely have type errors.
+///   3. tsconfig.json exists → run `<pm> exec tsc --noEmit`.
 fn detect_node_typecheck(cwd: &Path) -> Option<Vec<String>> {
     let pkg_path = cwd.join("package.json");
     let has_pkg = pkg_path.is_file();
@@ -1175,6 +1182,21 @@ fn detect_node_typecheck(cwd: &Path) -> Option<Vec<String>> {
                 }
             }
         }
+    }
+    // Vite's React/Vue/Svelte templates ship with a project-references
+    // tsconfig.json that just lists references to tsconfig.app.json and
+    // tsconfig.node.json. Plain `tsc --noEmit` against the root passes
+    // trivially because no files are compiled. Detect that signature
+    // and target the app config directly.
+    if cwd.join("tsconfig.app.json").is_file() {
+        return Some(vec![
+            pm.bin().into(),
+            "exec".into(),
+            "tsc".into(),
+            "-p".into(),
+            "tsconfig.app.json".into(),
+            "--noEmit".into(),
+        ]);
     }
     if has_tsconfig {
         // `<pm> exec tsc --noEmit`. exec works for pnpm/npm/yarn/bun.
@@ -2065,6 +2087,55 @@ error[E0599]: no method named `foo` found for struct `Bar`
     }
 
     #[test]
+    fn detects_vite_project_references_layout_targets_app_config() {
+        // Real-world signature: Vite + React + TS templates ship with
+        // a project-references tsconfig.json that doesn't compile any
+        // files itself. Bare `tsc --noEmit` against the root passes
+        // even when src/ has type errors. The substrate must target
+        // tsconfig.app.json directly.
+        let dir = fresh_tmp();
+        fs::write(dir.join("package.json"), r#"{"scripts": {}}"#).unwrap();
+        fs::write(
+            dir.join("tsconfig.json"),
+            r#"{"references":[{"path":"./tsconfig.app.json"}]}"#,
+        )
+        .unwrap();
+        fs::write(dir.join("tsconfig.app.json"), "{}").unwrap();
+        fs::write(dir.join("tsconfig.node.json"), "{}").unwrap();
+        fs::write(dir.join("pnpm-lock.yaml"), "").unwrap();
+        let argv = detect_typecheck_command(&dir).expect("should detect");
+        assert_eq!(
+            argv,
+            vec![
+                "pnpm".to_string(),
+                "exec".to_string(),
+                "tsc".to_string(),
+                "-p".to_string(),
+                "tsconfig.app.json".to_string(),
+                "--noEmit".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn vite_layout_with_explicit_typecheck_script_still_wins() {
+        // Even on a Vite layout, an explicit `typecheck` script in
+        // package.json should still win — the user's choice beats
+        // detection.
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"scripts": {"typecheck": "tsc -b --noEmit"}}"#,
+        )
+        .unwrap();
+        fs::write(dir.join("tsconfig.json"), "{}").unwrap();
+        fs::write(dir.join("tsconfig.app.json"), "{}").unwrap();
+        fs::write(dir.join("pnpm-lock.yaml"), "").unwrap();
+        let argv = detect_typecheck_command(&dir).expect("should detect");
+        assert_eq!(argv, vec!["pnpm", "run", "typecheck"]);
+    }
+
+    #[test]
     fn detects_yarn_when_yarn_lock_present() {
         let dir = fresh_tmp();
         fs::write(
@@ -2551,6 +2622,8 @@ FAILED tests/test_y.py::test_logout
         assert_eq!(report["findings"][1]["source"], "test");
         assert!(report["runtime_probes"].is_array());
         assert_eq!(report["runtime_probes"].as_array().unwrap().len(), 0);
+        assert!(report["substrate_runs"].is_array());
+        assert_eq!(report["substrate_runs"].as_array().unwrap().len(), 0);
     }
 
     #[test]

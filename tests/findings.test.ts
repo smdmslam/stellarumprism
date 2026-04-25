@@ -358,3 +358,86 @@ test("renderMarkdownReport omits the section when no probes captured", () => {
   const md = renderMarkdownReport(r);
   assert.doesNotMatch(md, /## Runtime probes/);
 });
+
+// ---------------------------------------------------------------------------
+// Substrate runs trace (so users see what actually ran)
+// ---------------------------------------------------------------------------
+
+test("parseAuditTranscript stores substrate_runs verbatim", () => {
+  const runs = [
+    {
+      tool: "typecheck",
+      summary: "typecheck \u2192 npm \u2014 0 diags (0 error, 0 warning) [exit 0]",
+      ok: true,
+      round: 1,
+    },
+    {
+      tool: "run_tests",
+      summary: "run_tests \u2192 cargo PASS [exit 0] \u2014 0 failures",
+      ok: true,
+      round: 2,
+    },
+  ];
+  const r = parseAuditTranscript("FINDINGS (0)", {
+    model: "m",
+    scope: null,
+    substrate_runs: runs,
+  });
+  assert.equal(r.substrate_runs.length, 2);
+  assert.deepEqual(r.substrate_runs, runs);
+});
+
+test("substrate_runs default to empty array when meta omits them", () => {
+  const r = parseAuditTranscript("FINDINGS (0)", { model: "m", scope: null });
+  assert.deepEqual(r.substrate_runs, []);
+});
+
+test("renderJsonReport includes substrate_runs", () => {
+  const r = parseAuditTranscript("FINDINGS (0)", {
+    model: "m",
+    scope: null,
+    substrate_runs: [
+      {
+        tool: "typecheck",
+        summary: "typecheck \u2192 pnpm \u2014 0 diags",
+        ok: true,
+        round: 1,
+      },
+    ],
+  });
+  const json = JSON.parse(renderJsonReport(r));
+  assert.ok(Array.isArray(json.substrate_runs));
+  assert.equal(json.substrate_runs.length, 1);
+  assert.equal(json.substrate_runs[0].tool, "typecheck");
+});
+
+test("renderMarkdownReport adds Substrate runs section when present", () => {
+  const r = parseAuditTranscript("FINDINGS (0)", {
+    model: "m",
+    scope: null,
+    substrate_runs: [
+      {
+        tool: "typecheck",
+        summary: "typecheck \u2192 pnpm exec tsc -p tsconfig.app.json --noEmit \u2014 1 error",
+        ok: true,
+        round: 1,
+      },
+      {
+        tool: "run_tests",
+        summary: "run_tests skipped (no test command)",
+        ok: false,
+        round: 1,
+      },
+    ],
+  });
+  const md = renderMarkdownReport(r);
+  assert.match(md, /## Substrate runs/);
+  assert.match(md, /typecheck.*tsconfig\.app\.json/);
+  assert.match(md, /run_tests skipped/);
+});
+
+test("renderMarkdownReport omits Substrate runs section when none captured", () => {
+  const r = parseAuditTranscript("FINDINGS (0)", { model: "m", scope: null });
+  const md = renderMarkdownReport(r);
+  assert.doesNotMatch(md, /## Substrate runs/);
+});

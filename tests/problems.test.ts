@@ -49,6 +49,7 @@ function reportFor(
     summary: countSummary(findings),
     findings,
     runtime_probes: probes,
+    substrate_runs: [],
     raw_transcript: "",
   };
 }

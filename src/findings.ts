@@ -81,6 +81,31 @@ export interface Finding {
 }
 
 /**
+ * One substrate cell invocation captured during the audit. Used to
+ * surface what the agent ACTUALLY ran \u2014 typecheck command, exit code,
+ * diagnostic count \u2014 in the audit report so users can see whether
+ * their typecheck command is doing what they think.
+ *
+ * The field that motivates this exists: detection that silently picks
+ * the wrong typecheck command (e.g. bare `tsc --noEmit` on a Vite
+ * project-references layout) used to produce "clean" audits on broken
+ * codebases. Showing the trace makes that misdetection visible.
+ */
+export interface SubstrateRun {
+  /** Tool name: "typecheck" | "run_tests" | "lsp_diagnostics". */
+  tool: string;
+  /**
+   * Pre-formatted single-line summary from the tool result, e.g.
+   * `"typecheck \u2192 npm \u2014 0 diags (0 error, 0 warning) [exit 0]"`.
+   */
+  summary: string;
+  /** True iff the tool call returned a structured response. */
+  ok: boolean;
+  /** 1-based round in which the call was issued. */
+  round: number;
+}
+
+/**
  * One HTTP probe captured during the audit. Each entry corresponds to a
  * single `http_fetch` tool call the auditor issued. Surfacing these in
  * the report (alongside `findings`) preserves runtime evidence even when
@@ -130,6 +155,14 @@ export interface AuditReport {
    * array (never undefined) so consumers don't need null-guards.
    */
   runtime_probes: RuntimeProbe[];
+  /**
+   * Substrate cell invocations (typecheck, run_tests, lsp_diagnostics)
+   * the agent issued during this run. Surfaces the actual commands
+   * the substrate ran so users can see whether their auto-detection
+   * picked up what they expected. Always an array; empty for runs
+   * that didn't call any of those tools.
+   */
+  substrate_runs: SubstrateRun[];
   /** The raw text the parser read. Always retained for debugging / recovery. */
   raw_transcript: string;
 }
@@ -251,6 +284,13 @@ export function parseAuditTranscript(
      * passing it; treat omission as 'no probes'.
      */
     runtime_probes?: RuntimeProbe[];
+    /**
+     * Every typecheck / run_tests / lsp_diagnostics tool call captured
+     * during the audit turn. Forwarded verbatim into
+     * `AuditReport.substrate_runs` so the audit report can show what
+     * commands the substrate actually executed.
+     */
+    substrate_runs?: SubstrateRun[];
   },
 ): AuditReport {
   const blocks: ParsedBlock[] = [{ claimed: null, findings: [] }];
@@ -320,6 +360,7 @@ export function parseAuditTranscript(
     summary,
     findings,
     runtime_probes: meta.runtime_probes ?? [],
+    substrate_runs: meta.substrate_runs ?? [],
     raw_transcript: text,
   };
 }
@@ -548,6 +589,15 @@ export function renderAnsiFindings(report: AuditReport): string {
   out.push(
     `\r\n${BOLD}FINDINGS (${report.summary.total})${RESET} ${DIM}\u2014 ${report.summary.errors} error, ${report.summary.warnings} warning, ${report.summary.info} info | ${cs.confirmed} confirmed, ${cs.probable} probable, ${cs.candidate} candidate${RESET}\r\n`,
   );
+  // One-line substrate trace so the user can see EXACTLY which
+  // command the typecheck/run_tests/lsp cells executed. Catches the
+  // 'silent misdetection' case where a Vite project-references
+  // layout had bare `tsc --noEmit` running against an empty root.
+  if (report.substrate_runs.length > 0) {
+    for (const r of report.substrate_runs) {
+      out.push(`${DIM}substrate → ${r.tool}: ${r.summary}${RESET}\r\n`);
+    }
+  }
   // One-line probe summary so the user sees runtime activity even when
   // the model didn't surface it in a finding's evidence trail.
   if (report.runtime_probes.length > 0) {
@@ -644,6 +694,20 @@ export function renderMarkdownReport(report: AuditReport): string {
     "> **Confidence legend.** _confirmed_ = backed by typecheck/LSP/runtime/test. _probable_ = backed by AST/structural analysis. _candidate_ = grep, regex, or LLM inference only \u2014 needs verification.",
   );
   fm.push("");
+
+  // Substrate runs section. Surfaces the actual typecheck / run_tests /
+  // lsp_diagnostics commands the agent executed so a reader can verify
+  // their auto-detection didn't silently fall through to a no-op (e.g.
+  // bare `tsc --noEmit` on a Vite project-references layout).
+  if (report.substrate_runs.length > 0) {
+    fm.push("## Substrate runs");
+    fm.push("");
+    for (const r of report.substrate_runs) {
+      const status = r.ok ? "\u2713" : "\u2717";
+      fm.push(`- ${status} \`${r.tool}\` \u2014 ${r.summary}`);
+    }
+    fm.push("");
+  }
 
   // Runtime probes section. Rendered before the findings list so a reader
   // skimming the report sees the live-endpoint evidence the auditor

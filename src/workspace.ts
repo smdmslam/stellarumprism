@@ -29,6 +29,7 @@ import {
   type Confidence,
   type RuntimeProbe,
   type Severity,
+  type SubstrateRun,
 } from "./findings";
 import { buildFixPrompt, filterFindings, parseFixArgs } from "./fix";
 import { buildBuildPrompt, parseBuildArgs } from "./build";
@@ -1076,6 +1077,7 @@ export class Workspace {
     responseText: string;
     model: string;
     runtimeProbes: RuntimeProbe[];
+    substrateRuns: SubstrateRun[];
   }): Promise<void> {
     const scope = this.activeAuditScope;
     this.activeAuditScope = null;
@@ -1084,6 +1086,7 @@ export class Workspace {
       model: info.model,
       scope,
       runtime_probes: info.runtimeProbes,
+      substrate_runs: info.substrateRuns,
     });
     // Cache + auto-open the Problems panel so the user sees the
     // structured findings without running a separate command.

@@ -5,7 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { BlockManager } from "./blocks";
 import { route as routeModel, parseAutoSlug, PRESETS } from "./router";
 import { modelSupportsToolUse } from "./models";
-import type { RuntimeProbe } from "./findings";
+import type { RuntimeProbe, SubstrateRun } from "./findings";
 
 /**
  * Universal tool-capable fallback used when the resolved model can't do
@@ -116,6 +116,7 @@ export interface AgentControllerOptions {
     responseText: string;
     model: string;
     runtimeProbes: RuntimeProbe[];
+    substrateRuns: SubstrateRun[];
   }) => void;
 }
 
@@ -159,6 +160,15 @@ export class AgentController {
    * an array; empty when the agent didn't probe any endpoints.
    */
   private currentRuntimeProbes: RuntimeProbe[] = [];
+  /**
+   * Every typecheck / run_tests / lsp_diagnostics tool call captured
+   * during the in-flight turn. Same shape as runtime probes \u2014 lets
+   * the audit report surface exactly which substrate commands ran,
+   * which catches the silent-misdetection class (e.g. bare
+   * `tsc --noEmit` on a Vite project-references layout that compiles
+   * nothing).
+   */
+  private currentSubstrateRuns: SubstrateRun[] = [];
 
   constructor(opts: AgentControllerOptions) {
     this.opts = opts;
@@ -320,6 +330,7 @@ export class AgentController {
     this.clearListeners();
     this.responseBuffer = "";
     this.currentRuntimeProbes = [];
+    this.currentSubstrateRuns = [];
     this.clearActionBar();
 
     // Enter busy state now. Anything that short-circuits below must call
@@ -570,6 +581,21 @@ export class AgentController {
       const probe = parseHttpFetchProbe(info.args, info.summary, info.ok, info.round);
       if (probe) this.currentRuntimeProbes.push(probe);
     }
+    // Capture every substrate-cell invocation so the audit report can
+    // show which commands actually ran. Detection misdetections used
+    // to be invisible; this surfaces them.
+    if (
+      info.name === "typecheck" ||
+      info.name === "run_tests" ||
+      info.name === "lsp_diagnostics"
+    ) {
+      this.currentSubstrateRuns.push({
+        tool: info.name,
+        summary: info.summary,
+        ok: info.ok,
+        round: info.round,
+      });
+    }
     // Dim cyan arrow, tool name in bold cyan, args truncated so a huge file
     // content arg doesn't blow up the line. Result summary on a dim second
     // line so the user sees what actually happened.
@@ -603,14 +629,16 @@ export class AgentController {
     this.currentMode = null;
     this.currentResolvedModel = null;
     if (audit) {
-      // Snapshot the probes BEFORE clearing so the workspace handler
-      // gets the immutable list this turn captured.
+      // Snapshot the probes + substrate runs BEFORE clearing so the
+      // workspace handler gets the immutable lists this turn captured.
       const probesForHook = this.currentRuntimeProbes.slice();
+      const substrateForHook = this.currentSubstrateRuns.slice();
       try {
         this.opts.onAuditComplete?.({
           responseText: respText,
           model: modelForHook,
           runtimeProbes: probesForHook,
+          substrateRuns: substrateForHook,
         });
       } catch (e) {
         console.error("onAuditComplete threw", e);
