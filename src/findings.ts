@@ -17,16 +17,18 @@ export type Severity = "error" | "warning" | "info";
 
 /**
  * Where a finding (or a piece of its evidence) came from. The substrate
- * cells (`typecheck`, `lsp`, `runtime`, `test`) are deterministic checks
- * the LLM cannot influence. `ast` is structural symbol/scope analysis.
- * `grep` is textual pattern matching \u2014 a lead generator, not proof.
- * `llm` is pure model inference with no other backing.
+ * cells (`typecheck`, `lsp`, `runtime`, `test`, `schema`) are
+ * deterministic checks the LLM cannot influence. `ast` is structural
+ * symbol/scope analysis. `grep` is textual pattern matching \u2014 a
+ * lead generator, not proof. `llm` is pure model inference with no
+ * other backing.
  */
 export type Source =
   | "typecheck"
   | "lsp"
   | "runtime"
   | "test"
+  | "schema"
   | "ast"
   | "grep"
   | "llm";
@@ -34,7 +36,7 @@ export type Source =
 /**
  * How sure we are a finding is real. Determined deterministically from
  * `Finding.evidence` by `gradeFinding` \u2014 the LLM does NOT pick this.
- *   - `confirmed`: backed by typecheck / lsp / runtime / test.
+ *   - `confirmed`: backed by typecheck / lsp / runtime / test / schema.
  *   - `probable`: backed by AST / structural analysis.
  *   - `candidate`: grep-only, llm-only, or no evidence at all.
  */
@@ -197,6 +199,7 @@ const EVIDENCE_LINE = /^\s*evidence\s*:\s*(.+)$/i;
 const KNOWN_SOURCES: ReadonlySet<Source> = new Set<Source>([
   "typecheck",
   "lsp",
+  "schema",
   "runtime",
   "test",
   "ast",
@@ -475,7 +478,11 @@ export function gradeFinding(raw: RawFinding): Finding {
   // Tier 1: confirmed \u2014 backed by a deterministic substrate cell.
   if (
     sources.some((s) =>
-      s === "typecheck" || s === "lsp" || s === "runtime" || s === "test",
+      s === "typecheck" ||
+      s === "lsp" ||
+      s === "runtime" ||
+      s === "test" ||
+      s === "schema",
     )
   ) {
     const primary = pickPrimarySource(sources, [
@@ -483,6 +490,7 @@ export function gradeFinding(raw: RawFinding): Finding {
       "lsp",
       "runtime",
       "test",
+      "schema",
     ]);
     return finalize(raw, "confirmed", primary, raw.severity);
   }
@@ -691,7 +699,7 @@ export function renderMarkdownReport(report: AuditReport): string {
   );
   fm.push("");
   fm.push(
-    "> **Confidence legend.** _confirmed_ = backed by typecheck/LSP/runtime/test. _probable_ = backed by AST/structural analysis. _candidate_ = grep, regex, or LLM inference only \u2014 needs verification.",
+    "> **Confidence legend.** _confirmed_ = backed by typecheck/LSP/runtime/test/schema. _probable_ = backed by AST/structural analysis. _candidate_ = grep, regex, or LLM inference only \u2014 needs verification.",
   );
   fm.push("");
 

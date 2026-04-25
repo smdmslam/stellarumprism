@@ -132,6 +132,19 @@ INVESTIGATION ORDER (mandatory):\n\
      evidence for a non-TS/Rust project. LSP servers are slower than \
      typecheck \u{2014} budget accordingly. An empty diagnostics list is a \
      valid 'project is clean by LSP analysis' result, not a failure.\n\
+  3a-ter. OPTIONAL: call schema_inspect when the diff touches a SCHEMA \
+     file or MIGRATIONS directory \u{2014} `prisma/schema.prisma`, \
+     `drizzle.config.{ts,js}`, `alembic.ini` + `alembic/versions/`, \
+     `manage.py` + `*/migrations/`, or `db/migrate/`. The cell auto- \
+     detects the project's ORM (Prisma / Drizzle / SQLAlchemy / \
+     Django / Rails) and runs the appropriate status command. \
+     Pending migrations or drift between schema and applied state are \
+     confirmed-tier evidence (source=schema) that the project is not \
+     in a runnable state \u{2014} the most user-visible 'works locally, \
+     breaks in prod' regression a code review would otherwise miss. \
+     A clean status with 0 pending and drifted=false is a valid pass; \
+     do not manufacture a finding. Skip when the diff does not touch \
+     schema/migration paths.\n\
   3b. RUNTIME CHECK (mandatory when applicable): if the diff touches \
      an HTTP route, middleware, controller, or API surface, you MUST \
      call http_fetch to probe the affected endpoint(s) before \
@@ -219,12 +232,13 @@ OUTPUT CONTRACT (mandatory format):\n\
       [severity] path/to/file.ext:line \u{2014} description \u{2014} suggested fix\n\
       evidence: source=<src>; detail=<...> [ | source=<src>; detail=<...> ]\n\
   - Valid severities: error, warning, info.\n\
-  - Valid evidence sources: typecheck, lsp, runtime, test, ast, grep, llm.\n\
+  - Valid evidence sources: typecheck, lsp, runtime, test, ast, schema, grep, llm.\n\
   - The evidence line is REQUIRED. Every finding must declare what backed \
      it. Multiple receipts are allowed; separate them with ' | '.\n\
   - 'error' is only appropriate when at least one evidence source is in \
-     {typecheck, lsp, runtime, test, ast}. The compiler is the substrate's \
-     authority; runtime claims need substrate backing.\n\
+     {typecheck, lsp, runtime, test, ast, schema}. The compiler is the \
+     substrate's authority; runtime and schema claims need substrate \
+     backing.\n\
   - 'warning' is appropriate for ast-backed structural findings (the \
      grader treats these as 'probable' confidence). Grep-only or \
      llm-only findings will be downgraded to candidate.\n\
@@ -245,6 +259,9 @@ OUTPUT CONTRACT (mandatory format):\n\
   - Example shape (runtime/http-backed error):\n\
       [error] src/api/login.ts \u{2014} login endpoint returns 500 after middleware reorder \u{2014} move auth middleware before the validation middleware\n\
       evidence: source=runtime; detail=\"runtime: POST http://localhost:3000/api/login \u{2192} 500 Internal Server Error (42 ms)\"\n\
+  - Example shape (schema-backed error):\n\
+      [error] prisma/schema.prisma \u{2014} 1 migration is pending and the database is out of sync \u{2014} run `prisma migrate dev` to apply 20240315120000_add_user_role and bring the schema up to date\n\
+      evidence: source=schema; detail=\"schema (prisma): 1 pending [20240315120000_add_user_role]; drift detected\"\n\
   - Example shape (grep-only structural observation \u{2014} must be info):\n\
       [info] src/old.ts \u{2014} symbol foo no longer referenced anywhere \u{2014} consider removing\n\
       evidence: source=grep; detail=\"grep 'foo' = 0 hits across 142 files\"\n\
@@ -382,6 +399,17 @@ INVESTIGATION ORDER (mandatory):\n\
           (Rust + cargo check vs rust-analyzer is the canonical case). \
           source=lsp \u{2192} confirmed evidence in the report. LSP is \
           slower than typecheck; skip for trivial single-file edits.\n\
+       e-ter. OPTIONAL but RECOMMENDED for schema work: after wiring a \
+          new model, column, or relation \u{2014} or after any edit that \
+          touches `prisma/schema.prisma`, `drizzle.config.{ts,js}`, \
+          `alembic.ini`, `*/migrations/`, or `db/migrate/` \u{2014} call \
+          schema_inspect to confirm the schema matches the applied \
+          migration set. A 'pending migrations' or 'drift detected' \
+          result means the build is not done; surface it in the \
+          BUILD REPORT and either guide the user to apply the \
+          migration (do NOT auto-apply; that is user-driven) or back \
+          out the schema edit. Pure code-only diffs that don't touch \
+          schema files do not need this step.\n\
        f. RUNTIME CHECK (mandatory for HTTP work): after wiring or \
           modifying any HTTP route / middleware / controller, you \
           MUST call http_fetch on the affected endpoint to confirm \
@@ -448,6 +476,7 @@ OUTPUT CONTRACT:\n\
       run_tests: <pass | N failures>   (omit if not run)\n\
       http_fetch: <N endpoints OK | N failed | dev server unreachable>   (omit if no HTTP work)\n\
       e2e_run: <flow names: PASS|FAIL with assertion counts>   (omit if no flow ran)\n\
+      schema_inspect: <orm: 0 pending | N pending | drift detected>   (omit if no schema/migration work)\n\
 \n\
   - Use \u{2713} for success, \u{2298} for skipped, \u{2717} for failed. One line each. \
      Keep summaries terse.\n\
@@ -1182,6 +1211,9 @@ pub async fn agent_query(
     // Same for the LSP substrate cell.
     let lsp_command = snapshot.agent.lsp_command.clone();
     let lsp_timeout_secs = snapshot.agent.lsp_timeout_secs;
+    // Same for the schema-inspection substrate cell.
+    let schema_command = snapshot.agent.schema_command.clone();
+    let schema_timeout_secs = snapshot.agent.schema_timeout_secs;
 
     // Clone the approval maps (Arc bumps) so the spawned task can gate
     // write tool calls on user consent without holding Tauri State.
@@ -1357,6 +1389,12 @@ pub async fn agent_query(
                                             &cwd_for_tools,
                                             lsp_command.as_deref(),
                                             lsp_timeout_secs,
+                                        ),
+                                        "schema_inspect" => crate::tools::execute_schema_inspect(
+                                            &call.function.arguments,
+                                            &cwd_for_tools,
+                                            schema_command.as_deref(),
+                                            schema_timeout_secs,
                                         ),
                                         other => crate::tools::ToolInvocation {
                                             ok: false,
@@ -2331,6 +2369,71 @@ mod prompt_tests {
         assert!(
             BUILD_SYSTEM_PROMPT.contains("e2e_run:"),
             "build prompt's Final verification block no longer reports e2e_run"
+        );
+    }
+
+    // -- schema_inspect prompt-contract tests ---------------------------
+
+    #[test]
+    fn audit_prompt_references_schema_inspect_for_migration_diffs() {
+        // schema_inspect is the substrate move for ORM-backed projects;
+        // the audit prompt must mention it so the agent reaches for it
+        // when a diff touches schema or migrations dirs. Without this,
+        // 'pending migration' regressions \u2014 the most common 'works
+        // locally, breaks in prod' bug \u2014 stay invisible to the auditor.
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("schema_inspect"),
+            "audit prompt no longer mentions schema_inspect"
+        );
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("source=schema"),
+            "audit prompt no longer cites source=schema evidence"
+        );
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("prisma/schema.prisma")
+                || AUDIT_SYSTEM_PROMPT.contains("alembic")
+                || AUDIT_SYSTEM_PROMPT.contains("db/migrate"),
+            "audit prompt no longer scopes schema_inspect to schema/migration paths"
+        );
+    }
+
+    #[test]
+    fn audit_prompt_lists_schema_in_valid_evidence_sources() {
+        // The grader graduates source=schema findings to confirmed; the
+        // OUTPUT CONTRACT must permit it as a valid evidence source so
+        // the model is allowed to cite it.
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains(
+                "Valid evidence sources: typecheck, lsp, runtime, test, ast, schema",
+            ),
+            "audit prompt's Valid evidence sources list no longer includes schema"
+        );
+    }
+
+    #[test]
+    fn build_prompt_references_schema_inspect_for_schema_work() {
+        // Build's contract: a feature that wires up a model but leaves
+        // the migration unapplied is not done. The prompt must teach
+        // the agent to confirm that with schema_inspect.
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("schema_inspect"),
+            "build prompt no longer mentions schema_inspect"
+        );
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("pending migrations")
+                || BUILD_SYSTEM_PROMPT.contains("drift detected"),
+            "build prompt no longer ties schema_inspect to pending/drift outcomes"
+        );
+    }
+
+    #[test]
+    fn build_prompt_includes_schema_in_final_verification() {
+        // Surfacing schema_inspect in the BUILD REPORT's verification
+        // block is what makes the substrate's schema check observable
+        // to the user.
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("schema_inspect:"),
+            "build prompt's Final verification block no longer reports schema_inspect"
         );
     }
 

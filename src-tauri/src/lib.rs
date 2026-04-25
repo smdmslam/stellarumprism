@@ -10,6 +10,7 @@ mod file_ref;
 pub mod lsp;
 mod pty;
 mod save_chat;
+pub mod schema;
 mod second_pass;
 mod shell_integration;
 mod tools;

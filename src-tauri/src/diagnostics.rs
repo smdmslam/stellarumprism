@@ -1518,6 +1518,17 @@ fn run_with_timeout(
     run_with_timeout_env(argv, cwd, timeout, &[])
 }
 
+/// Public re-export of `run_with_timeout` for sibling substrate cells
+/// that need to spawn a process with a deadline. Lives here so the
+/// timeout polling + drain semantics stay in one place.
+pub fn run_with_timeout_public(
+    argv: &[String],
+    cwd: &Path,
+    timeout: Duration,
+) -> Result<(Output, bool), String> {
+    run_with_timeout(argv, cwd, timeout)
+}
+
 fn run_with_timeout_env(
     argv: &[String],
     cwd: &Path,

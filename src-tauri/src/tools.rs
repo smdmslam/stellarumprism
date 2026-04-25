@@ -512,6 +512,28 @@ pub fn tool_schema() -> Value {
         {
             "type": "function",
             "function": {
+                "name": "schema_inspect",
+                "description": "Inspect the project's ORM/migration tooling and report state. Substrate v7: detects Prisma / Drizzle / SQLAlchemy / Django / Rails layouts, runs the appropriate status command, and returns parsed pending migrations + drift indicators. Read-only \u{2014} it inspects, never applies. Use OPTIONALLY in /audit when the diff touches a schema file or migrations directory; use in /build after wiring a new model to confirm the schema matches what's applied. Returns { command, orm, exit_code, duration_ms, pending_count, pending: [...], drifted: bool, diagnostics: [...], raw, evidence_detail }. source='schema' \u{2192} grader graduates findings to confirmed. Pending migrations + drifted=true are the canonical 'your project is not in a runnable state' signal.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Optional argv-array override (e.g. [\"alembic\", \"check\"]). Must be an array, not a shell string."
+                        },
+                        "timeout_secs": {
+                            "type": "integer",
+                            "description": "Per-call timeout in seconds. Default 30."
+                        }
+                    },
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "lsp_diagnostics",
                 "description": "Run the project's Language Server Protocol server and collect every diagnostic it publishes. Substrate v5: complements `typecheck` with cross-file lints, unused-import warnings, dead-code analysis, and rust-analyzer / pyright / gopls / typescript-language-server level diagnostics that the bare compiler often misses. Auto-detects the server from project shape (Cargo.toml \u{2192} rust-analyzer; pyproject.toml/setup.py/requirements.txt \u{2192} pyright-langserver / pylsp; go.mod \u{2192} gopls; tsconfig.json/package.json \u{2192} typescript-language-server). Returns { command, server, initialized, duration_ms, diagnostics: [{source, file, line, col, severity, code, message, confidence, evidence}], diagnostics_truncated, raw, raw_truncated, timed_out }. Each diagnostic carries source='lsp' \u{2192} grader graduates findings to confirmed confidence. LSP servers are slower than the compiler; budget rounds accordingly. Empty diagnostics is a valid outcome (means the project is clean by that server's analysis). Use OPTIONALLY when typecheck is clean but you want richer cross-file evidence, or as the primary check for languages whose typecheck is shallow (Rust + cargo check is shallower than rust-analyzer; same for Python without pyright).",
                 "parameters": {
@@ -587,6 +609,12 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
             // through `execute_lsp_diagnostics` for config-driven
             // defaults (`agent.lsp_command` + `lsp_timeout_secs`).
             tool_lsp_diagnostics(args_json, cwd, None, None)
+        }
+        "schema_inspect" => {
+            // Same pattern as typecheck/run_tests/lsp_diagnostics. Production
+            // callers go through `execute_schema_inspect` for config-driven
+            // defaults (`agent.schema_command` + `schema_timeout_secs`).
+            tool_schema_inspect(args_json, cwd, None, None)
         }
         "ast_query" => tool_ast_query(args_json, cwd),
         "web_search" => Err(
@@ -704,7 +732,89 @@ pub fn is_async_tool(name: &str) -> bool {
 /// `execute()` doesn't have. The agent loop dispatches these through a
 /// dedicated entry point so per-user defaults are honored.
 pub fn needs_config_dispatch(name: &str) -> bool {
-    matches!(name, "typecheck" | "run_tests" | "lsp_diagnostics")
+    matches!(
+        name,
+        "typecheck" | "run_tests" | "lsp_diagnostics" | "schema_inspect"
+    )
+}
+
+/// Like `execute` but for the schema substrate cell, threading through
+/// the user's `agent.schema_command` + `schema_timeout_secs` config.
+pub fn execute_schema_inspect(
+    args_json: &str,
+    cwd: &str,
+    config_command: Option<&[String]>,
+    config_timeout_secs: u64,
+) -> ToolInvocation {
+    let result = tool_schema_inspect(
+        args_json,
+        cwd,
+        config_command,
+        Some(config_timeout_secs),
+    );
+    match result {
+        Ok((summary, payload)) => ToolInvocation { ok: true, summary, payload },
+        Err(e) => {
+            let payload = json!({ "error": e }).to_string();
+            ToolInvocation {
+                ok: false,
+                summary: format!("error: {}", e),
+                payload,
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// schema_inspect (substrate v7)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize, Default)]
+struct SchemaInspectArgs {
+    #[serde(default)]
+    command: Option<Vec<String>>,
+    #[serde(default)]
+    timeout_secs: Option<u64>,
+}
+
+fn tool_schema_inspect(
+    args_json: &str,
+    cwd: &str,
+    config_command: Option<&[String]>,
+    config_timeout_secs: Option<u64>,
+) -> Result<(String, String), String> {
+    let args: SchemaInspectArgs = if args_json.trim().is_empty() {
+        SchemaInspectArgs::default()
+    } else {
+        serde_json::from_str(args_json).map_err(|e| format!("invalid arguments: {}", e))?
+    };
+    // Argument-level overrides win; otherwise fall back to config defaults.
+    let override_argv: Option<Vec<String>> = args
+        .command
+        .or_else(|| config_command.map(|s| s.to_vec()));
+    let timeout = args
+        .timeout_secs
+        .or(config_timeout_secs)
+        .map(std::time::Duration::from_secs);
+    let run = crate::schema::run_schema_inspect(
+        cwd,
+        override_argv.as_deref(),
+        None,
+        timeout,
+    )?;
+    let summary = format!(
+        "schema_inspect ({}) \u{2192} {} pending{}{}{}",
+        run.orm.label(),
+        run.pending_count,
+        if run.drifted { ", drift detected" } else { "" },
+        match run.exit_code {
+            Some(c) => format!(" [exit {}]", c),
+            None => String::new(),
+        },
+        if run.timed_out { ", timed out" } else { "" },
+    );
+    let payload = crate::schema::to_schema_payload(&run).to_string();
+    Ok((summary, payload))
 }
 
 // ---------------------------------------------------------------------------

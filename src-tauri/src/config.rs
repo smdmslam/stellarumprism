@@ -79,6 +79,21 @@ pub struct AgentConfig {
     /// "--stdio"]`, `["typescript-language-server", "--stdio"]`.
     #[serde(default)]
     pub lsp_command: Option<Vec<String>>,
+    /// Per-call timeout for the `schema_inspect` substrate tool, in
+    /// seconds. Inspecting an ORM's migration status hits the local
+    /// project tooling (Prisma, Drizzle, Alembic, Django, Rails); it
+    /// can take a while on first run when caches are cold. Default 30.
+    #[serde(default = "default_schema_timeout_secs")]
+    pub schema_timeout_secs: u64,
+    /// Optional override for the schema-inspection command, as an argv
+    /// array (NOT a shell string). When unset,
+    /// `schema::detect_schema_command` infers from project shape
+    /// (`prisma/schema.prisma`, `drizzle.config.ts`, `alembic.ini`,
+    /// `manage.py`, `bin/rails` + `db/migrate/`). Example:
+    /// `["pnpm", "exec", "prisma", "migrate", "status"]` or
+    /// `["alembic", "check"]`.
+    #[serde(default)]
+    pub schema_command: Option<Vec<String>>,
     /// Base URL of the user's dev server, used by the `http_fetch`
     /// substrate cell when /audit and /build probe live endpoints.
     /// When unset, `diagnostics::detect_dev_server_url` infers a sensible
@@ -104,6 +119,8 @@ impl Default for AgentConfig {
             test_command: None,
             lsp_timeout_secs: default_lsp_timeout_secs(),
             lsp_command: None,
+            schema_timeout_secs: default_schema_timeout_secs(),
+            schema_command: None,
             dev_server_url: None,
             verifier: VerifierConfig::default(),
         }
@@ -300,6 +317,12 @@ fn default_test_timeout_secs() -> u64 {
 /// enough that a hung server doesn't stall the agent indefinitely.
 fn default_lsp_timeout_secs() -> u64 {
     crate::lsp::DEFAULT_LSP_TIMEOUT_SECS
+}
+/// 30 seconds is enough for `prisma migrate status`, `drizzle-kit check`,
+/// `alembic check`, `manage.py showmigrations`, or `rails
+/// db:migrate:status` to run on a typical project.
+fn default_schema_timeout_secs() -> u64 {
+    30
 }
 
 /// Location of the config file: `$HOME/.config/prism/config.toml`.
