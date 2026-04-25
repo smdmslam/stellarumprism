@@ -170,10 +170,21 @@ Every workflow in Prism produces markdown artifacts in a well-known folder struc
 - `~/.prism/skills/*.md` — user-level preferences across all projects ("we use snake_case here," "always run prettier after an edit," "prefer Vitest over Jest").
 
 The agent both *reads* these on session start (as context) and *writes* to them as it works (when the user corrects it, when an audit finishes, when it notices a stable pattern). Over weeks of use, the tool develops a real model of **your** codebase and **your** preferences. None of that transfers when a user switches to Cursor, Antigravity, or anything else.
-
 This is the moat Cursor, Windsurf, and Claude Code all independently converged on in 2026 — for good reason. It turns usage into compounding value. Switching cost stops being hypothetical and becomes "three months of institutional memory I'd have to rebuild."
 
 Prism's markdown-as-format + filesystem-as-database choice is what enables this. Proprietary-schema competitors cannot offer the same file-portable, inspectable memory layer even if they wanted to.
+
+### Comprehensive context, not retrieved fragments
+
+Most AI editors retrieve. Prism reads.
+
+Cursor / Copilot / Antigravity / Codex rely on embedding-based retrieval for project context. They tokenize the codebase, index chunks, and at each turn fetch the top-K nearest neighbors of the user's prompt. For tactical edits this is fine — the closest 8–16 chunks of source carry enough signal to write a function.
+
+For comprehensive work it falls apart. A user trying to write a market-positioning doc against the whole project, a pitch deck cognizant of every shipped capability, an RFC reflecting the entire architecture, or a narrative diff explanation that holds the full refactor in mind — they get a model that has never seen the document end-to-end, only ranked fragments stripped of structural coherence. The output is piecemeal because the input is piecemeal.
+
+Prism takes a different path. The `read_file` tool returns the whole file (up to 128 KB per call) into a long-context model that holds it for the entire conversation. Every follow-up turn anchors on the full document, not a re-retrieved fragment. The competition-analysis session in `docs/prism-competition.md` is the canonical example: a single `read_file` on the 22.6 KB auditor doc, plus five `web_search` calls, produced a coherent multi-section market analysis that referenced the project's own positioning verbatim. None of the existing AI editors can produce that shape of output reliably because their retrieval layer fragments the source.
+
+The user-visible consequence is a wedge in its own right. Vibe-coders shipping complete products run into the comprehensive-context wall every day: trying to write a pitch deck, an investor memo, or a launch announcement that holds the full project in mind, in Cursor or Copilot, returns piecemeal output that has to be manually stitched. Prism does it natively. This is distinct from the verification wedge but anchored on the same architectural choice (whole-document tool reads + long-context routing) and it serves the same kind of user (the senior or solo developer who needs end-to-end project coherence to ship).
 
 ## Expansion path
 

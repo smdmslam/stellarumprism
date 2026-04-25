@@ -110,7 +110,41 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 7 — From substrate to surfaces
+## Slide 7 — Comprehensive context, not retrieved fragments
+
+**Investor question:** *Why is Prism's output comprehensive when other AI tools' output is piecemeal?*
+
+**Hero line:** **We read the whole file. They retrieve fragments.**
+
+**Supporting bullets:**
+- Cursor / Copilot rely on embedding retrieval for project context.
+- They get top-K nearest-neighbor chunks. Not the document.
+- Prism's `read_file` pulls the whole file into long-context.
+- Every follow-up turn anchors on the full source, not a re-fetch.
+- Result: GTM-comprehensive output, not stitched piecemeal.
+
+**Speaker notes:** This is the hidden wedge worth landing in the room. Vibe-coders shipping complete products run into the comprehensive-context wall every day — try to write a pitch deck, an investor memo, or a launch post that reflects your *whole* project from inside Cursor and you get fragments stitched manually. Prism's tool surface is specifically designed for whole-document operations: `read_file` pulls 128 KB into a long-context model that holds it for the entire conversation. The competition-analysis session that produced `docs/prism-competition.md` is the canonical demo — one `read_file` on the 22 KB auditor doc plus five web searches gave back a coherent multi-section market analysis. Same architecture pattern that powers `/audit` and `/build` extends naturally to comprehensive narrative work: pitch decks, RFCs, ADRs, market positioning, refactor plans. Distinct wedge, same foundation.
+
+---
+
+## Slide 7 — Comprehensive context, not retrieved fragments
+
+**Investor question:** *Why is Prism's output comprehensive when other AI tools' output is piecemeal?*
+
+**Hero line:** **We read the whole file. They retrieve fragments.**
+
+**Supporting bullets:**
+- Cursor / Copilot rely on embedding retrieval for project context.
+- They get top-K nearest-neighbor chunks. Not the document.
+- Prism's `read_file` pulls the whole file into long-context.
+- Every follow-up turn anchors on the full source, not a re-fetch.
+- Result: GTM-comprehensive output, not stitched piecemeal.
+
+**Speaker notes:** This is the hidden wedge worth landing in the room. Vibe-coders shipping complete products run into the comprehensive-context wall every day — try to write a pitch deck, an investor memo, or a launch post that reflects your *whole* project from inside Cursor and you get fragments stitched manually. Prism's tool surface is specifically designed for whole-document operations: `read_file` pulls 128 KB into a long-context model that holds it for the entire conversation. The competition-analysis session that produced `docs/prism-competition.md` is the canonical demo — one `read_file` on the 22 KB auditor doc plus five web searches gave back a coherent multi-section market analysis. Same architecture pattern that powers `/audit` and `/build` extends naturally to comprehensive narrative work: pitch decks, RFCs, ADRs, market positioning, refactor plans. Distinct wedge, same foundation.
+
+---
+
+## Slide 8 — From substrate to surfaces
 
 **Investor question:** *What can users actually do today?*
 
@@ -128,7 +162,7 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 8 — Demo / workflow walkthrough
+## Slide 9 — Demo / workflow walkthrough
 
 **Investor question:** *Is it real?*
 
@@ -144,7 +178,7 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 9 — Who pays
+## Slide 10 — Who pays
 
 **Investor question:** *Who's the ICP?*
 
@@ -160,7 +194,7 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 10 — Market
+## Slide 11 — Market
 
 **Investor question:** *How big does this get?*
 
@@ -176,7 +210,7 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 11 — Competition
+## Slide 12 — Competition
 
 **Investor question:** *Why don't the giants just do this?*
 
@@ -192,7 +226,7 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 12 — Durability
+## Slide 13 — Durability
 
 **Investor question:** *Why does this compound?*
 
@@ -208,7 +242,7 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 13 — Business model
+## Slide 14 — Business model
 
 **Investor question:** *How does money come in?*
 
@@ -224,7 +258,7 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 14 — Traction
+## Slide 16 — The trajectory
 
 **Investor question:** *Does anyone want it?*
 
@@ -240,7 +274,7 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 15 — The trajectory
+## Slide 17 — Team
 
 **Investor question:** *What's the next 12 months?*
 
@@ -256,7 +290,7 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 16 — Team
+## Slide 18 — The ask
 
 **Investor question:** *Why you?*
 
@@ -272,7 +306,7 @@ Every slide below sits on this spine. If a slide doesn't, it gets cut.
 
 ---
 
-## Slide 17 — The ask
+## Slide 18 — The ask
 
 **Investor question:** *What unlocks the next milestone?*
 
@@ -333,17 +367,19 @@ For sanity-checking that every slide answers exactly one investor question.
 | 4. Our principle | What did the founders see that others missed? |
 | 5. The product | What did you build? |
 | 6. Diagnostic substrate | Why is this hard to copy? |
-| 7. From substrate to surfaces | What can users actually do today? |
-| 8. Demo | Is it real? |
-| 9. Who pays | Who's the ICP? |
-| 10. Market | How big does this get? |
-| 11. Competition | Why don't the giants just do this? |
-| 12. Durability | Why does this compound? |
-| 13. Business model | How does money come in? |
-| 14. Traction | Does anyone want it? |
-| 15. Trajectory | What's the next 12 months? |
-| 16. Team | Why you? |
-| 17. Ask | What unlocks the next milestone? |
+| 7. Comprehensive context | Why is Prism's output comprehensive? |
+| 8. From substrate to surfaces | What can users actually do today? |
+| 9. Demo | Is it real? |
+| 10. Who pays | Who's the ICP? |
+| 11. Market | How big does this get? |
+| 12. Competition | Why don't the giants just do this? |
+| 13. Durability | Why does this compound? |
+| 14. Business model | How does money come in? |
+| 15. Traction | Does anyone want it? |
+| 16. Trajectory | What's the next 12 months? |
+| 17. Team | Why you? |
+| 18. Ask | What unlocks the next milestone? |
+| 18. Ask | What unlocks the next milestone? |
 
 ## Appendix C — Hero lines, isolated
 
@@ -355,17 +391,19 @@ For copy-paste into the deck builder:
 4. Don't guess. Verify.
 5. A terminal-native dev environment that investigates before it concludes.
 6. Seven deterministic cells. One agent surface. Built in the right order.
-7. Six consumers today. Each was days of work.
-8. A real audit, end to end, in 30 seconds.
-9. Senior engineers shipping AI-assisted refactors at scale.
-10. Every professional developer is a candidate.
-11. Every other AI dev tool started as an editor.
-12. Tool-loop bet, not a model bet.
-13. Three tiers. Same substrate. Same artifact.
-14. Built by daily-driving the product against real codebases.
-15. Substrate done. Surfaces compounding. Editor next.
-16. *(Customize per founder.)*
-17. *(Customize per round.)*
+7. We read the whole file. They retrieve fragments.
+8. Six consumers today. Each was days of work.
+9. A real audit, end to end, in 30 seconds.
+10. Senior engineers shipping AI-assisted refactors at scale.
+11. Every professional developer is a candidate.
+12. Every other AI dev tool started as an editor.
+13. Tool-loop bet, not a model bet.
+14. Three tiers. Same substrate. Same artifact.
+15. Built by daily-driving the product against real codebases.
+16. Substrate done. Surfaces compounding. Editor next.
+17. *(Customize per founder.)*
+18. *(Customize per round.)*
+18. *(Customize per round.)*
 
 ---
 
