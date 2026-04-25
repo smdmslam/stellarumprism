@@ -1107,6 +1107,27 @@ impl SessionState {
     fn drop_chat(&self, chat_id: &str) {
         self.sessions.remove(chat_id);
     }
+    /// Replace the session's history wholesale: clear, re-prime the
+    /// system prompt, append the supplied messages in order. Used by
+    /// `load_chat::load_chat_markdown` to rehydrate a saved chat into
+    /// an existing tab. The system prompt is re-derived from the
+    /// caller's config rather than read from disk so the loaded chat
+    /// adopts the user's CURRENT prompt, not whatever was active when
+    /// the file was saved.
+    pub fn seed_from_messages(
+        &self,
+        chat_id: &str,
+        system_prompt: &str,
+        messages: Vec<Message>,
+    ) {
+        let handle = self.get_or_init(chat_id);
+        handle.clear();
+        handle.ensure_started(system_prompt);
+        for m in messages {
+            handle.append_raw(m);
+        }
+        handle.truncate_to_budget();
+    }
 }
 
 // ---------------------------------------------------------------------------

@@ -300,6 +300,16 @@ export class AgentController {
     }
   }
 
+  /**
+   * Force a refresh of the cached session message count from the Rust
+   * side. Used by the workspace's `/load` command after seeding a tab
+   * with a saved chat so the model badge picks up the new history
+   * length without sending a query first.
+   */
+  async refreshSession(): Promise<void> {
+    return this.refreshSessionInfo();
+  }
+
   /** Cancel the in-flight query, if any. */
   cancel(): void {
     if (!this.inflightId) return;

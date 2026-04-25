@@ -56,6 +56,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     info: "Opens a file dialog to save the current chat to a .md file. Defaults to ~/Documents/Prism/Chats/",
   },
   {
+    label: "/load",
+    detail: "Load chat from markdown",
+    info: "Opens a file dialog to load a previously /save'd chat into this tab. Replaces any existing in-memory history; /save first if you want to keep the current conversation. The saved title is adopted and the model used at save time is reported (use /model to switch).",
+  },
+  {
     label: "/cd",
     detail: "Change shell directory",
     info: "Navigate the current shell to a folder. Tab/click to autocomplete folder names. Spaces in paths are handled automatically.",

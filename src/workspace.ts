@@ -8,7 +8,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import "@xterm/xterm/css/xterm.css";
 
 import { BlockManager, type Block } from "./blocks";
@@ -550,6 +550,14 @@ export class Workspace {
     }
     if (/^\s*\/save\s*$/i.test(text)) {
       void this.saveChat();
+      return;
+    }
+    // /load \u2014 round-trip companion to /save. Opens a file picker,
+    // parses the chosen Prism chat markdown, and seeds THIS tab's
+    // session with the loaded messages. Existing in-memory history is
+    // overwritten; user should /save first if they care.
+    if (/^\s*\/load\s*$/i.test(text)) {
+      void this.loadChat();
       return;
     }
     if (/^\s*\/help\s*$/i.test(text)) {
@@ -2370,6 +2378,81 @@ export class Workspace {
   }
 
   // -- save chat -----------------------------------------------------------
+
+  /**
+   * Open a file dialog and load a previously-saved Prism chat into this
+   * tab. The Rust side parses the markdown frontmatter + sections and
+   * seeds the session vector; the frontend then refreshes the model
+   * badge and adopts the saved title.
+   *
+   * No "are you sure?" prompt for v1 — if the user cared about the
+   * current chat they'd have hit /save first. We do log the prior
+   * message count so the action is at least visible in xterm.
+   */
+  async loadChat(): Promise<void> {
+    let target: string | null = null;
+    try {
+      const picked = await openDialog({
+        title: "Load chat",
+        defaultPath: expandTilde("~/Documents/Prism/Chats/"),
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+      target = Array.isArray(picked) ? (picked[0] ?? null) : picked;
+    } catch (e) {
+      this.term.write(
+        `\r\n\x1b[1;31m[load]\x1b[0m dialog failed: ${sanitize(String(e))}\r\n`,
+      );
+      return;
+    }
+    if (!target) return; // user cancelled
+
+    const priorCount = this.agent.getMessageCount();
+    let result: {
+      message_count: number;
+      title?: string | null;
+      model?: string | null;
+      source_chat_id?: string | null;
+      created?: string | null;
+    };
+    try {
+      result = await invoke("load_chat_markdown", {
+        chatId: this.id,
+        path: target,
+      });
+    } catch (e) {
+      this.term.write(
+        `\r\n\x1b[1;31m[load]\x1b[0m ${sanitize(String(e))}\r\n`,
+      );
+      return;
+    }
+
+    // Adopt the saved title if there is one and the tab is still
+    // "New Tab" (don't clobber a deliberate title set later in this
+    // session).
+    if (result.title) {
+      this.title = result.title.length > 36
+        ? result.title.slice(0, 33) + "\u2026"
+        : result.title;
+      this.cb.onTitleChange(this.id, this.title);
+    }
+    await this.agent.refreshSession();
+
+    const pretty = prettyPath(target);
+    const overwroteNote =
+      priorCount > 0
+        ? ` \x1b[2m(replaced ${priorCount} prior message${priorCount === 1 ? "" : "s"})\x1b[0m`
+        : "";
+    this.term.write(
+      `\r\n\x1b[1;32m[load]\x1b[0m \x1b[2mloaded \x1b[36m${result.message_count}\x1b[0m\x1b[2m message${result.message_count === 1 ? "" : "s"} from \x1b[36m${sanitize(pretty)}\x1b[0m${overwroteNote}\r\n`,
+    );
+    if (result.model) {
+      this.term.write(
+        `\x1b[2m[load] saved model was \x1b[36m${sanitize(result.model)}\x1b[0m\x1b[2m \u2014 current tab uses \x1b[36m${sanitize(this.agent.getModel())}\x1b[0m\x1b[2m. Use /model to switch if desired.\x1b[0m\r\n`,
+      );
+    }
+  }
 
   async saveChat(): Promise<void> {
     const count = this.agent.getMessageCount();
