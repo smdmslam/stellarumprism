@@ -588,7 +588,11 @@ export class Workspace {
       return;
     }
 
-    const filterResult = filterFindings(report.findings, parsed.selector);
+    const filterResult = filterFindings(
+      report.findings,
+      parsed.selector,
+      parsed.include,
+    );
     if (filterResult.error) {
       this.term.write(
         `\r\n\x1b[1;31m[fix]\x1b[0m ${sanitize(filterResult.error)} (report: ${sanitize(prettyPath(lookup.path))})\r\n`,

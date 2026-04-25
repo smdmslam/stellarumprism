@@ -5,7 +5,7 @@
 // from `workspace.ts`. The slash-command handler in `workspace.ts`
 // imports from here.
 
-import type { AuditReport, Finding } from "./findings";
+import type { AuditReport, Confidence, Finding } from "./findings";
 
 /**
  * Selector for `/fix`. The grammar is intentionally narrow:
@@ -22,8 +22,20 @@ export type FixSelector =
   | { kind: "indices"; indices: number[] }
   | { kind: "ids"; ids: string[] };
 
+/**
+ * Confidence policy for `/fix`. Default is `confirmed`-only \u2014 the safest
+ * floor. `probable` widens to AST-backed findings. `all` (alias `candidate`)
+ * lets through grep / LLM speculation.
+ */
+export type IncludePolicy = "confirmed" | "probable" | "candidate";
+
 export interface ParsedFixArgs {
   selector: FixSelector;
+  /**
+   * Confidence floor for findings. Defaults to `"confirmed"`. The user
+   * widens via `--include=probable` or `--include=all`.
+   */
+  include: IncludePolicy;
   maxToolRounds?: number;
   reportPath?: string;
   error?: string;
@@ -35,10 +47,11 @@ export interface ParsedFixArgs {
  * the caller can render them without throwing.
  */
 export function parseFixArgs(raw: string): ParsedFixArgs {
-  if (!raw) return { selector: { kind: "all" } };
+  if (!raw) return { selector: { kind: "all" }, include: "confirmed" };
   const tokens = raw.split(/\s+/).filter(Boolean);
   let maxToolRounds: number | undefined;
   let reportPath: string | undefined;
+  let include: IncludePolicy = "confirmed";
   const selectorTokens: string[] = [];
 
   for (let i = 0; i < tokens.length; i++) {
@@ -49,6 +62,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       if (!Number.isFinite(n) || n < 1) {
         return {
           selector: { kind: "all" },
+          include,
           error: `--max-rounds expects a positive integer, got "${eqRounds[1]}"`,
         };
       }
@@ -60,6 +74,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       if (next === undefined) {
         return {
           selector: { kind: "all" },
+          include,
           error: "--max-rounds expects a value (e.g. --max-rounds=80)",
         };
       }
@@ -67,6 +82,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       if (!Number.isFinite(n) || n < 1) {
         return {
           selector: { kind: "all" },
+          include,
           error: `--max-rounds expects a positive integer, got "${next}"`,
         };
       }
@@ -84,6 +100,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       if (next === undefined) {
         return {
           selector: { kind: "all" },
+          include: "confirmed",
           error:
             "--report expects a path (e.g. --report=.prism/second-pass/audit-2026-01-01T00-00-00.json)",
         };
@@ -92,14 +109,39 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       i++;
       continue;
     }
+    const eqInclude = /^--include=(.+)$/.exec(t);
+    if (eqInclude || t === "--include") {
+      const valueRaw = eqInclude
+        ? eqInclude[1]
+        : tokens[i + 1];
+      if (valueRaw === undefined) {
+        return {
+          selector: { kind: "all" },
+          include: "confirmed",
+          error:
+            "--include expects one of: confirmed, probable, all (or candidate)",
+        };
+      }
+      const policy = parseIncludePolicy(valueRaw);
+      if (!policy) {
+        return {
+          selector: { kind: "all" },
+          include: "confirmed",
+          error: `--include expects one of: confirmed, probable, all (or candidate); got "${valueRaw}"`,
+        };
+      }
+      include = policy;
+      if (!eqInclude) i++;
+      continue;
+    }
     selectorTokens.push(t);
   }
 
   if (selectorTokens.length === 0) {
-    return { selector: { kind: "all" }, maxToolRounds, reportPath };
+    return { selector: { kind: "all" }, include, maxToolRounds, reportPath };
   }
   if (selectorTokens.length === 1 && selectorTokens[0].toLowerCase() === "all") {
-    return { selector: { kind: "all" }, maxToolRounds, reportPath };
+    return { selector: { kind: "all" }, include, maxToolRounds, reportPath };
   }
 
   // Tokenize into comma-separated parts (joining all selector tokens first).
@@ -109,7 +151,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
     .map((s) => s.trim())
     .filter(Boolean);
   if (parts.length === 0) {
-    return { selector: { kind: "all" }, maxToolRounds, reportPath };
+    return { selector: { kind: "all" }, include, maxToolRounds, reportPath };
   }
 
   // If any part begins with `#`, treat the whole selector as an id list.
@@ -119,6 +161,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
     if (parts.some((p) => !p.startsWith("#"))) {
       return {
         selector: { kind: "all" },
+        include,
         error: `mixed id and index tokens in selector "${selectorTokens.join(" ")}"; pick one form`,
       };
     }
@@ -126,10 +169,11 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
     if (ids.length === 0) {
       return {
         selector: { kind: "all" },
+        include,
         error: `no ids parsed from selector "${selectorTokens.join(" ")}"`,
       };
     }
-    return { selector: { kind: "ids", ids }, maxToolRounds, reportPath };
+    return { selector: { kind: "ids", ids }, include, maxToolRounds, reportPath };
   }
 
   // Otherwise indices + ranges.
@@ -142,6 +186,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       if (a < 1 || b < 1 || a > b) {
         return {
           selector: { kind: "all" },
+          include,
           error: `bad range "${p}"; use 1-based ascending (e.g. 1-5)`,
         };
       }
@@ -152,6 +197,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
     if (!single) {
       return {
         selector: { kind: "all" },
+        include,
         error: `unrecognized selector token "${p}"; expected number, range, #id, or 'all'`,
       };
     }
@@ -159,23 +205,101 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
     if (n < 1) {
       return {
         selector: { kind: "all" },
+        include,
         error: `index must be >= 1, got "${p}"`,
       };
     }
     indices.push(n);
   }
-  return { selector: { kind: "indices", indices }, maxToolRounds, reportPath };
+  return {
+    selector: { kind: "indices", indices },
+    include,
+    maxToolRounds,
+    reportPath,
+  };
 }
 
 /**
- * Apply a parsed selector to a flat findings list. Returns the filtered
- * subset, an error string when the selector references missing items,
- * or both empty when 'all' is asked of an empty list.
+ * Map a user-supplied --include value to a canonical policy. Returns null
+ * for unrecognized values so the caller can surface a precise error.
+ */
+function parseIncludePolicy(raw: string): IncludePolicy | null {
+  switch (raw.trim().toLowerCase()) {
+    case "confirmed":
+      return "confirmed";
+    case "probable":
+      return "probable";
+    case "all":
+    case "candidate":
+      return "candidate";
+    default:
+      return null;
+  }
+}
+
+/** Confidence tiers eligible under each policy. */
+const CONFIDENCE_FLOOR: Record<IncludePolicy, ReadonlySet<Confidence>> = {
+  confirmed: new Set(["confirmed"]),
+  probable: new Set(["confirmed", "probable"]),
+  candidate: new Set(["confirmed", "probable", "candidate"]),
+};
+
+/** True iff the finding's confidence is in scope for the given policy. */
+function passesIncludePolicy(
+  finding: Finding,
+  include: IncludePolicy,
+): boolean {
+  // Findings from older sidecars without a confidence field default to
+  // `"candidate"` at parse time. The default policy ("confirmed") will
+  // therefore correctly filter them out, which is what we want.
+  return CONFIDENCE_FLOOR[include].has(finding.confidence);
+}
+
+/**
+ * Apply a parsed selector AND the confidence policy to a flat findings
+ * list. Returns the filtered subset, an error when the selector references
+ * missing items, or a precise error when the selector matched but every
+ * match was filtered out by the confidence floor.
+ *
+ * Default policy is `"confirmed"`. Callers that want broader scope must
+ * opt in via `--include=probable` or `--include=all`.
  */
 export function filterFindings(
   findings: Finding[],
   selector: FixSelector,
+  include: IncludePolicy = "confirmed",
 ): { findings: Finding[]; error?: string } {
+  // Step 1: select.
+  const selected = selectBySelector(findings, selector);
+  if ("error" in selected) {
+    return { findings: [], error: selected.error };
+  }
+  // Step 2: filter by confidence.
+  const passed: Finding[] = [];
+  const filteredOut: Finding[] = [];
+  for (const f of selected.findings) {
+    if (passesIncludePolicy(f, include)) {
+      passed.push(f);
+    } else {
+      filteredOut.push(f);
+    }
+  }
+  if (passed.length === 0 && filteredOut.length > 0) {
+    const tiers = Array.from(
+      new Set(filteredOut.map((f) => f.confidence)),
+    ).join(", ");
+    return {
+      findings: [],
+      error: `selector matched ${filteredOut.length} finding${filteredOut.length === 1 ? "" : "s"}; all were filtered out by confidence policy --include=${include} (matched tiers: ${tiers}). Use --include=${include === "confirmed" ? "probable" : "all"} to widen the scope.`,
+    };
+  }
+  return { findings: passed };
+}
+
+function selectBySelector(
+  findings: Finding[],
+  selector: FixSelector,
+): { findings: Finding[] } | { error: string } {
   if (selector.kind === "all") {
     return { findings: findings.slice() };
   }
@@ -194,7 +318,6 @@ export function filterFindings(
     }
     if (missing.length > 0) {
       return {
-        findings: [],
         error: `no findings at index ${missing.join(",")}; report has ${findings.length} finding${findings.length === 1 ? "" : "s"}`,
       };
     }
@@ -218,7 +341,6 @@ export function filterFindings(
   }
   if (missing.length > 0) {
     return {
-      findings: [],
       error: `no findings with id ${missing.map((s) => `#${s}`).join(",")}; ids in report: ${findings.map((f) => `#${f.id}`).join(", ") || "(none)"}`,
     };
   }

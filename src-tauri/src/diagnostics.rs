@@ -192,6 +192,12 @@ pub fn run_typecheck(
 /// Translate a `DiagnosticRun` into the JSON payload the agent loop sends
 /// back to the LLM. Shape is intentionally compatible with the consumer
 /// side in `src/findings.ts` so renderers don't need to translate.
+///
+/// Each diagnostic also carries `confidence="confirmed"` and an
+/// `evidence` receipt referencing the underlying compiler line. The
+/// downstream grader in `findings.ts::gradeFinding` uses the source +
+/// evidence to assign confidence; substrate diagnostics are always
+/// confirmed because the compiler is authoritative.
 pub fn to_finding_payload(run: &DiagnosticRun) -> Value {
     json!({
         "command": run.command,
@@ -204,16 +210,42 @@ pub fn to_finding_payload(run: &DiagnosticRun) -> Value {
             .iter()
             .map(|d| json!({
                 "source": d.source,
+                "confidence": "confirmed",
                 "file": d.file,
                 "line": d.line,
                 "col": d.col,
                 "severity": d.severity.as_str(),
                 "code": d.code,
                 "message": d.message,
+                "evidence": [
+                    {
+                        "source": d.source,
+                        "detail": format_diagnostic_evidence(d),
+                    }
+                ],
             }))
             .collect::<Vec<_>>(),
         "raw": run.raw,
     })
+}
+
+/// Format a Diagnostic into a single-line evidence detail string. Mirrors
+/// the canonical compiler output so the grader can match it back to a
+/// real substrate run when the LLM cites it.
+fn format_diagnostic_evidence(d: &Diagnostic) -> String {
+    let loc = if d.col > 0 {
+        format!("{}:{}:{}", d.file, d.line, d.col)
+    } else if d.line > 0 {
+        format!("{}:{}", d.file, d.line)
+    } else {
+        d.file.clone()
+    };
+    let code = if d.code.is_empty() {
+        String::new()
+    } else {
+        format!(" [{}]", d.code)
+    };
+    format!("{} {}{}: {}", loc, d.severity.as_str(), code, d.message)
 }
 
 // ---------------------------------------------------------------------------

@@ -13,26 +13,35 @@ function fixture(): Finding[] {
     {
       id: "F1",
       severity: "error",
+      confidence: "confirmed",
+      source: "typecheck",
       file: "src/a.ts",
       line: 1,
       description: "stale import",
       suggested_fix: "remove it",
+      evidence: [{ source: "typecheck", detail: "a.ts(1,1): error TS1" }],
     },
     {
       id: "F2",
       severity: "warning",
+      confidence: "probable",
+      source: "ast",
       file: "src/b.ts",
       line: 2,
       description: "unused export",
       suggested_fix: "delete or use",
+      evidence: [{ source: "ast", detail: "no callers found" }],
     },
     {
       id: "F3",
       severity: "info",
+      confidence: "candidate",
+      source: "grep",
       file: "src/c.ts",
       line: 3,
       description: "todo comment",
       suggested_fix: "address or remove",
+      evidence: [{ source: "grep", detail: "grep TODO: 1 hit" }],
     },
   ];
 }
@@ -41,10 +50,48 @@ function fixture(): Finding[] {
 // parseFixArgs
 // ---------------------------------------------------------------------------
 
-test("empty selector defaults to all", () => {
+test("empty selector defaults to all + include=confirmed", () => {
   const r = parseFixArgs("");
   assert.equal(r.selector.kind, "all");
+  assert.equal(r.include, "confirmed");
   assert.equal(r.error, undefined);
+});
+
+test("--include=probable widens the policy", () => {
+  const r = parseFixArgs("all --include=probable");
+  assert.equal(r.selector.kind, "all");
+  assert.equal(r.include, "probable");
+});
+
+test("--include=all maps to candidate (broadest)", () => {
+  const r = parseFixArgs("all --include=all");
+  assert.equal(r.include, "candidate");
+});
+
+test("--include=candidate is accepted as a synonym for all", () => {
+  const r = parseFixArgs("all --include=candidate");
+  assert.equal(r.include, "candidate");
+});
+
+test("--include rejects unknown values", () => {
+  const r = parseFixArgs("all --include=foo");
+  assert.match(r.error ?? "", /--include expects one of/);
+});
+
+test("--include space form", () => {
+  const r = parseFixArgs("--include probable 1,3");
+  assert.equal(r.include, "probable");
+  assert.deepEqual(r.selector, { kind: "indices", indices: [1, 3] });
+});
+
+test("include flag composes with --max-rounds and --report", () => {
+  const r = parseFixArgs(
+    "1,2 --max-rounds=80 --report=foo.json --include=probable",
+  );
+  assert.equal(r.include, "probable");
+  assert.equal(r.maxToolRounds, 80);
+  assert.equal(r.reportPath, "foo.json");
+  assert.deepEqual(r.selector, { kind: "indices", indices: [1, 2] });
 });
 
 test("'all' selector parses to all", () => {
@@ -132,24 +179,57 @@ test("--report missing value errors", () => {
 // filterFindings
 // ---------------------------------------------------------------------------
 
-test("filter all returns every finding", () => {
+test("filter all + default include returns only confirmed", () => {
+  // Default include policy is `confirmed`; the candidate + probable
+  // findings should be filtered out and reported with a clear message.
   const r = filterFindings(fixture(), { kind: "all" });
+  assert.equal(r.findings.length, 1);
+  assert.equal(r.findings[0].id, "F1");
+});
+
+test("filter all + include=probable returns confirmed and probable", () => {
+  const r = filterFindings(fixture(), { kind: "all" }, "probable");
+  assert.equal(r.findings.length, 2);
+  assert.deepEqual(
+    r.findings.map((f) => f.id),
+    ["F1", "F2"],
+  );
+});
+
+test("filter all + include=candidate returns everything", () => {
+  const r = filterFindings(fixture(), { kind: "all" }, "candidate");
   assert.equal(r.findings.length, 3);
 });
 
-test("filter by indices preserves order", () => {
-  const r = filterFindings(fixture(), { kind: "indices", indices: [3, 1] });
+test("filter rejects when selector matches but confidence filters out", () => {
+  const r = filterFindings(
+    fixture(),
+    { kind: "indices", indices: [3] },
+    "confirmed",
+  );
+  assert.equal(r.findings.length, 0);
+  assert.match(r.error ?? "", /confidence policy --include=confirmed/);
+  assert.match(r.error ?? "", /Use --include=probable to widen/);
+});
+
+test("filter by indices preserves order (with --include=all)", () => {
+  const r = filterFindings(
+    fixture(),
+    { kind: "indices", indices: [3, 1] },
+    "candidate",
+  );
   assert.deepEqual(
     r.findings.map((f) => f.id),
     ["F3", "F1"],
   );
 });
 
-test("filter dedupes repeated indices", () => {
-  const r = filterFindings(fixture(), {
-    kind: "indices",
-    indices: [1, 1, 2],
-  });
+test("filter dedupes repeated indices (with --include=all)", () => {
+  const r = filterFindings(
+    fixture(),
+    { kind: "indices", indices: [1, 1, 2] },
+    "candidate",
+  );
   assert.deepEqual(
     r.findings.map((f) => f.id),
     ["F1", "F2"],
@@ -166,8 +246,12 @@ test("filter rejects out-of-range indices with helpful message", () => {
   assert.match(r.error ?? "", /report has 3 findings/);
 });
 
-test("filter by ids", () => {
-  const r = filterFindings(fixture(), { kind: "ids", ids: ["F2", "F3"] });
+test("filter by ids (with --include=all)", () => {
+  const r = filterFindings(
+    fixture(),
+    { kind: "ids", ids: ["F2", "F3"] },
+    "candidate",
+  );
   assert.deepEqual(
     r.findings.map((f) => f.id),
     ["F2", "F3"],
@@ -175,10 +259,11 @@ test("filter by ids", () => {
 });
 
 test("filter by ids surfaces missing ids", () => {
-  const r = filterFindings(fixture(), {
-    kind: "ids",
-    ids: ["F2", "F99"],
-  });
+  const r = filterFindings(
+    fixture(),
+    { kind: "ids", ids: ["F2", "F99"] },
+    "candidate",
+  );
   assert.equal(r.findings.length, 0);
   assert.match(r.error ?? "", /no findings with id #F99/);
 });

@@ -124,14 +124,30 @@ ANTI-FALSE-POSITIVE RULES (strict, applies even when reframed):\n\
 OUTPUT CONTRACT (mandatory format):\n\
   - After investigating, produce one report. No prose preamble.\n\
   - Start with 'FINDINGS (N)' where N is the total count.\n\
-  - Then one line per finding, in this exact shape:\n\
+  - Then TWO lines per finding, in this exact shape:\n\
       [severity] path/to/file.ext:line \u{2014} description \u{2014} suggested fix\n\
+      evidence: source=<src>; detail=<...> [ | source=<src>; detail=<...> ]\n\
   - Valid severities: error, warning, info.\n\
-  - 'error' = compiler-confirmed OR provably runtime-broken.\n\
-  - 'warning' = likely bug or wiring gap with strong but not absolute \
-     evidence.\n\
-  - 'info' = observation the user should know about; not a bug.\n\
-  - One finding per line. Keep description to a single sentence.\n\
+  - Valid evidence sources: typecheck, lsp, runtime, test, ast, grep, llm.\n\
+  - The evidence line is REQUIRED. Every finding must declare what backed \
+     it. Multiple receipts are allowed; separate them with ' | '.\n\
+  - 'error' is only appropriate when at least one evidence source is in \
+     {typecheck, lsp, runtime, test, ast}. The compiler is the substrate's \
+     authority; runtime claims need substrate backing.\n\
+  - 'warning' similarly should not be used for grep-only or llm-only \
+     findings. A grader downstream will downgrade those to candidate \
+     status, capping severity at warning at most.\n\
+  - 'info' = observation the user should know about; not a bug. \
+     Appropriate for grep- or llm-only structural observations.\n\
+  - One finding per pair of lines. Keep description to a single sentence. \
+     Keep evidence detail concise and specific (verbatim compiler line, \
+     'grep <pattern>: N hits @ file:line', etc.).\n\
+  - Example shape (compiler-backed error):\n\
+      [error] src/foo.ts:42 \u{2014} bar is undefined \u{2014} import bar from './bar'\n\
+      evidence: source=typecheck; detail=\"src/foo.ts(42,7): error TS2304: Cannot find name 'bar'.\"\n\
+  - Example shape (grep-only structural observation \u{2014} must be info):\n\
+      [info] src/old.ts \u{2014} symbol foo no longer referenced anywhere \u{2014} consider removing\n\
+      evidence: source=grep; detail=\"grep 'foo' = 0 hits across 142 files\"\n\
   - If genuinely nothing is wrong, output exactly 'FINDINGS (0)' and a \
      one-sentence summary of what you checked. Do NOT emit both a \
      non-zero block and a trailing 'FINDINGS (0)' summary; the parser \
@@ -144,7 +160,12 @@ WHAT NOT TO DO:\n\
   - Do not wrap findings in prose explaining your methodology. The \
      tool-call log already shows what you did.\n\
   - Do not skip typecheck because 'the diff looks small'. The compiler \
-     is fast and definitive; running it is always the right first step.";
+     is fast and definitive; running it is always the right first step.\n\
+  - Do not omit the evidence line. A finding without evidence is a \
+     guess, and the grader will treat it as such.\n\
+  - Do not invent compiler diagnostics. If you cite source=typecheck, \
+     the detail must be a verbatim line from the most recent typecheck \
+     tool result. Fabrication is detectable and downgrades the finding.";
 
 /// System prompt used only when the frontend passes mode="fix". The fix
 /// consumer reads findings from a previously-written audit report (the
