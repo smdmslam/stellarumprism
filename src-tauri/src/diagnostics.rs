@@ -1140,6 +1140,216 @@ fn run_script_argv(pm: &PackageManager, script: &str) -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
+// Dev server URL detection (substrate v4 companion)
+//
+// Pure inference: looks at the project shape and returns a sensible
+// http://localhost:PORT default for the runtime probe to target. Used by
+// /audit and /build when the user hasn't pinned `agent.dev_server_url`
+// in config. Returning None is a valid outcome — the caller falls back
+// to localhost:3000 per the system prompt.
+// ---------------------------------------------------------------------------
+
+/// Common framework dev-server defaults. Sorted by signal strength: an
+/// explicit `port:` literal in a config file always wins over a guess
+/// from the dependency list, which always wins over no signal at all.
+///
+/// Returns a string like "http://localhost:5173" so the agent can use
+/// it verbatim in `http_fetch` calls.
+pub fn detect_dev_server_url(cwd: &Path) -> Option<String> {
+    // 1. Vite config with an explicit `port: <N>` literal.
+    for name in [
+        "vite.config.ts",
+        "vite.config.js",
+        "vite.config.mjs",
+        "vite.config.cjs",
+    ] {
+        if let Some(port) = read_port_literal(&cwd.join(name)) {
+            return Some(format!("http://localhost:{}", port));
+        }
+    }
+    // 2. Next.js config (rare to override the port; default is 3000).
+    for name in [
+        "next.config.ts",
+        "next.config.js",
+        "next.config.mjs",
+    ] {
+        if cwd.join(name).is_file() {
+            return Some("http://localhost:3000".into());
+        }
+    }
+    // 3. package.json shape — vite vs next vs node-server fallback.
+    let pkg_path = cwd.join("package.json");
+    if pkg_path.is_file() {
+        if let Ok(text) = std::fs::read_to_string(&pkg_path) {
+            if let Ok(json) = serde_json::from_str::<Value>(&text) {
+                // a) Look for `dev` script with --port=N or -p N.
+                if let Some(scripts) = json.get("scripts").and_then(|v| v.as_object()) {
+                    for key in ["dev", "start", "serve"] {
+                        if let Some(script) = scripts.get(key).and_then(|v| v.as_str()) {
+                            if let Some(port) = parse_port_flag(script) {
+                                return Some(format!("http://localhost:{}", port));
+                            }
+                        }
+                    }
+                }
+                // b) Dependency-derived defaults.
+                let deps = collect_deps(&json);
+                if deps.contains("vite") {
+                    return Some("http://localhost:5173".into());
+                }
+                if deps.contains("next") {
+                    return Some("http://localhost:3000".into());
+                }
+                if deps.contains("@remix-run/dev") {
+                    return Some("http://localhost:3000".into());
+                }
+                if deps.contains("@sveltejs/kit") {
+                    return Some("http://localhost:5173".into());
+                }
+                if deps.contains("@nestjs/core") || deps.contains("express") || deps.contains("fastify") {
+                    return Some("http://localhost:3000".into());
+                }
+            }
+        }
+    }
+    // 4. Python frameworks.
+    if cwd.join("manage.py").is_file() {
+        return Some("http://localhost:8000".into());
+    }
+    // pyproject.toml + a fastapi/flask/django dep \u{2192} their conventional ports.
+    if let Some(port) = detect_python_dev_port(cwd) {
+        return Some(format!("http://localhost:{}", port));
+    }
+    // 5. Rust web frameworks: nothing reliable to detect; let caller fall back.
+    None
+}
+
+/// Read a config file and pull a literal `port: <N>` out of the source.
+/// Intentionally regex-free: we only match the simplest shape (`port:
+/// 1234` or `port = 1234`) so we never invent a port that doesn't
+/// actually appear in the file.
+fn read_port_literal(path: &Path) -> Option<u16> {
+    if !path.is_file() {
+        return None;
+    }
+    let text = std::fs::read_to_string(path).ok()?;
+    parse_port_literal(&text)
+}
+
+/// Find the first `port: NNNN` (or `port = NNNN`) anywhere in `text`,
+/// matching `port` as a whole-word token. This deliberately handles
+/// the common embedded shape `server: { port: 4321 }` where the
+/// keyword is mid-line. Word-boundary checks prevent false matches
+/// on `reportPort` / `important` / `passport`.
+fn parse_port_literal(text: &str) -> Option<u16> {
+    for line in text.lines() {
+        let bytes = line.as_bytes();
+        let mut start = 0;
+        while let Some(off) = line[start..].find("port") {
+            let abs = start + off;
+            let prev_ok = abs == 0 || {
+                let p = bytes[abs - 1];
+                !p.is_ascii_alphanumeric() && p != b'_'
+            };
+            let after_keyword = abs + 4;
+            let next_ok = after_keyword >= bytes.len() || {
+                let n = bytes[after_keyword];
+                !n.is_ascii_alphanumeric() && n != b'_'
+            };
+            if prev_ok && next_ok {
+                let rest = line[after_keyword..].trim_start();
+                let after_sep = rest
+                    .strip_prefix(':')
+                    .or_else(|| rest.strip_prefix('='));
+                if let Some(after_sep) = after_sep {
+                    let after_sep = after_sep.trim_start();
+                    let end = after_sep
+                        .find(|c: char| !c.is_ascii_digit())
+                        .unwrap_or(after_sep.len());
+                    if end > 0 {
+                        if let Ok(n) = after_sep[..end].parse::<u16>() {
+                            if n > 0 {
+                                return Some(n);
+                            }
+                        }
+                    }
+                }
+            }
+            start = abs + 4;
+        }
+    }
+    None
+}
+
+/// Pull a port out of a npm-script command line, e.g.
+/// `vite --port=5173` or `next dev -p 4000` or `node server.js --port 8080`.
+fn parse_port_flag(script: &str) -> Option<u16> {
+    let tokens: Vec<&str> = script.split_whitespace().collect();
+    let mut i = 0;
+    while i < tokens.len() {
+        let t = tokens[i];
+        // --port=N / -p=N
+        for prefix in ["--port=", "-p="] {
+            if let Some(rest) = t.strip_prefix(prefix) {
+                if let Ok(n) = rest.parse::<u16>() {
+                    if n > 0 {
+                        return Some(n);
+                    }
+                }
+            }
+        }
+        // --port N / -p N
+        if (t == "--port" || t == "-p") && i + 1 < tokens.len() {
+            if let Ok(n) = tokens[i + 1].parse::<u16>() {
+                if n > 0 {
+                    return Some(n);
+                }
+            }
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Collect dependency names from `dependencies` + `devDependencies` into a
+/// HashSet of borrowed strings for cheap membership checks.
+fn collect_deps(json: &Value) -> std::collections::HashSet<String> {
+    let mut out = std::collections::HashSet::new();
+    for key in ["dependencies", "devDependencies", "peerDependencies"] {
+        if let Some(obj) = json.get(key).and_then(|v| v.as_object()) {
+            for k in obj.keys() {
+                out.insert(k.clone());
+            }
+        }
+    }
+    out
+}
+
+/// Inspect `pyproject.toml` (or `requirements.txt`) for fastapi/flask/etc.
+/// Returns the conventional port for the first match.
+fn detect_python_dev_port(cwd: &Path) -> Option<u16> {
+    let candidates = ["pyproject.toml", "requirements.txt", "poetry.lock"];
+    for name in candidates {
+        let path = cwd.join(name);
+        if !path.is_file() {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).ok()?;
+        let lower = text.to_ascii_lowercase();
+        if lower.contains("fastapi") || lower.contains("uvicorn") {
+            return Some(8000);
+        }
+        if lower.contains("flask") {
+            return Some(5000);
+        }
+        if lower.contains("django") {
+            return Some(8000);
+        }
+    }
+    None
+}
+
+// ---------------------------------------------------------------------------
 // Override validation
 // ---------------------------------------------------------------------------
 
@@ -2083,6 +2293,103 @@ FAILED tests/test_y.py::test_logout
         assert!(evidence.contains("200 OK"));
         assert!(evidence.contains("42 ms"));
     }
+
+    // -- detect_dev_server_url --------------------------------------------
+
+    #[test]
+    fn dev_server_url_from_vite_config_port_literal() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("vite.config.ts"),
+            "import { defineConfig } from 'vite';\n\
+             export default defineConfig({ server: { port: 4321, host: true } });",
+        )
+        .unwrap();
+        let url = detect_dev_server_url(&dir).expect("vite literal should resolve");
+        assert_eq!(url, "http://localhost:4321");
+    }
+
+    #[test]
+    fn dev_server_url_from_dev_script_port_flag() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"scripts": {"dev": "next dev -p 4000"}, "dependencies": {"next": "^14"}}"#,
+        )
+        .unwrap();
+        let url = detect_dev_server_url(&dir).expect("explicit port flag wins");
+        assert_eq!(url, "http://localhost:4000");
+    }
+
+    #[test]
+    fn dev_server_url_from_vite_dependency() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"scripts": {"dev": "vite"}, "devDependencies": {"vite": "^5.0.0"}}"#,
+        )
+        .unwrap();
+        let url = detect_dev_server_url(&dir).expect("vite dep should map to 5173");
+        assert_eq!(url, "http://localhost:5173");
+    }
+
+    #[test]
+    fn dev_server_url_from_next_dependency() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"dependencies": {"next": "^15.0.0"}}"#,
+        )
+        .unwrap();
+        let url = detect_dev_server_url(&dir).expect("next dep should map to 3000");
+        assert_eq!(url, "http://localhost:3000");
+    }
+
+    #[test]
+    fn dev_server_url_from_django_manage_py() {
+        let dir = fresh_tmp();
+        fs::write(dir.join("manage.py"), "# django").unwrap();
+        let url = detect_dev_server_url(&dir).expect("manage.py should map to 8000");
+        assert_eq!(url, "http://localhost:8000");
+    }
+
+    #[test]
+    fn dev_server_url_from_fastapi_pyproject() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("pyproject.toml"),
+            "[tool.poetry.dependencies]\nfastapi = \"^0.110\"\n",
+        )
+        .unwrap();
+        let url = detect_dev_server_url(&dir).expect("fastapi should map to 8000");
+        assert_eq!(url, "http://localhost:8000");
+    }
+
+    #[test]
+    fn dev_server_url_returns_none_for_unknown_project_shape() {
+        let dir = fresh_tmp();
+        // Only a Cargo.toml \u{2014} no detectable web framework.
+        fs::write(dir.join("Cargo.toml"), "[package]\nname='x'\n").unwrap();
+        assert_eq!(detect_dev_server_url(&dir), None);
+    }
+
+    #[test]
+    fn parse_port_flag_handles_equals_and_space_forms() {
+        assert_eq!(parse_port_flag("vite --port=5173"), Some(5173));
+        assert_eq!(parse_port_flag("next dev -p 4000"), Some(4000));
+        assert_eq!(parse_port_flag("node server.js --port 8080"), Some(8080));
+        assert_eq!(parse_port_flag("vite"), None);
+        assert_eq!(parse_port_flag("vite --port=0"), None);
+    }
+
+    #[test]
+    fn parse_port_literal_handles_colon_and_equals() {
+        assert_eq!(parse_port_literal("server: { port: 4321 }"), Some(4321));
+        assert_eq!(parse_port_literal("port = 9000"), Some(9000));
+        assert_eq!(parse_port_literal("// no port here"), None);
+    }
+
+    // -- end detect_dev_server_url ---------------------------------------
 
     #[test]
     fn to_finding_payload_emits_expected_keys() {

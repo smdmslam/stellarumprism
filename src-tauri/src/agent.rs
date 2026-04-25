@@ -109,8 +109,10 @@ INVESTIGATION ORDER (mandatory):\n\
      call http_fetch to probe the affected endpoint(s) before \
      finalizing your report. This is the ONLY way to produce \
      runtime-tier evidence for HTTP behavior, and it costs one tool \
-     round. Use the project's dev-server URL (default \
-     http://localhost:3000 unless the repo says otherwise). Procedure:\n\
+     round. Use the 'Dev server URL' line in the user message when \
+     it is present \u{2014} that's the resolved base URL for this project \
+     (config-pinned or auto-detected from project shape). If no such \
+     line is present, fall back to http://localhost:3000. Procedure:\n\
         - For each route the diff adds, modifies, or reorders, call \
           http_fetch with the appropriate method and a minimal body. \
           A response (any status) is runtime evidence \u{2014} paste the \
@@ -335,9 +337,11 @@ INVESTIGATION ORDER (mandatory):\n\
        f. RUNTIME CHECK (mandatory for HTTP work): after wiring or \
           modifying any HTTP route / middleware / controller, you \
           MUST call http_fetch on the affected endpoint to confirm \
-          it is live. Use the project's dev-server URL (default \
-          http://localhost:3000 unless the repo says otherwise). A \
-          real response (any status) is runtime-tier evidence and \
+          it is live. Use the 'Dev server URL' line in the user \
+          message when it is present \u{2014} that's the resolved base \
+          URL for this project (config-pinned or auto-detected). If \
+          no such line is present, fall back to http://localhost:3000. \
+          A real response (any status) is runtime-tier evidence and \
           belongs in the BUILD REPORT's Final verification block. \
           A transport error (connection refused, timeout) means the \
           dev server is not running \u{2014} this is NOT a build failure. \
@@ -759,10 +763,30 @@ pub async fn agent_query(
         ));
     }
 
+    // Resolve the runtime-probe base URL once per turn:
+    //   1. Explicit `agent.dev_server_url` from config wins.
+    //   2. Otherwise infer from project shape (vite \u{2192} 5173, next \u{2192} 3000,
+    //      django \u{2192} 8000, etc.).
+    //   3. Otherwise let the prompt's localhost:3000 fallback take over.
+    // Detection is scoped to substrate-aware modes so chat stays clean.
+    let cwd_str = context
+        .as_ref()
+        .map(|c| c.cwd.clone())
+        .unwrap_or_default();
+    let dev_server_url = resolve_dev_server_url(
+        snapshot.agent.dev_server_url.as_deref(),
+        mode.as_deref(),
+        &cwd_str,
+    );
+
     // Prime session with system prompt if this is the first query for this tab.
     let session_handle = session.get_or_init(&chat_id);
     session_handle.ensure_started(&snapshot.agent.system_prompt);
-    session_handle.append_user(build_user_message(&prompt, context.as_ref()));
+    session_handle.append_user(build_user_message(
+        &prompt,
+        context.as_ref(),
+        dev_server_url.as_deref(),
+    ));
     session_handle.truncate_to_budget();
     // Images are per-turn and live outside the persisted history to keep
     // future API calls cheap. `take_images` pulls them out of the provided
@@ -1519,8 +1543,41 @@ fn truncate(s: &str, n: usize) -> String {
 // Context assembly
 // ---------------------------------------------------------------------------
 
-fn build_user_message(prompt: &str, context: Option<&AgentContext>) -> String {
+/// Resolve the dev-server URL the runtime probe should target. Config
+/// wins over detection; detection only runs for substrate-aware modes
+/// so chat turns don't pay the filesystem-sniff cost. Returns `None`
+/// when neither source has a value \u{2014} the prompt's localhost:3000
+/// default takes over in that case.
+fn resolve_dev_server_url(
+    config_url: Option<&str>,
+    mode: Option<&str>,
+    cwd: &str,
+) -> Option<String> {
+    if let Some(url) = config_url {
+        let trimmed = url.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+    let substrate_mode = matches!(mode, Some("audit") | Some("fix") | Some("build"));
+    if !substrate_mode || cwd.trim().is_empty() {
+        return None;
+    }
+    let path = std::path::Path::new(cwd);
+    crate::diagnostics::detect_dev_server_url(path)
+}
+
+fn build_user_message(
+    prompt: &str,
+    context: Option<&AgentContext>,
+    dev_server_url: Option<&str>,
+) -> String {
     let Some(ctx) = context else {
+        // No structured context \u{2014} still surface the dev server URL when
+        // we managed to resolve it, since the runtime probe needs it.
+        if let Some(url) = dev_server_url {
+            return format!("Dev server URL: {}\n\n{}", url, prompt);
+        }
         return prompt.to_string();
     };
 
@@ -1536,6 +1593,14 @@ fn build_user_message(prompt: &str, context: Option<&AgentContext>) -> String {
     }
     if !ctx.cwd.is_empty() {
         out.push_str(&format!("Current working directory: {}\n\n", ctx.cwd));
+    }
+    if let Some(url) = dev_server_url {
+        // Surfaced as authoritative context so the agent uses this URL
+        // verbatim in `http_fetch` calls instead of guessing the port.
+        out.push_str(&format!(
+            "Dev server URL (use this for http_fetch): {}\n\n",
+            url
+        ));
     }
     if !ctx.recent_blocks.is_empty() {
         out.push_str("Recent commands (newest last):\n");
@@ -1585,6 +1650,119 @@ fn build_user_message(prompt: &str, context: Option<&AgentContext>) -> String {
 // regress. Each test asserts on a specific mandate by phrase, so a copy
 // edit that loses the mandate fails fast.
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod resolver_tests {
+    use super::{build_user_message, resolve_dev_server_url, AgentContext};
+    use std::env;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn fresh_tmp() -> PathBuf {
+        let dir = env::temp_dir().join(format!("prism-agent-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("create tmp dir");
+        fs::canonicalize(&dir).expect("canonicalize tmp")
+    }
+
+    #[test]
+    fn resolver_prefers_explicit_config_over_detection() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"devDependencies": {"vite": "^5"}}"#,
+        )
+        .unwrap();
+        let url = resolve_dev_server_url(
+            Some("http://localhost:9999"),
+            Some("build"),
+            &dir.to_string_lossy(),
+        );
+        assert_eq!(url.as_deref(), Some("http://localhost:9999"));
+    }
+
+    #[test]
+    fn resolver_falls_back_to_detection_for_substrate_modes() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"devDependencies": {"vite": "^5"}}"#,
+        )
+        .unwrap();
+        let url = resolve_dev_server_url(None, Some("audit"), &dir.to_string_lossy());
+        assert_eq!(url.as_deref(), Some("http://localhost:5173"));
+    }
+
+    #[test]
+    fn resolver_skips_detection_in_chat_mode() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"devDependencies": {"vite": "^5"}}"#,
+        )
+        .unwrap();
+        // No mode \u{2192} chat. Detection should NOT run; no URL surfaced.
+        let url = resolve_dev_server_url(None, None, &dir.to_string_lossy());
+        assert_eq!(url, None);
+    }
+
+    #[test]
+    fn resolver_treats_blank_config_url_as_unset() {
+        let dir = fresh_tmp();
+        fs::write(
+            dir.join("package.json"),
+            r#"{"devDependencies": {"next": "^14"}}"#,
+        )
+        .unwrap();
+        // Whitespace-only string in config should be ignored, not propagated.
+        let url = resolve_dev_server_url(Some("   "), Some("build"), &dir.to_string_lossy());
+        assert_eq!(url.as_deref(), Some("http://localhost:3000"));
+    }
+
+    #[test]
+    fn user_message_injects_dev_server_url_after_cwd() {
+        let ctx = AgentContext {
+            cwd: "/work/proj".into(),
+            today: "2026-04-25".into(),
+            ..Default::default()
+        };
+        let msg = build_user_message("add /api/health", Some(&ctx), Some("http://localhost:5173"));
+        let cwd_idx = msg
+            .find("Current working directory: /work/proj")
+            .expect("cwd present");
+        let url_idx = msg
+            .find("Dev server URL (use this for http_fetch): http://localhost:5173")
+            .expect("dev server URL present");
+        assert!(
+            cwd_idx < url_idx,
+            "dev server URL line should follow cwd: cwd={}, url={}",
+            cwd_idx,
+            url_idx
+        );
+        assert!(msg.contains("User question: add /api/health"));
+    }
+
+    #[test]
+    fn user_message_omits_url_line_when_unresolved() {
+        let ctx = AgentContext {
+            cwd: "/work/proj".into(),
+            ..Default::default()
+        };
+        let msg = build_user_message("hi", Some(&ctx), None);
+        assert!(
+            !msg.contains("Dev server URL"),
+            "unresolved URL must not produce a context line"
+        );
+    }
+
+    #[test]
+    fn user_message_handles_no_context_with_url() {
+        // Edge case: caller resolved a URL but passed no AgentContext.
+        // The URL still needs to reach the agent, so prepend it.
+        let msg = build_user_message("probe it", None, Some("http://localhost:8000"));
+        assert!(msg.starts_with("Dev server URL: http://localhost:8000"));
+        assert!(msg.contains("probe it"));
+    }
+}
 
 #[cfg(test)]
 mod prompt_tests {
@@ -1687,6 +1865,25 @@ mod prompt_tests {
         assert!(
             BUILD_SYSTEM_PROMPT.contains("this is NOT a build failure"),
             "build prompt no longer says transport errors are not build failures"
+        );
+    }
+
+    #[test]
+    fn audit_prompt_references_dev_server_url_context_line() {
+        // The resolver injects a 'Dev server URL' line into the user
+        // message. Both prompts must teach the agent to use that line
+        // verbatim instead of guessing the port.
+        assert!(
+            AUDIT_SYSTEM_PROMPT.contains("'Dev server URL' line"),
+            "audit prompt no longer references the resolved URL context line"
+        );
+    }
+
+    #[test]
+    fn build_prompt_references_dev_server_url_context_line() {
+        assert!(
+            BUILD_SYSTEM_PROMPT.contains("'Dev server URL' line"),
+            "build prompt no longer references the resolved URL context line"
         );
     }
 }

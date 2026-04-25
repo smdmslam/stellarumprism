@@ -67,6 +67,15 @@ pub struct AgentConfig {
     /// Example: `["pnpm", "-w", "test", "--reporter=json"]`.
     #[serde(default)]
     pub test_command: Option<Vec<String>>,
+    /// Base URL of the user's dev server, used by the `http_fetch`
+    /// substrate cell when /audit and /build probe live endpoints.
+    /// When unset, `diagnostics::detect_dev_server_url` infers a sensible
+    /// default from the project shape (vite \u{2192} 5173, next \u{2192} 3000,
+    /// django \u{2192} 8000, etc.). When detection also fails, the agent
+    /// falls back to http://localhost:3000 per its system prompt.
+    /// Example: "http://localhost:5173".
+    #[serde(default)]
+    pub dev_server_url: Option<String>,
     #[serde(default)]
     pub verifier: VerifierConfig,
 }
@@ -81,6 +90,7 @@ impl Default for AgentConfig {
             typecheck_command: None,
             test_timeout_secs: default_test_timeout_secs(),
             test_command: None,
+            dev_server_url: None,
             verifier: VerifierConfig::default(),
         }
     }
