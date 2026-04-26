@@ -276,6 +276,11 @@ body {
   gap: 4px;
   padding: 12px 14px 14px 14px;
   box-sizing: border-box;
+  /* Anchor for `.confirm-dialog` (load-render prompt). Without this the
+   * absolute-positioned overlay resolves to `#workspaces`, which works
+   * but isn't semantic. Per-workspace anchoring keeps modal scope tied
+   * to the active tab. */
+  position: relative;
   /* Layout custom properties — driven by drag-handle pointer events in
    * workspace.ts and persisted into state.json.layout. Defaults match
    * the previous fixed values so the v0 look is unchanged on first run. */
@@ -1952,3 +1957,104 @@ body {
 .cm-diag-gutter.cm-diag-error { color: var(--prism-rose); }
 .cm-diag-gutter.cm-diag-warning { color: var(--prism-amber); }
 .cm-diag-gutter.cm-diag-info { color: var(--prism-cyan); }
+
+/* ---------- confirm dialog (load-render prompt) ----------
+ *
+ * Modal overlay used by /load to ask whether to replay the loaded
+ * transcript visually. Anchored to the workspace root via position:
+ * absolute so it covers only the active workspace, not the whole
+ * window (other tabs stay interactable). Hidden via data-visible="false"
+ * by default; the dialog handler in workspace.ts toggles it. Optimized
+ * to be reusable for any future yes/no + remember-this-session prompt. */
+.confirm-dialog {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 15, 0.72);
+  backdrop-filter: blur(2px);
+  z-index: 50;
+}
+.confirm-dialog[data-visible="true"] {
+  display: flex;
+}
+
+.confirm-dialog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(440px, 92%);
+  padding: 18px 20px 16px 20px;
+  background: linear-gradient(180deg, #11141b 0%, #0d1018 100%);
+  border: 1px solid rgba(125, 211, 252, 0.45);
+  border-radius: 12px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.55);
+}
+
+.confirm-dialog-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #e5e7eb;
+}
+
+.confirm-dialog-body {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.confirm-dialog-remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+  user-select: none;
+  cursor: pointer;
+}
+.confirm-dialog-remember input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+  accent-color: #7dd3fc;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.confirm-dialog-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+}
+.confirm-dialog-btn-no {
+  background: #1f2937;
+  color: #d1d5db;
+  border-color: #374151;
+}
+.confirm-dialog-btn-no:hover {
+  background: #374151;
+}
+.confirm-dialog-btn-yes {
+  background: rgba(125, 211, 252, 0.18);
+  color: #7dd3fc;
+  border-color: rgba(125, 211, 252, 0.55);
+}
+.confirm-dialog-btn-yes:hover {
+  background: rgba(125, 211, 252, 0.32);
+}
+.confirm-dialog-btn:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.7);
+  outline-offset: 2px;
+}

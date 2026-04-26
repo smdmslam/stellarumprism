@@ -26,8 +26,8 @@ mod tools;
 mod workspace_state;
 
 use agent::{
-    agent_cancel, agent_drop_session, agent_get_history, agent_get_session_info,
-    agent_new_session, agent_query, AgentState, SessionState,
+    agent_cancel, agent_drop_session, agent_get_history, agent_get_history_full,
+    agent_get_session_info, agent_new_session, agent_query, AgentState, SessionState,
 };
 use approval::{agent_clear_session_approval, agent_tool_decision, ApprovalState};
 use file_ref::{
@@ -70,6 +70,7 @@ pub fn run() {
             agent_drop_session,
             agent_get_session_info,
             agent_get_history,
+            agent_get_history_full,
             agent_tool_decision,
             agent_clear_session_approval,
             get_agent_config,

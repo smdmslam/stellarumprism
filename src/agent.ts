@@ -59,6 +59,37 @@ export interface HistoryMessage {
   content: string;
 }
 
+/**
+ * Wire-shape of an OpenAI-style tool call announced inside an
+ * assistant turn. Mirrors the Rust `ToolCall` struct exactly so the
+ * full-history Tauri command serialises through without translation.
+ */
+export interface ToolCallShape {
+  id: string;
+  /** Always `"function"` in OpenAI-style tool calls. */
+  type: string;
+  function: {
+    name: string;
+    /** JSON-stringified argument blob; not parsed by the frontend. */
+    arguments: string;
+  };
+}
+
+/**
+ * Full message shape used for tool-aware rendering of a loaded
+ * transcript. Includes everything `agent_get_history_full` returns:
+ *   user / assistant text
+ *   assistant tool_calls turns (content may be empty)
+ *   role=tool results with tool_call_id + name
+ */
+export interface FullHistoryMessage {
+  role: "user" | "assistant" | "tool" | string;
+  content: string | null;
+  tool_calls?: ToolCallShape[] | null;
+  tool_call_id?: string | null;
+  name?: string | null;
+}
+
 interface SessionInfo {
   message_count: number;
 }
@@ -231,6 +262,23 @@ export class AgentController {
       });
     } catch (e) {
       console.error("agent_get_history failed", e);
+      return [];
+    }
+  }
+
+  /**
+   * Fetch the full conversation history including tool calls + tool
+   * results. System prompt is filtered out. Used by `loadChat()` after
+   * a successful seed when the user opts to render the loaded
+   * transcript visually in the active tab.
+   */
+  async getHistoryFull(): Promise<FullHistoryMessage[]> {
+    try {
+      return await invoke<FullHistoryMessage[]>("agent_get_history_full", {
+        chatId: this.opts.chatId,
+      });
+    } catch (e) {
+      console.error("agent_get_history_full failed", e);
       return [];
     }
   }

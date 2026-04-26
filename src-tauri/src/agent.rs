@@ -1821,6 +1821,24 @@ pub fn agent_get_history(
         .unwrap_or_default()
 }
 
+/// Full unfiltered history, dropping only the system prompt. Used by
+/// the post-load \"render the transcript visually\" path so a v2 chat
+/// (which carries assistant `tool_calls` + `role=tool` results) shows
+/// the same tool-loop chrome the user saw live, not just the user +
+/// assistant prose. v1 chats degrade gracefully \u2014 the filter just
+/// returns the same shape `agent_get_history` would.
+#[tauri::command]
+pub fn agent_get_history_full(
+    chat_id: String,
+    session: State<'_, SessionState>,
+) -> Vec<Message> {
+    session
+        .full_snapshot(&chat_id)
+        .into_iter()
+        .filter(|m| m.role != "system")
+        .collect()
+}
+
 // ---------------------------------------------------------------------------
 // Streaming core
 // ---------------------------------------------------------------------------

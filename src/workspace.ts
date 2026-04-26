@@ -14,7 +14,11 @@ import "@xterm/xterm/css/xterm.css";
 import { BlockManager, type Block } from "./blocks";
 import { PrismInput } from "./editor";
 import type { IntentResult } from "./intent";
-import { AgentController, type AgentImageContext } from "./agent";
+import {
+  AgentController,
+  type AgentImageContext,
+  type FullHistoryMessage,
+} from "./agent";
 import { resolveModel, renderModelListAnsi, modelSupportsVision } from "./models";
 import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
@@ -192,6 +196,17 @@ export class Workspace {
   /** Whether the Problems panel is currently visible. */
   private problemsVisible = false;
   /**
+   * Per-tab session preference for \"render the loaded chat transcript\"
+   * after a successful /load. Three states:
+   *   null    \u2014 not yet asked this session; show the modal next time
+   *   \"always\" \u2014 user ticked \"don't ask again\" with Yes; auto-render
+   *   \"never\"  \u2014 user ticked \"don't ask again\" with No; auto-skip
+   * Resets on tab close / app restart \u2014 it is intentionally NOT persisted
+   * to state.json so the user is re-asked on a new session and isn't
+   * surprised by silent re-rendering after a long gap.
+   */
+  private renderLoadedChatPref: "always" | "never" | null = null;
+  /**
    * IDE-shape file-tree state. Owned by the workspace so the tree
    * persists across sidebar-tab switches; rebuilt from scratch only
    * when the cwd changes (rare).
@@ -272,6 +287,20 @@ export class Workspace {
       </div>
       <div class="layout-divider layout-divider-problems" data-divider="problems" data-visible="false" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize problems panel"></div>
       <aside class="problems-panel" data-visible="false" aria-hidden="true"></aside>
+      <div class="confirm-dialog" data-visible="false" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" aria-hidden="true">
+        <div class="confirm-dialog-card">
+          <h2 class="confirm-dialog-title" id="confirm-dialog-title"></h2>
+          <p class="confirm-dialog-body"></p>
+          <label class="confirm-dialog-remember">
+            <input type="checkbox" data-confirm-remember />
+            <span>Don\u2019t ask again this session</span>
+          </label>
+          <div class="confirm-dialog-actions">
+            <button class="confirm-dialog-btn confirm-dialog-btn-no" type="button" data-confirm="no">No</button>
+            <button class="confirm-dialog-btn confirm-dialog-btn-yes" type="button" data-confirm="yes">Yes</button>
+          </div>
+        </div>
+      </div>
     `;
     parent.appendChild(this.root);
 
@@ -2663,6 +2692,162 @@ export class Workspace {
     // user's first follow-up) doesn't sit flush against the [load]
     // body \u2014 same reasoning as the leading buffer above.
     this.term.write("\r\n");
+
+    // Decide whether to render the transcript visually. A loaded chat
+    // by default only seeds the model's context \u2014 the user sees only
+    // the [load] confirmation and a fresh shell prompt. That can feel
+    // like \"nothing happened\" on a chat with substantial history.
+    // Offer to replay the messages into xterm so the user sees the
+    // conversation they just loaded.
+    if (this.renderLoadedChatPref === "always") {
+      await this.renderLoadedTranscript();
+    } else if (this.renderLoadedChatPref !== "never") {
+      const decision = await this.askConfirm({
+        title: "Render loaded transcript?",
+        body: `${result.message_count} message${
+          result.message_count === 1 ? "" : "s"
+        } were loaded into this tab\u2019s context. Would you like to also replay the conversation visually in the terminal so you can re-read it?`,
+      });
+      if (decision.remember) {
+        this.renderLoadedChatPref = decision.choice ? "always" : "never";
+      }
+      if (decision.choice) {
+        await this.renderLoadedTranscript();
+      }
+    }
+  }
+
+  /**
+   * Decision returned by the confirm modal.
+   *   choice   \u2014 true = user picked Yes, false = user picked No
+   *   remember \u2014 whether the user ticked the session-scoped
+   *              \"don\u2019t ask again\" checkbox
+   */
+  private askConfirm(opts: {
+    title: string;
+    body: string;
+  }): Promise<{ choice: boolean; remember: boolean }> {
+    const dialog = this.root.querySelector<HTMLElement>(".confirm-dialog");
+    if (!dialog) {
+      // No DOM \u2014 default to No so we don't surprise the user.
+      return Promise.resolve({ choice: false, remember: false });
+    }
+    const titleEl = dialog.querySelector<HTMLElement>(".confirm-dialog-title");
+    const bodyEl = dialog.querySelector<HTMLElement>(".confirm-dialog-body");
+    const remember = dialog.querySelector<HTMLInputElement>(
+      "input[data-confirm-remember]",
+    );
+    if (titleEl) titleEl.textContent = opts.title;
+    if (bodyEl) bodyEl.textContent = opts.body;
+    if (remember) remember.checked = false;
+    dialog.dataset.visible = "true";
+    dialog.setAttribute("aria-hidden", "false");
+    // Focus Yes by default so Enter accepts the friendlier outcome
+    // (rendering is reversible \u2014 a /clear wipes the screen).
+    queueMicrotask(() => {
+      const yes = dialog.querySelector<HTMLButtonElement>(
+        "[data-confirm='yes']",
+      );
+      yes?.focus();
+    });
+    return new Promise((resolve) => {
+      const finish = (choice: boolean) => {
+        dialog.dataset.visible = "false";
+        dialog.setAttribute("aria-hidden", "true");
+        const rememberValue = !!(remember && remember.checked);
+        cleanup();
+        resolve({ choice, remember: rememberValue });
+      };
+      const onClick = (e: Event) => {
+        const t = e.target as HTMLElement | null;
+        const decision = t?.getAttribute("data-confirm");
+        if (decision === "yes") finish(true);
+        else if (decision === "no") finish(false);
+      };
+      const onKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          finish(false);
+        } else if (e.key === "Enter") {
+          // If focus is on the No button, Enter should mean No; otherwise Yes.
+          const active = document.activeElement as HTMLElement | null;
+          const decision = active?.getAttribute?.("data-confirm");
+          finish(decision !== "no");
+        }
+      };
+      const cleanup = () => {
+        dialog.removeEventListener("click", onClick);
+        document.removeEventListener("keydown", onKey, true);
+      };
+      dialog.addEventListener("click", onClick);
+      document.addEventListener("keydown", onKey, true);
+    });
+  }
+
+  /**
+   * Replay the just-loaded conversation into xterm so the user can
+   * re-read it. Walks the full history (including assistant tool_calls
+   * + tool results when the chat was a v2 export) and writes each
+   * message in the same style live conversation uses:
+   *   user      \u2192 cyan `you \u203a` prefix + prose
+   *   assistant \u2192 magenta `\u2732 assistant` header + prose
+   *   tool-call \u2192 dim `\u2192 <tool>(<summary>)` log line
+   *   tool      \u2192 dim `  \u2713 <preview>` line under the call
+   * v1 chats produce only user + assistant turns (the format already
+   * lacks tool messages); v2 chats produce the full chrome.
+   */
+  private async renderLoadedTranscript(): Promise<void> {
+    let history: FullHistoryMessage[] = [];
+    try {
+      history = await this.agent.getHistoryFull();
+    } catch (e) {
+      this.term.write(
+        `\r\n\x1b[1;31m[load]\x1b[0m render failed: ${sanitize(String(e))}\r\n`,
+      );
+      return;
+    }
+    if (history.length === 0) return;
+    this.term.write(
+      `\r\n\x1b[2m\u2500\u2500\u2500 transcript \u2500\u2500\u2500\x1b[0m\r\n`,
+    );
+    for (const m of history) {
+      const content = (m.content ?? "").replace(/\r?\n/g, "\r\n");
+      if (m.role === "user") {
+        this.term.write(
+          `\r\n\x1b[1;36myou\x1b[0m \x1b[2m\u203a\x1b[0m ${content}\r\n`,
+        );
+      } else if (m.role === "assistant") {
+        if (m.tool_calls && m.tool_calls.length > 0) {
+          // Dim header + per-call \u2192 line, mirroring agent.ts onToolCall.
+          if (content.length > 0) {
+            this.term.write(`\r\n${content}\r\n`);
+          }
+          for (const c of m.tool_calls) {
+            const argPreview = c.function.arguments
+              .replace(/\s+/g, " ")
+              .slice(0, 80);
+            this.term.write(
+              `\r\n\x1b[2m\u2192\x1b[0m \x1b[2m\x1b[36m${c.function.name}\x1b[0m \x1b[2m${argPreview}\x1b[0m\r\n`,
+            );
+          }
+        } else {
+          this.term.write(
+            `\r\n\x1b[1;35m\u2732 assistant\x1b[0m\r\n${content}\r\n`,
+          );
+        }
+      } else if (m.role === "tool") {
+        // Truncate large tool payloads so the transcript stays readable.
+        const flat = content.replace(/\r\n/g, " ").trim();
+        const preview =
+          flat.length > 200 ? flat.slice(0, 197) + "\u2026" : flat;
+        this.term.write(
+          `  \x1b[32m\u2713\x1b[0m \x1b[2m${preview}\x1b[0m\r\n`,
+        );
+      }
+    }
+    this.term.write(
+      `\r\n\x1b[2m\u2500\u2500\u2500 end transcript \u2500\u2500\u2500\x1b[0m\r\n\r\n`,
+    );
   }
 
   async saveChat(full: boolean = false): Promise<void> {
