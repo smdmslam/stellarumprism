@@ -1128,6 +1128,15 @@ impl SessionState {
     fn get(&self, chat_id: &str) -> Option<SessionHandle> {
         self.sessions.get(chat_id).map(|h| h.clone())
     }
+    /// Full unfiltered snapshot of a chat's history. Includes system,
+    /// tool, and assistant-with-tool-calls messages \u2014 the complete
+    /// wire-shape of the conversation as the model saw it. Used by the
+    /// `/save full` path so a saved chat is replayable by another
+    /// model without losing tool-loop fidelity. Returns an empty
+    /// vector for an unknown chat_id.
+    pub fn full_snapshot(&self, chat_id: &str) -> Vec<Message> {
+        self.get(chat_id).map(|h| h.snapshot()).unwrap_or_default()
+    }
     fn drop_chat(&self, chat_id: &str) {
         self.sessions.remove(chat_id);
     }

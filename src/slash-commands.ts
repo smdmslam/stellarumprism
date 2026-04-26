@@ -53,7 +53,8 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     label: "/save",
     detail: "Save chat to markdown",
-    info: "Opens a file dialog to save the current chat to a .md file. Default location: <project>/.prism/chats/ when a project cwd is known, otherwise ~/Documents/Prism/Chats/. The directory is created on demand.",
+    info: "Opens a file dialog to save the current chat to a .md file. Default location: <project>/.prism/chats/ when a project cwd is known, otherwise ~/Documents/Prism/Chats/. The directory is created on demand. Use `/save full` (or `/save --full`) to write the v2 tool-aware format that preserves assistant tool_calls + tool results so a loaded session can be truly continued by another model. Filename gets a `.full.md` extension in that mode.",
+    takesArg: true,
   },
   {
     label: "/load",

@@ -570,8 +570,16 @@ export class Workspace {
       });
       return;
     }
-    if (/^\s*\/save\s*$/i.test(text)) {
-      void this.saveChat();
+    // /save [full] \u2014 write a markdown chat artifact. Default mode is
+    // a clean human-readable transcript (user + assistant prose only).
+    // `/save full` (or `/save --full`) writes the v2 tool-aware format
+    // with assistant tool_calls + role=tool results preserved, so the
+    // saved chat is replay-ready by another model.
+    const saveMatch = /^\s*\/save(?:\s+(.*))?$/i.exec(text);
+    if (saveMatch) {
+      const arg = (saveMatch[1] ?? "").trim().toLowerCase();
+      const full = arg === "full" || arg === "--full" || arg === "-f";
+      void this.saveChat(full);
       return;
     }
     // /load \u2014 round-trip companion to /save. Opens a file picker,
@@ -2657,7 +2665,7 @@ export class Workspace {
     this.term.write("\r\n");
   }
 
-  async saveChat(): Promise<void> {
+  async saveChat(full: boolean = false): Promise<void> {
     const count = this.agent.getMessageCount();
     if (count === 0) {
       this.term.write(
@@ -2666,6 +2674,10 @@ export class Workspace {
       return;
     }
     const slug = slugify(this.title) || "chat";
+    // Tag the filename with `.full.md` in v2 mode so the user can tell
+    // a tool-aware export from a clean transcript at a glance in the
+    // file dialog or finder.
+    const ext = full ? "full.md" : "md";
     // Project-local default keeps chats next to the codebase they're
     // about, alongside audit reports under .prism/. Home fallback keeps
     // /save working before a cwd is established (e.g. a fresh tab where
@@ -2673,12 +2685,12 @@ export class Workspace {
     // dialog itself runs `mkdir -p` on the chosen directory at write
     // time, so neither path needs to pre-exist.
     const defaultPath = this.cwd
-      ? `${this.cwd}/.prism/chats/${slug}-${shortStamp()}.md`
-      : expandTilde(`~/Documents/Prism/Chats/${slug}-${shortStamp()}.md`);
+      ? `${this.cwd}/.prism/chats/${slug}-${shortStamp()}.${ext}`
+      : expandTilde(`~/Documents/Prism/Chats/${slug}-${shortStamp()}.${ext}`);
     let target: string | null = null;
     try {
       target = await saveDialog({
-        title: "Save chat",
+        title: full ? "Save chat (full \u2014 includes tool history)" : "Save chat",
         defaultPath,
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
@@ -2689,17 +2701,21 @@ export class Workspace {
     if (!target) return; // user cancelled
 
     try {
-      const result = await invoke<{ path: string; message_count: number; bytes_written: number }>(
-        "save_chat_markdown",
-        {
-          chatId: this.id,
-          path: target,
-          model: this.agent.getModel(),
-          title: this.title,
-        },
-      );
+      const result = await invoke<{
+        path: string;
+        message_count: number;
+        bytes_written: number;
+        format: string;
+      }>("save_chat_markdown", {
+        chatId: this.id,
+        path: target,
+        model: this.agent.getModel(),
+        title: this.title,
+        full,
+      });
+      const modeTag = result.format === "prism-chat-v2" ? " \x1b[2m(full)\x1b[0m" : "";
       this.term.write(
-        `\r\n\x1b[1;32m[save]\x1b[0m wrote ${result.message_count} messages \u2192 \x1b[36m${sanitize(result.path)}\x1b[0m\r\n`,
+        `\r\n\x1b[1;32m[save]\x1b[0m wrote ${result.message_count} messages \u2192 \x1b[36m${sanitize(result.path)}\x1b[0m${modeTag}\r\n`,
       );
     } catch (e) {
       this.term.write(`\r\n\x1b[1;31m[save error]\x1b[0m ${String(e)}\r\n`);
