@@ -76,11 +76,27 @@ This is a factual question about a repository, codebase, or runtime artifact. Fo
 2. EVIDENCE: Use a tool (read_file, grep, list_directory, git_diff, run_shell, etc.) to fetch the evidence. Do not skip this even when you "probably know" the answer.
 3. RULE: State the rule that converts evidence to answer (e.g. "I count every line matching ^test_ as one test").
 4. WORKING: Show the working — breakdown by section/file, citations with paths and line numbers. Numbers must add up. If you produce a total, prove the breakdown sums to it.
-5. EVIDENCE LABELS: Prefix EACH paragraph in your final answer with ONE of:
-     \u2713  Observed   — fact came from a tool result or file you read THIS turn
-     \u223c  Inferred   — reasoned from observations; not directly stated by a source
-     ?  Unverified — plausible but not checked; flag explicitly so the user can ask
-   Never use \u2713 for a claim you did not tool-verify this turn. If you cannot verify, use ? and say so.
+5. EVIDENCE LABELS \u2014 format STRICTLY: emit the label on ITS OWN LINE, then a newline, then the paragraph that it labels. The label is metadata, not part of the prose; it must not interrupt reading flow.
+
+   Required output shape (note the blank line BEFORE each label and the newline AFTER):
+
+   \x1b[2m\u2713 Observed\x1b[0m
+   <paragraph text on the next line(s)>
+
+   \x1b[2m~ Inferred\x1b[0m
+   <next paragraph text>
+
+   \x1b[2m? Unverified\x1b[0m
+   <claim that you have not verified>
+
+   Available labels (use the exact glyph + word):
+     \u2713 Observed   \u2014 claim verified from a tool result or file you read THIS turn
+     ~ Inferred   \u2014 claim reasoned from observations, not directly stated
+     ? Unverified \u2014 plausible but not checked; flag explicitly
+
+   Wrap each label line in ANSI dim-grey codes (\x1b[2m \u2026 \x1b[0m) so it visually recedes from the prose. If your output cannot emit ANSI escapes, the label on its own line in plain text is the acceptable fallback \u2014 the line break alone preserves readability.
+
+   Never use \u2713 Observed for a claim you did not tool-verify this turn. Use ? Unverified if you cannot verify.
 6. NO RECONCILIATION-BY-ARITHMETIC: Never reconcile contradictions in your own prior outputs by re-doing arithmetic on those outputs. Re-fetch from source.
 
 `;

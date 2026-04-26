@@ -82,20 +82,6 @@ import {
   type VisibleRow,
 } from "./file-tree";
 
-/**
- * Pixels of breathing room to reserve on the right of the terminal so the
- * xterm scrollbar never sits on top of glyphs. We translate this into a
- * column count in fitTerminalWithGutter() — CSS padding alone wouldn't
- * work because FitAddon would just re-fit more columns into the padded box.
- *
- * IMPORTANT: keep this strictly LESS than the CSS left padding on
- * `.terminal-host` (currently 32px). The terminal margins are
- * intentionally asymmetric — left larger than right — because the eye
- * lands on the left edge of every line. Bump this in lockstep with the
- * CSS padding if you want a wider right gutter.
- */
-const SCROLLBAR_GUTTER_PX = 28;
-
 const TERM_THEME = {
   background: "#0d0f14",
   foreground: "#e6e6e6",
@@ -309,7 +295,7 @@ export class Workspace {
 
   activate(): void {
     this.root.classList.add("active");
-    this.fitTerminalWithGutter();
+    this.fitTerminal();
     queueMicrotask(() => this.input?.focus());
   }
 
@@ -420,8 +406,8 @@ export class Workspace {
     });
 
     this.resizeObserver = new ResizeObserver(() => {
-      // rAF so layout has settled before proposeDimensions() reads widths.
-      requestAnimationFrame(() => this.fitTerminalWithGutter());
+      // fitTerminal() rAFs internally, so we don't double-defer here.
+      this.fitTerminal();
     });
     this.resizeObserver.observe(host);
 
@@ -451,42 +437,31 @@ export class Workspace {
   }
 
   /**
-   * Fit xterm to the host, then shave a few columns off the right so a real
-   * breathing-room gutter exists between the last glyph and the scrollbar.
-   * CSS padding alone can't achieve this: FitAddon just re-fits more columns
-   * into whatever width you give it, so the last column always lands under
-   * the scrollbar thumb.
+   * Fit xterm to the current `.terminal-host` content box. The right
+   * gutter is enforced by CSS `padding-right` on the host (32px), so
+   * FitAddon's measurement reflects the real text-area width and
+   * xterm cells physically cannot reach the scrollbar. Defers to
+   * `requestAnimationFrame` so layout has settled (post-resize,
+   * post-tab-switch, post-divider-drag) before FitAddon reads widths.
    *
-   * Strictly non-recursive: if the host isn't laid out yet (tab hidden,
-   * window minimized, initial mount) we bail out and wait for the next
-   * ResizeObserver tick.
+   * Replaces the older fitTerminalWithGutter() that fudged columns to
+   * fake a gutter \u2014 that approach disagreed with macOS overlay
+   * scrollbars and produced text-under-scrollbar bugs.
    */
-  private fitTerminalWithGutter(): void {
+  private fitTerminal(): void {
     if (!this.fit || !this.term) return;
     const host = this.root.querySelector<HTMLDivElement>(".terminal-host");
     if (!host) return;
     if (host.clientWidth <= 0 || host.clientHeight <= 0) return;
-
-    const dims = this.fit.proposeDimensions();
-    if (
-      !dims ||
-      !Number.isFinite(dims.cols) ||
-      !Number.isFinite(dims.rows) ||
-      dims.cols < 2 ||
-      dims.rows < 2
-    ) {
-      return;
-    }
-
-    // Ratio math keeps us off xterm's internal _core / _renderService APIs.
-    const pxPerCol = host.clientWidth / dims.cols;
-    const gutterCols = pxPerCol > 0
-      ? Math.max(1, Math.ceil(SCROLLBAR_GUTTER_PX / pxPerCol))
-      : 3;
-    const cols = Math.max(2, dims.cols - gutterCols);
-    if (cols !== this.term.cols || dims.rows !== this.term.rows) {
-      this.term.resize(cols, dims.rows);
-    }
+    requestAnimationFrame(() => {
+      try {
+        this.fit.fit();
+      } catch {
+        // FitAddon throws if the terminal is disposed mid-frame (tab
+        // close while a resize is in flight). Best-effort; the next
+        // ResizeObserver tick will retry against the live state.
+      }
+    });
   }
 
   // -- editor + slash commands ---------------------------------------------
@@ -2495,9 +2470,9 @@ export class Workspace {
         }
         this.applyLayoutToDOM();
         // Refit xterm during the drag so the terminal reflows in real
-        // time — otherwise the user sees the gutter shrink/expand only
+        // time \u2014 otherwise the user sees the gutter shrink/expand only
         // after release. Cheap; xterm internally rAFs.
-        this.fitTerminalWithGutter();
+        this.fitTerminal();
       };
       const onUp = (e: PointerEvent) => {
         el.releasePointerCapture(e.pointerId);
@@ -2525,7 +2500,7 @@ export class Workspace {
       else if (kind === "problems") this.layout.problems_width = DEFAULT_LAYOUT.problems_width;
       else if (kind === "preview") this.layout.preview_height = DEFAULT_LAYOUT.preview_height;
       this.applyLayoutToDOM();
-      this.fitTerminalWithGutter();
+      this.fitTerminal();
       void this.persistLayout();
     };
 
@@ -2558,7 +2533,7 @@ export class Workspace {
       this.layout.preview_height = clampPreview(this.layout.preview_height + delta);
     }
     this.applyLayoutToDOM();
-    this.fitTerminalWithGutter();
+    this.fitTerminal();
     void this.persistLayout();
   }
 
@@ -2666,14 +2641,20 @@ export class Workspace {
       priorCount > 0
         ? ` \x1b[2m(replaced ${priorCount} prior message${priorCount === 1 ? "" : "s"})\x1b[0m`
         : "";
+    // Leading blank line so the [load] block has clear visual
+    // separation from whatever shell output preceded it.
     this.term.write(
-      `\r\n\x1b[1;32m[load]\x1b[0m \x1b[2mloaded \x1b[36m${result.message_count}\x1b[0m\x1b[2m message${result.message_count === 1 ? "" : "s"} from \x1b[36m${sanitize(pretty)}\x1b[0m${overwroteNote}\r\n`,
+      `\r\n\r\n\x1b[1;32m[load]\x1b[0m \x1b[2mloaded \x1b[36m${result.message_count}\x1b[0m\x1b[2m message${result.message_count === 1 ? "" : "s"} from \x1b[36m${sanitize(pretty)}\x1b[0m${overwroteNote}\r\n`,
     );
     if (result.model) {
       this.term.write(
         `\x1b[2m[load] saved model was \x1b[36m${sanitize(result.model)}\x1b[0m\x1b[2m \u2014 current tab uses \x1b[36m${sanitize(this.agent.getModel())}\x1b[0m\x1b[2m. Use /model to switch if desired.\x1b[0m\r\n`,
       );
     }
+    // Trailing blank line so the next shell-emitted prompt (or the
+    // user's first follow-up) doesn't sit flush against the [load]
+    // body \u2014 same reasoning as the leading buffer above.
+    this.term.write("\r\n");
   }
 
   async saveChat(): Promise<void> {

@@ -423,16 +423,23 @@ body {
   min-height: 0;
   /* Asymmetric margins: the LEFT margin is intentionally larger than
    * the right so terminal output reads like a page (where the eye
-   * starts \u2014 the leading edge needs more breathing room). The right-
-   * side gutter is reserved in column units by fitTerminalWithGutter()
-   * in workspace.ts (see SCROLLBAR_GUTTER_PX) so the last glyph never
-   * lands under the scrollbar thumb; CSS right padding stays at 0 so
-   * we don't double-budget. Keep CSS-left strictly greater than the
-   * effective right gutter so the asymmetry survives any future
-   * gutter tweak. */
-  padding: 10px 0 10px 32px;
+   * starts \u2014 the leading edge needs more breathing room).
+   *
+   * Padding-right (32px) is the SOURCE OF TRUTH for the scrollbar
+   * gutter. We previously shaved columns off the FitAddon proposal in
+   * workspace.ts to fake a gutter, but that approach is brittle on
+   * macOS WebKit overlay scrollbars (xterm renderer, scrollbar
+   * compositor, devicePixelRatio rounding, and FitAddon measurement
+   * disagree on geometry, so glyphs end up under the scrollbar). With
+   * a real DOM-level right padding the layout boundary is enforced by
+   * the box model itself; FitAddon then computes columns inside the
+   * narrower content box and xterm renders cells that physically
+   * cannot reach the scrollbar. Keep this value strictly less than
+   * the left padding so the asymmetry holds. */
+  padding: 10px 32px 10px 40px;
   background-color: #0d0f14;
   box-sizing: border-box;
+  overflow: hidden;
 }
 .terminal-host .xterm { height: 100%; }
 .terminal-host .xterm-viewport {

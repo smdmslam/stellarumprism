@@ -390,10 +390,15 @@ export class AgentController {
     // When the caller has wrapped the prompt with a protocol preamble
     // (Grounded-Chat) we still want to echo the ORIGINAL user text, so
     // the chrome doesn't dump the rigor scaffold back at the user.
+    //
+    // Two leading CRLFs give a clean blank line above the echo. The
+    // shell PTY auto-emits its own prompt line whenever it goes idle,
+    // and without this buffer that shell-prompt line and our `you \u203a`
+    // collide visually \u2014 they end up adjacent or even on the same row.
     const echoSource = options.displayPrompt ?? prompt;
     const echoed = echoSource.replace(/\r?\n/g, "\r\n");
     this.opts.term.write(
-      `\r\n\x1b[1;36myou\x1b[0m \x1b[2m\u203a\x1b[0m ${echoed}\r\n`,
+      `\r\n\r\n\x1b[1;36myou\x1b[0m \x1b[2m\u203a\x1b[0m ${echoed}\r\n`,
     );
 
     // Decide the actual model. Priority:
