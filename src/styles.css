@@ -421,11 +421,16 @@ body {
 .terminal-host {
   flex: 1 1 auto;
   min-height: 0;
-  /* Right-side breathing room is provided by fitTerminalWithGutter() in
-   * workspace.ts, which reserves columns so the last glyph never lands
-   * under the scrollbar thumb. We keep a small vertical + left padding so
-   * text isn't flush against the pane edges. */
-  padding: 10px 0 10px 14px;
+  /* Asymmetric margins: the LEFT margin is intentionally larger than
+   * the right so terminal output reads like a page (where the eye
+   * starts \u2014 the leading edge needs more breathing room). The right-
+   * side gutter is reserved in column units by fitTerminalWithGutter()
+   * in workspace.ts (see SCROLLBAR_GUTTER_PX) so the last glyph never
+   * lands under the scrollbar thumb; CSS right padding stays at 0 so
+   * we don't double-budget. Keep CSS-left strictly greater than the
+   * effective right gutter so the asymmetry survives any future
+   * gutter tweak. */
+  padding: 10px 0 10px 32px;
   background-color: #0d0f14;
   box-sizing: border-box;
 }
@@ -527,7 +532,16 @@ body {
   min-width: 0;
 }
 
+/* Hidden for now \u2014 the colored chevron in the meta row was reading as
+ * a "type here" affordance even though the actual input is the bordered
+ * field above. Intent (shell vs agent) is still surfaced by the
+ * `.intent-badge` (CMD / AGENT pill) on the right side of the meta row,
+ * so we don't lose any signal by hiding this. The element stays in the
+ * DOM because setupEditor() in workspace.ts updates its data-intent
+ * attribute on every turn; flipping `display` back to inline-block (or
+ * removing this rule) restores it instantly. */
 .input-prefix {
+  display: none;
   flex: 0 0 auto;
   font-family:
     "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;

@@ -87,8 +87,14 @@ import {
  * xterm scrollbar never sits on top of glyphs. We translate this into a
  * column count in fitTerminalWithGutter() — CSS padding alone wouldn't
  * work because FitAddon would just re-fit more columns into the padded box.
+ *
+ * IMPORTANT: keep this strictly LESS than the CSS left padding on
+ * `.terminal-host` (currently 32px). The terminal margins are
+ * intentionally asymmetric — left larger than right — because the eye
+ * lands on the left edge of every line. Bump this in lockstep with the
+ * CSS padding if you want a wider right gutter.
  */
-const SCROLLBAR_GUTTER_PX = 24;
+const SCROLLBAR_GUTTER_PX = 28;
 
 const TERM_THEME = {
   background: "#0d0f14",

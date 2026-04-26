@@ -532,8 +532,12 @@ export class AgentController {
     // turn has had no tool calls (chat turns get straight prose).
     if (this.expectingAnswerRule && piece.length > 0) {
       this.expectingAnswerRule = false;
+      // Two blank lines on each side of the rule so the assistant's
+      // prose gets its own visual zone, distinct from the dim tool log
+      // above. Without the extra whitespace the prose collides with
+      // `\u2713 summary` and reads as one continuous block of text.
       this.opts.term.write(
-        `\r\n\x1b[2m\u2500\u2500\u2500 answer \u2500\u2500\u2500\x1b[0m\r\n`,
+        `\r\n\r\n\x1b[2m\u2500\u2500\u2500 answer \u2500\u2500\u2500\x1b[0m\r\n\r\n`,
       );
     }
     // xterm expects CRLF for newlines. Bare \n moves the cursor down without
