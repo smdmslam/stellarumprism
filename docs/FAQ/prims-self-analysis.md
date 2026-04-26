@@ -1,0 +1,1 @@
+Also worth noting: Prism just helped design its own next feature. That's a meaningful product moment. File this doc itself as evidence of the tool's value when given protocol — it produced a thoughtful spec because you gave it the right scaffolding (the conversation, the eval results, the request to analyze itself). Same thesis, demonstrated once more.

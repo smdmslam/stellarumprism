@@ -20,6 +20,11 @@ import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { findMode, type Mode } from "./modes";
 import {
+  applyVerifiedProtocol,
+  detectVerifiedTrigger,
+  verifiedKindLabel,
+} from "./verified-mode";
+import {
   auditReportFilename,
   parseAuditTranscript,
   renderAnsiFindings,
@@ -260,12 +265,17 @@ export class Workspace {
         <div class="agent-actions"></div>
         <div class="attachments"></div>
         <div class="input-bar">
-          <span class="input-prefix" data-intent="command">\u276f</span>
-          <span class="cwd-badge" title="Current working directory"></span>
-          <div class="editor-host"></div>
-          <span class="model-badge" title="Agent model">\u2026</span>
-          <button class="busy-pill" type="button" title="Cancel agent request" aria-label="cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
-          <span class="intent-badge" data-intent="command">CMD</span>
+          <div class="input-row">
+            <div class="editor-host"></div>
+          </div>
+          <div class="input-meta">
+            <span class="input-prefix" data-intent="command">\u276f</span>
+            <span class="cwd-badge" title="Current working directory"></span>
+            <span class="input-meta-spacer"></span>
+            <span class="model-badge" title="Agent model">\u2026</span>
+            <button class="busy-pill" type="button" title="Cancel agent request" aria-label="cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
+            <span class="intent-badge" data-intent="command">CMD</span>
+          </div>
         </div>
       </div>
       <div class="layout-divider layout-divider-problems" data-divider="problems" data-visible="false" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize problems panel"></div>
@@ -506,6 +516,20 @@ export class Workspace {
       onControlKey: (key) => {
         const hasDraft = this.input.getValue().length > 0;
         if (hasDraft) return false;
+        // Agent gets first claim on Ctrl+C / Ctrl+D when a request is
+        // in flight. Without this carve-out the user has no keyboard
+        // way out of a model degeneracy loop ([PAD] streams, runaway
+        // tool rounds, etc.) \u2014 they'd have to hit the busy-pill with
+        // the mouse, which doesn't work if the pill stops repainting.
+        if ((key === "SIGINT" || key === "EOF") && this.agent?.isBusy()) {
+          this.agent.cancel();
+          this.term.write(
+            `\r\n\x1b[1;33m[agent]\x1b[0m \x1b[2mcancelled by ^${
+              key === "SIGINT" ? "C" : "D"
+            }\x1b[0m\r\n`,
+          );
+          return true;
+        }
         if (key === "EOF" && !isShellBusy()) return false;
         const byte = key === "SIGINT" ? "\x03" : key === "EOF" ? "\x04" : "\x1a";
         void invoke("write_to_shell", { sessionId: this.id, data: byte });
@@ -993,7 +1017,27 @@ export class Workspace {
       maxToolRounds?: number;
     } = {},
   ): Promise<void> {
-    const refs = extractFileRefs(prompt);
+    // Grounded-Chat protocol: when this is a regular chat turn (no
+    // mode-specific persona like /audit, /fix, /build active) and the
+    // prompt looks like an inspectable factual question, prepend a
+    // rigor scaffold so the model is forced to source \u2192 evidence \u2192
+    // rule \u2192 working \u2192 verified label before answering. Mode-driven
+    // turns already carry their own stricter protocols and are skipped
+    // to avoid double-wrapping.
+    let modelPrompt = prompt;
+    let displayPrompt: string | undefined;
+    if (!options.mode) {
+      const trigger = detectVerifiedTrigger(prompt);
+      if (trigger) {
+        modelPrompt = applyVerifiedProtocol(prompt, trigger);
+        displayPrompt = prompt;
+        this.term.write(
+          `\r\n\x1b[2m\u2192 [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched \u201c${sanitize(trigger.matched)}\u201d)\x1b[0m\r\n`,
+        );
+      }
+    }
+
+    const refs = extractFileRefs(modelPrompt);
     const { resolved, errors } =
       refs.length > 0
         ? await resolveFileRefs(refs, this.cwd)
@@ -1034,14 +1078,14 @@ export class Workspace {
       : [];
 
     void this.agent.query(
-      prompt,
+      modelPrompt,
       resolved.map((r) => ({
         path: r.path,
         content: r.content,
         truncated: r.truncated,
       })),
       imagePayload,
-      options,
+      { ...options, displayPrompt },
     );
   }
 
@@ -2560,7 +2604,13 @@ export class Workspace {
     try {
       const picked = await openDialog({
         title: "Load chat",
-        defaultPath: expandTilde("~/Documents/Prism/Chats/"),
+        // Project-local first so chats live alongside audit reports and
+        // travel with the repo. Home Documents/Prism/Chats stays as a
+        // fallback for users mid-tab who haven't established a cwd yet
+        // and for legacy chats saved before this change.
+        defaultPath: this.cwd
+          ? `${this.cwd}/.prism/chats/`
+          : expandTilde("~/Documents/Prism/Chats/"),
         multiple: false,
         directory: false,
         filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -2629,12 +2679,20 @@ export class Workspace {
       return;
     }
     const slug = slugify(this.title) || "chat";
-    const defaultPath = `~/Documents/Prism/Chats/${slug}-${shortStamp()}.md`;
+    // Project-local default keeps chats next to the codebase they're
+    // about, alongside audit reports under .prism/. Home fallback keeps
+    // /save working before a cwd is established (e.g. a fresh tab where
+    // the user runs /save before issuing any shell command). The save
+    // dialog itself runs `mkdir -p` on the chosen directory at write
+    // time, so neither path needs to pre-exist.
+    const defaultPath = this.cwd
+      ? `${this.cwd}/.prism/chats/${slug}-${shortStamp()}.md`
+      : expandTilde(`~/Documents/Prism/Chats/${slug}-${shortStamp()}.md`);
     let target: string | null = null;
     try {
       target = await saveDialog({
         title: "Save chat",
-        defaultPath: expandTilde(defaultPath),
+        defaultPath,
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
     } catch (e) {

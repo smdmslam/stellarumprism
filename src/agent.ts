@@ -349,6 +349,14 @@ export class AgentController {
       mode?: string;
       modelOverride?: string;
       maxToolRounds?: number;
+      /**
+       * Optional override for the user-facing echo line. When set, the
+       * terminal shows this string under `you \u203a` while the model
+       * sees the full `prompt` (protocol preamble + original text).
+       * Used by Grounded-Chat to keep the user's view clean while
+       * giving the model the rigor scaffold it needs.
+       */
+      displayPrompt?: string;
     } = {},
   ): Promise<void> {
     if (!this.hasApiKey) {
@@ -378,9 +386,14 @@ export class AgentController {
     // Echo the user's prompt in the terminal so the dialogue is visible.
     // Cyan `you:` header, then the prompt in normal weight. Newlines in the
     // prompt get normalized to CRLF for xterm.
-    const echoed = prompt.replace(/\r?\n/g, "\r\n");
+    //
+    // When the caller has wrapped the prompt with a protocol preamble
+    // (Grounded-Chat) we still want to echo the ORIGINAL user text, so
+    // the chrome doesn't dump the rigor scaffold back at the user.
+    const echoSource = options.displayPrompt ?? prompt;
+    const echoed = echoSource.replace(/\r?\n/g, "\r\n");
     this.opts.term.write(
-      `\r\n\x1b[1;36myou\x1b[0m \x1b[2m›\x1b[0m ${echoed}\r\n`,
+      `\r\n\x1b[1;36myou\x1b[0m \x1b[2m\u203a\x1b[0m ${echoed}\r\n`,
     );
 
     // Decide the actual model. Priority:
@@ -595,6 +608,12 @@ export class AgentController {
       `<button class="btn btn-reject" data-decision="reject">Reject</button>` +
       `</div>` +
       `</div>`;
+    // Belt-and-suspenders for the previously-clipped action row: even
+    // with the taller actions bar + sticky buttons, on small windows
+    // the user could land on a card whose top is visible but whose
+    // buttons sit just below the fold. Scroll the wrapper to the end
+    // so the Approve / Reject row is in the user's first glance.
+    bar.scrollTop = bar.scrollHeight;
     bar.onclick = (ev) => {
       const target = ev.target as HTMLElement | null;
       const decision = target?.getAttribute("data-decision");

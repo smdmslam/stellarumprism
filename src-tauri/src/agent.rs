@@ -1068,12 +1068,36 @@ impl SessionHandle {
     fn non_system_count(&self) -> usize {
         self.0.lock().iter().filter(|m| m.role != "system").count()
     }
+    /// Trim the rolling history down to MAX_HISTORY_MESSAGES non-system
+    /// messages. Eviction is **atomic per turn**: a turn starts at a user
+    /// message and runs through every assistant / tool message that
+    /// follows it until the next user message. Removing whole turns at
+    /// a time is the only safe strategy when tool-use is in play \u2014 a
+    /// half-evicted turn leaves an orphan `tool` message with no
+    /// matching `assistant.tool_calls`, which OpenAI/Azure reject with
+    /// 400 \"No tool call found for function call output\". Per-message
+    /// eviction caused exactly that bug in long beta-test sessions.
     fn truncate_to_budget(&self) {
         let mut g = self.0.lock();
         while g.iter().filter(|m| m.role != "system").count() > MAX_HISTORY_MESSAGES {
-            if let Some(idx) = g.iter().position(|m| m.role != "system") {
-                g.remove(idx);
-            } else {
+            // First non-system message marks the start of the oldest
+            // surviving turn. In normal flow this is always a user
+            // message; defensively we also accept assistant/tool here
+            // so a corrupt session still drains rather than spinning.
+            let Some(start) = g.iter().position(|m| m.role != "system") else {
+                break;
+            };
+            // Walk forward to the start of the NEXT turn (the next
+            // user message) or the end of history. Everything in
+            // between belongs to this turn.
+            let mut end = start + 1;
+            while end < g.len() && g[end].role != "user" && g[end].role != "system" {
+                end += 1;
+            }
+            g.drain(start..end);
+            // Bail if we somehow couldn't make progress \u2014 prevents an
+            // infinite loop on a malformed history we can't trim.
+            if end == start {
                 break;
             }
         }
@@ -1903,9 +1927,29 @@ async fn run_stream(
                             if let Some(choice) = parsed.choices.first() {
                                 if let Some(piece) = &choice.delta.content {
                                     if !piece.is_empty() {
-                                        total_chars += piece.chars().count();
-                                        assistant_text.push_str(piece);
-                                        let _ = app.emit(token_event, piece.clone());
+                                        // Strip padding/end-of-text sentinel
+                                        // tokens that some MoE models leak
+                                        // through under degeneracy. They
+                                        // carry no semantic value and would
+                                        // otherwise round-trip into history
+                                        // and re-feed the loop.
+                                        let cleaned = strip_pad_tokens(piece);
+                                        if !cleaned.is_empty() {
+                                            total_chars += cleaned.chars().count();
+                                            assistant_text.push_str(&cleaned);
+                                            let _ = app.emit(token_event, cleaned);
+                                            // Hard cancel if the tail of the
+                                            // stream is a single repeating
+                                            // pattern \u2014 the model is stuck,
+                                            // and continuing wastes tokens
+                                            // and locks the UI until the user
+                                            // closes the tab.
+                                            if is_degenerate_tail(&assistant_text) {
+                                                return Err(
+                                                    "model output degenerated (repeating pattern detected); cancelled".to_string(),
+                                                );
+                                            }
+                                        }
                                     }
                                 }
                                 if let Some(deltas) = &choice.delta.tool_calls {
@@ -1930,6 +1974,64 @@ async fn run_stream(
         }
     }
     Ok(finalize(total_chars, assistant_text, tool_calls))
+}
+
+/// Strip the most common padding / end-of-text sentinel tokens from a
+/// streaming chunk before it's emitted to the frontend or appended to
+/// `assistant_text`. Several MoE models (Kimi-K2.5 in particular, also
+/// some Qwen variants) leak these tokens during degeneracy, where they'd
+/// otherwise stream forever as visible `[PAD][PAD][PAD]\u2026` text in xterm.
+/// Removing them at the streaming layer means they never end up in the
+/// session history either, so the next round won't see them as part of
+/// the assistant's previous turn.
+fn strip_pad_tokens(s: &str) -> String {
+    const PATTERNS: &[&str] = &[
+        "[PAD]",
+        "<|PAD|>",
+        "<pad>",
+        "<|endoftext|>",
+        "<|end|>",
+        "<|im_end|>",
+    ];
+    let mut out = s.to_string();
+    for p in PATTERNS {
+        if out.contains(p) {
+            out = out.replace(p, "");
+        }
+    }
+    out
+}
+
+/// Detect when the streamed assistant text has degenerated into a single
+/// repeating substring at its tail. Conservative bounds (period \u2265 3,
+/// repetitions \u2265 8) avoid false positives on legitimate output that
+/// contains long runs of dashes, underscores, or whitespace.
+fn is_degenerate_tail(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let n = bytes.len();
+    if n < 64 {
+        return false;
+    }
+    for period in 3..=16 {
+        if n < period * 8 {
+            continue;
+        }
+        let pattern_start = n - period;
+        let pattern = &bytes[pattern_start..n];
+        let mut matches: usize = 1;
+        let mut i = pattern_start;
+        while i >= period {
+            if &bytes[i - period..i] != pattern {
+                break;
+            }
+            matches += 1;
+            i -= period;
+            if matches >= 8 {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Pick the right outcome based on whether any tool_calls were assembled.
@@ -2022,6 +2124,13 @@ fn extract_data(event: &str) -> Option<String> {
 /// Convert stored session messages to the outgoing OpenRouter shape,
 /// preserving tool_calls/tool_call_id/name and attaching image parts to the
 /// final user message when present.
+///
+/// Defensive integrity pass: drop any `tool` message whose `tool_call_id`
+/// does not appear in some prior `assistant.tool_calls`. Atomic turn
+/// eviction in `truncate_to_budget` should already prevent orphans from
+/// reaching this point, but a belt-and-suspenders strip here means a
+/// future regression \u2014 or any other code path that mutates history
+/// imperfectly \u2014 cannot send a malformed request to OpenAI/Azure.
 fn build_out_messages<'a>(
     messages: &'a [Message],
     pending_images: &'a [AgentImage],
@@ -2032,9 +2141,34 @@ fn build_out_messages<'a>(
         messages.iter().rposition(|m| m.role == "user")
     };
 
+    // Pre-pass: collect every tool_call id ever announced by an assistant
+    // message in this history. A `tool` message whose tool_call_id is not
+    // in this set is an orphan and gets dropped.
+    let mut announced_call_ids: std::collections::HashSet<&str> =
+        std::collections::HashSet::new();
+    for m in messages.iter() {
+        if let Some(calls) = &m.tool_calls {
+            for c in calls {
+                announced_call_ids.insert(c.id.as_str());
+            }
+        }
+    }
+
     messages
         .iter()
         .enumerate()
+        .filter(|(_, m)| {
+            // Drop orphan tool results: role=tool with a tool_call_id that
+            // no prior assistant.tool_calls ever announced. Leaves all
+            // other roles untouched.
+            if m.role == "tool" {
+                if let Some(id) = m.tool_call_id.as_deref() {
+                    return announced_call_ids.contains(id);
+                }
+                return false;
+            }
+            true
+        })
         .map(|(i, m)| {
             let content = if Some(i) == last_user_idx {
                 let mut parts: Vec<ContentPart> = Vec::with_capacity(1 + pending_images.len());

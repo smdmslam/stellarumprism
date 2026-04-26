@@ -1,0 +1,141 @@
+// Grounded-Chat protocol — the rigor layer that fires automatically on
+// inspectable factual questions (counts, enumerations, repo facts).
+//
+// This is the v0 of Verified Chat: detect prompts where freeform
+// answering is most likely to hallucinate, and inject a one-shot
+// protocol header into the user message so the model is forced to
+// SOURCE → EVIDENCE → RULE → WORKING → LABEL before answering.
+//
+// Designed to be transparent: the user types a normal question, the
+// frontend echoes it as typed, and the model sees the augmented
+// version with the protocol prepended. Existing modes (audit, fix,
+// build, etc.) are NOT subject to this layer — they have their own
+// stricter protocols and shouldn't be double-wrapped.
+
+/** Categorical kinds of factual questions we recognize. */
+export type VerifiedKind = "count" | "enumerate" | "repo-fact";
+
+/** Outcome of trigger detection on a single user prompt. */
+export interface VerifiedTrigger {
+  kind: VerifiedKind;
+  /** The substring of the user's prompt that matched the trigger regex.
+   * Surfaced in the xterm hint line so the user sees why the protocol fired. */
+  matched: string;
+}
+
+// ---------------------------------------------------------------------------
+// Trigger regexes
+// ---------------------------------------------------------------------------
+//
+// Order matters in detect(): count > enumerate > repo-fact. A prompt like
+// "how many tests are in the repo?" matches both COUNT and ENUM; we want
+// the COUNT addendum to win because it carries the strict arithmetic rules.
+
+/** Counting / totalling questions. "How many tests?", "what's the total?". */
+const COUNT_REGEX =
+  /\b(how many|count\b|how much|number of|total (of|number))\b/i;
+
+/** Enumeration questions. "List all", "which files", "show me". */
+const ENUM_REGEX =
+  /\b(list (all|the|every)|which (files?|tests?|functions?|classes?|modules?|commands?|hooks?|routes?)|show (me )?(the|all|every)|what (files?|tests?|functions?|classes?|commands?|hooks?|routes?))\b/i;
+
+/** Repo-fact questions. "Where is X?", "what changed?", "did we ever". */
+const REPO_FACT_REGEX =
+  /\b(where (is|are|did|does)|did we|what changed|recently (added|modified|changed|removed)|latest (commit|change|update|version))\b/i;
+
+/**
+ * Inspect a raw user prompt for an inspectable-factual trigger. Returns
+ * null when the prompt is opinion-shaped, vague, or otherwise outside
+ * the rigor envelope (e.g. "any thoughts on X?", "what would you call
+ * this feature?"). Callers should leave such prompts alone.
+ */
+export function detectVerifiedTrigger(prompt: string): VerifiedTrigger | null {
+  const m1 = COUNT_REGEX.exec(prompt);
+  if (m1) return { kind: "count", matched: m1[0] };
+  const m2 = ENUM_REGEX.exec(prompt);
+  if (m2) return { kind: "enumerate", matched: m2[0] };
+  const m3 = REPO_FACT_REGEX.exec(prompt);
+  if (m3) return { kind: "repo-fact", matched: m3[0] };
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Protocol text
+// ---------------------------------------------------------------------------
+//
+// The model receives this prepended to its user message. Kept compact
+// because it's paid for in tokens on every triggered turn. Compared to
+// the verified-mode improvement on output quality, the extra ~400
+// tokens of preamble are a rounding error.
+
+const PROTOCOL_PREAMBLE = `[Grounded-Chat protocol active]
+
+This is a factual question about a repository, codebase, or runtime artifact. Follow this protocol BEFORE answering:
+
+1. SOURCE: Identify the source of truth (file path, tool output, command result). If the answer is inspectable, do NOT answer from memory.
+2. EVIDENCE: Use a tool (read_file, grep, list_directory, git_diff, run_shell, etc.) to fetch the evidence. Do not skip this even when you "probably know" the answer.
+3. RULE: State the rule that converts evidence to answer (e.g. "I count every line matching ^test_ as one test").
+4. WORKING: Show the working — breakdown by section/file, citations with paths and line numbers. Numbers must add up. If you produce a total, prove the breakdown sums to it.
+5. EVIDENCE LABELS: Prefix EACH paragraph in your final answer with ONE of:
+     \u2713  Observed   — fact came from a tool result or file you read THIS turn
+     \u223c  Inferred   — reasoned from observations; not directly stated by a source
+     ?  Unverified — plausible but not checked; flag explicitly so the user can ask
+   Never use \u2713 for a claim you did not tool-verify this turn. If you cannot verify, use ? and say so.
+6. NO RECONCILIATION-BY-ARITHMETIC: Never reconcile contradictions in your own prior outputs by re-doing arithmetic on those outputs. Re-fetch from source.
+
+`;
+
+const ADDENDUMS: Record<VerifiedKind, string> = {
+  count: `This is a COUNT question. Mandatory:
+- name the file or scope being counted
+- state the counting rule explicitly (what is "one item"?)
+- produce a per-section or per-file breakdown
+- prove the breakdown sums to the total
+- label the final number "Verified total: N" only if you computed it from source THIS turn
+- otherwise say "I have not verified this. Estimated count: N" and explain what you'd need to verify
+
+`,
+  enumerate: `This is an ENUMERATION question. Mandatory:
+- list items by inspecting the source, not from memory
+- include the path or identifier for each item so the user can verify
+- if the list is large, say so up front and offer a narrowing question
+
+`,
+  "repo-fact": `This is a REPO-FACT question. Mandatory:
+- run a tool to fetch the answer (grep, read_file, git_diff, list_directory, etc.) before responding
+- if no tool can answer it, say "I cannot verify this from the repository" rather than guessing
+
+`,
+};
+
+/**
+ * Wrap a raw user prompt with the Grounded-Chat protocol preamble + the
+ * kind-specific addendum. The original prompt is appended verbatim so
+ * the model can read it after consuming the protocol.
+ *
+ * Callers pass `displayPrompt` separately to agent.query() so the
+ * augmented version goes to the model and history while the user's
+ * terminal still echoes what they actually typed.
+ */
+export function applyVerifiedProtocol(
+  prompt: string,
+  trigger: VerifiedTrigger,
+): string {
+  return PROTOCOL_PREAMBLE + ADDENDUMS[trigger.kind] + "User question:\n" + prompt;
+}
+
+/**
+ * Short label for the kind, used in the xterm hint line that announces
+ * verified mode is active for this turn. Keep these terse — they
+ * appear once per triggered prompt and shouldn't dominate the chrome.
+ */
+export function verifiedKindLabel(kind: VerifiedKind): string {
+  switch (kind) {
+    case "count":
+      return "count";
+    case "enumerate":
+      return "enumerate";
+    case "repo-fact":
+      return "repo-fact";
+  }
+}

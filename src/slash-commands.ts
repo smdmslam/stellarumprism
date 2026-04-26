@@ -32,7 +32,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     label: "/model",
     detail: "Switch AI model",
-    info: "Change the model used by the agent. Accepts an auto preset (auto, auto-frontier, auto-agentic, auto-thrifty), a short alias (haiku, kimi, glm-5, gpt-oss, \u2026), or a full OpenRouter slug. Example: /model auto-frontier",
+    info: "Change the model used by the agent. Accepts a short alias (haiku, kimi, glm-5, gpt-oss, deepseek, \u2026) or a full OpenRouter slug. Example: /model glm-5",
     takesArg: true,
   },
   {
@@ -53,7 +53,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     label: "/save",
     detail: "Save chat to markdown",
-    info: "Opens a file dialog to save the current chat to a .md file. Defaults to ~/Documents/Prism/Chats/",
+    info: "Opens a file dialog to save the current chat to a .md file. Default location: <project>/.prism/chats/ when a project cwd is known, otherwise ~/Documents/Prism/Chats/. The directory is created on demand.",
   },
   {
     label: "/load",

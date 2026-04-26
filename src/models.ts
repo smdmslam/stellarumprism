@@ -16,11 +16,17 @@ export interface ModelEntry {
   /** One-line description shown by `/models`. */
   description: string;
   /**
-   * Mark as "auto" (preset router), "main" (featured), "explore"
-   * (less-common alternates), or "backend" (internal tool provider, not
-   * shown in /models and not user-selectable as a primary model).
-   */
-  tier: "auto" | "main" | "explore" | "backend";
+   * Mark as "main" (featured, name-brand), "explore" (less-common
+   * alternates), or "backend" (internal tool provider, not shown in
+   * /models and not user-selectable as a primary model).
+   *
+   * Auto presets are intentionally NOT offered as a tier here \u2014 the
+   * picker now exposes a single concrete model per turn so beta
+   * testers can triangulate behavior without mid-conversation model
+   * swaps. Routing logic still exists in router.ts in case a config
+   * file still carries an `auto-*` slug; it just isn't surfaced in
+   * the UI. */
+  tier: "main" | "explore" | "backend";
   /** Does this model accept image inputs (multimodal)? */
   vision?: boolean;
   /** Rough cost tier: 1 = cheap, 2 = mid, 3 = premium. */
@@ -31,8 +37,7 @@ export interface ModelEntry {
   // Defaults intentionally generous (true) so only known-bad combos need to
   // opt out. Router uses these as HARD gates: if a turn requires tool use
   // and toolUse=false, that model is ineligible regardless of any keyword
-  // heuristics. Auto-preset slugs (auto-*) are virtual; their caps are
-  // irrelevant — they resolve through PRESETS in router.ts.
+  // heuristics.
 
   /** Does this model support OpenAI-style tool/function calling? */
   toolUse?: boolean;
@@ -45,42 +50,11 @@ export interface ModelEntry {
 }
 
 export const MODEL_LIBRARY: ModelEntry[] = [
-  // -------- Auto presets (router picks per-turn) -------------------------
-  //
-  // Capability flags on auto-* entries are informational only; the router
-  // resolves them to a concrete slug before dispatch.
-  {
-    aliases: ["auto", "auto-agentic", "agentic", "genius"],
-    slug: "auto-agentic",
-    description:
-      "Auto-Agentic (DEFAULT) \u2014 kimi / qwen3.6-plus / glm-5. Tool-use specialists; best fit for PRISM's iterative tool loop. Web lookups go through the web_search tool.",
-    tier: "auto",
-    vision: true,
-    cost: 2,
-    toolUse: true,
-  },
-  {
-    aliases: ["auto-frontier", "frontier"],
-    slug: "auto-frontier",
-    description:
-      "Auto-Frontier \u2014 gpt-5.4 / grok-4-fast (2M ctx). Quality > cost; use when the bill doesn't matter. Web lookups go through the web_search tool.",
-    tier: "auto",
-    vision: true,
-    cost: 3,
-    toolUse: true,
-  },
-  {
-    aliases: ["auto-thrifty", "thrifty"],
-    slug: "auto-thrifty",
-    description:
-      "Auto-Thrifty \u2014 gpt-oss-120b / deepseek-v3.2 / step-3.5-flash / kimi. Cheap + fast, still thoughtful. Web lookups go through the web_search tool.",
-    tier: "auto",
-    vision: true,
-    cost: 1,
-    toolUse: true,
-  },
-
   // -------- Main rotation -----------------------------------------------
+  //
+  // Name-brand models only. Lesser-known providers (StepFun, Mistral's
+  // Devstral, etc.) live in the Explore tier below so the default
+  // picker stays trustworthy and recognizable.
   //
   // NOTE: Gemini 2.5 Flash has been pulled from the library while we
   // focus on more thoughtful models. Kept commented-out for easy revert.
@@ -160,17 +134,6 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     maxContext: 128000,
   },
   {
-    aliases: ["step", "step-flash", "step-3.5-flash"],
-    slug: "stepfun/step-3.5-flash",
-    description:
-      "StepFun Step 3.5 Flash \u2014 reasoning MoE, cheap, #2 in programming",
-    tier: "main",
-    cost: 1,
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
-  {
     aliases: ["haiku", "claude-haiku"],
     slug: "anthropic/claude-haiku-4.5",
     description: "Claude Haiku 4.5 \u2014 careful reasoning, great tool-use",
@@ -180,17 +143,6 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     toolUse: true,
     jsonMode: true,
     maxContext: 200000,
-  },
-  {
-    aliases: ["devstral"],
-    slug: "mistralai/devstral-small",
-    description:
-      "Devstral Small \u2014 Mistral's agentic code model, cheap + proactive",
-    tier: "main",
-    cost: 1,
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
   },
   {
     // Sonar is the backend for the `web_search` tool (see
@@ -224,7 +176,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     aliases: ["gpt-oss", "oss"],
     slug: "openai/gpt-oss-120b:exacto",
     description:
-      "GPT OSS 120B Exacto \u2014 cheap fast reasoning (~77 tok/s, $0.04/$0.19)",
+      "GPT OSS 120B Exacto \u2014 cheap fast reasoning, OpenAI open-weights",
     tier: "main",
     cost: 1,
     toolUse: true,
@@ -232,7 +184,29 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     maxContext: 128000,
   },
 
-  // Exploration
+  // -------- Explore (less-common alternates) ----------------------------
+  {
+    aliases: ["step", "step-flash", "step-3.5-flash"],
+    slug: "stepfun/step-3.5-flash",
+    description:
+      "StepFun Step 3.5 Flash \u2014 reasoning MoE, cheap, #2 in programming",
+    tier: "explore",
+    cost: 1,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
+  },
+  {
+    aliases: ["devstral"],
+    slug: "mistralai/devstral-small",
+    description:
+      "Devstral Small \u2014 Mistral's agentic code model, cheap + proactive",
+    tier: "explore",
+    cost: 1,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 128000,
+  },
   {
     aliases: ["codestral", "mistral"],
     slug: "mistralai/codestral-2508",
@@ -333,9 +307,11 @@ export function modelSupportsToolUse(slug: string): boolean {
 }
 
 /** Resolve an alias or full slug to a concrete model slug (case-insensitive).
- *  Auto presets resolve through the MODEL_LIBRARY entries below (their slugs
- *  are virtual — `auto-agentic`, `auto-frontier`, `auto-thrifty` — and are
- *  detected downstream by `parseAutoSlug` in router.ts). */
+ *
+ *  Auto presets are no longer surfaced in the picker, but the virtual
+ *  slugs `auto-agentic` / `auto-frontier` / `auto-thrifty` are still
+ *  honored downstream via `parseAutoSlug` in router.ts so any saved
+ *  config carrying one of those values keeps working. */
 export function resolveModel(input: string): string | null {
   const q = input.trim().toLowerCase();
   if (q.length === 0) return null;
@@ -356,8 +332,8 @@ export function resolveModel(input: string): string | null {
 export function renderModelListAnsi(current: string): string {
   // `tier === "backend"` entries are intentionally excluded — they back
   // internal tools (e.g. web_search → Sonar) and aren't user-selectable.
+  // Auto presets are also no longer listed; pick a concrete model.
   const sections: { title: string; entries: ModelEntry[] }[] = [
-    { title: "Auto presets", entries: MODEL_LIBRARY.filter((m) => m.tier === "auto") },
     { title: "Main", entries: MODEL_LIBRARY.filter((m) => m.tier === "main") },
     { title: "Explore", entries: MODEL_LIBRARY.filter((m) => m.tier === "explore") },
   ];

@@ -120,6 +120,14 @@ const CODE_GEN_SIGNALS =
 const CODE_REVIEW_SIGNALS =
   /\b(explain|review|critique|why does|how does|what does|trace|walk (me )?through|analyze|debug|fix (this|the) bug|find (the )?bug|diagnose|compare|architecture|design|audit|refactor|rewrite|implement|change\s+\S+\s+to|update (the )?(text|string|copy|wording|value|label|title|code|file)|replace\s+\S+\s+with|modify|edit (the )?(file|line|function|component|code|text|string|copy|wording)|rename|swap|fix|apply (the )?(edit|change|fix|patch|diff)|save (the )?(file|changes|edit)|write (the )?(file|change|edit|update)\b|commit (the )?(change|edit|fix))\b/i;
 
+// Bare git verbs. "commit and push", "push it", "rebase onto main" etc.
+// are unambiguous version-control intents that need a tool-capable
+// reasoning model (the agent will run `git` via run_shell). Keeping
+// these out of CODE_REVIEW_SIGNALS so the rule stays readable, and
+// because git verbs route the same way regardless of CODE_CONTEXT.
+const GIT_SIGNALS =
+  /\b(git|commit|push|pull|merge|rebase|stash|checkout|branch|amend|cherry-pick|revert|squash|fetch|clone)\b/i;
+
 // Broad set of terms that imply the user is talking about code / a UI /
 // a project, even without an explicit verb. Includes common web/UI nouns
 // ("landing page", "button", "header") because those are almost always
@@ -182,6 +190,17 @@ function softPick(
     return {
       slug: table.codeReview,
       reason: "code reasoning",
+      category: "code-review",
+    };
+  }
+  // Bare git verbs ("commit and push", "rebase onto main") route to the
+  // same code-review slot. Without this, short follow-up turns like
+  // "commit and push" fall through to the default slot, which silently
+  // swaps models mid-conversation and confuses the user.
+  if (GIT_SIGNALS.test(text)) {
+    return {
+      slug: table.codeReview,
+      reason: "git task",
       category: "code-review",
     };
   }
