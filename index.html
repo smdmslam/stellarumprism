@@ -57,5 +57,26 @@
       </div>
       <div id="workspaces"></div>
     </div>
+
+    <!-- Settings Overlay -->
+    <div id="settings-overlay" class="settings-overlay" aria-hidden="true">
+      <div id="settings-card" class="settings-card">
+        <aside class="settings-sidebar">
+          <div class="settings-sidebar-header">
+            <span class="settings-title">Settings</span>
+            <button id="settings-close" class="settings-close-btn" title="Close settings (Esc)">&times;</button>
+          </div>
+          <nav class="settings-nav">
+            <button class="settings-nav-item active" data-tab="general">General</button>
+            <button class="settings-nav-item" data-tab="models">AI Models</button>
+            <button class="settings-nav-item" data-tab="substrate">Substrate</button>
+            <button class="settings-nav-item" data-tab="about">About</button>
+          </nav>
+        </aside>
+        <main id="settings-content" class="settings-main">
+          <!-- Content injected here by settings-ui.ts -->
+        </main>
+      </div>
+    </div>
   </body>
 </html>

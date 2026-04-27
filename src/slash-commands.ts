@@ -4,6 +4,7 @@
 
 import { MODEL_LIBRARY } from "./models";
 import { MODES } from "./modes";
+import { settings } from "./settings";
 
 export interface SlashCommand {
   /** The full command typed, including the leading slash. */
@@ -134,7 +135,10 @@ export function modelCompletions(): {
   detail: string;
   info: string;
 }[] {
-  return MODEL_LIBRARY.map((m) => ({
+  // Only show models that are enabled in Settings and are not internal backends.
+  return MODEL_LIBRARY.filter(
+    (m) => m.tier !== "backend" && settings.isModelEnabled(m.slug),
+  ).map((m) => ({
     label: m.aliases[0],
     // Append "[img]" to the slug shown on row 1 when the model supports images.
     detail: m.vision ? `${m.slug} [img]` : m.slug,

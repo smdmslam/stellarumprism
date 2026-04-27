@@ -8,6 +8,8 @@
 //
 // You can freely add/remove entries here. Ordering is preserved in the UI.
 
+import { settings } from "./settings";
+
 export interface ModelEntry {
   /** Short alias(es). The first is the "canonical" short name. */
   aliases: string[];
@@ -334,8 +336,18 @@ export function renderModelListAnsi(current: string): string {
   // internal tools (e.g. web_search → Sonar) and aren't user-selectable.
   // Auto presets are also no longer listed; pick a concrete model.
   const sections: { title: string; entries: ModelEntry[] }[] = [
-    { title: "Main", entries: MODEL_LIBRARY.filter((m) => m.tier === "main") },
-    { title: "Explore", entries: MODEL_LIBRARY.filter((m) => m.tier === "explore") },
+    {
+      title: "Main",
+      entries: MODEL_LIBRARY.filter(
+        (m) => m.tier === "main" && settings.isModelEnabled(m.slug),
+      ),
+    },
+    {
+      title: "Explore",
+      entries: MODEL_LIBRARY.filter(
+        (m) => m.tier === "explore" && settings.isModelEnabled(m.slug),
+      ),
+    },
   ];
   const RESET = "\x1b[0m";
   const DIM = "\x1b[2m";

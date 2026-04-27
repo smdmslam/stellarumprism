@@ -1,4 +1,5 @@
 import { TabManager } from "./tabs";
+import { SettingsUI } from "./settings-ui";
 
 export interface ToolbarOptions {
   tabManager: TabManager;
@@ -6,9 +7,11 @@ export interface ToolbarOptions {
 
 export class ToolbarManager {
   private readonly tabs: TabManager;
+  private readonly settingsUI: SettingsUI;
 
   constructor(opts: ToolbarOptions) {
     this.tabs = opts.tabManager;
+    this.settingsUI = new SettingsUI();
     this.wireButtons();
   }
 
@@ -56,7 +59,7 @@ export class ToolbarManager {
     });
 
     settingsBtn?.addEventListener("click", () => {
-      alert("Settings modal coming soon in the next prism iteration.");
+      this.settingsUI.open();
     });
   }
 
