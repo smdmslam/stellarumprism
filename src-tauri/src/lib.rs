@@ -31,8 +31,8 @@ use agent::{
 };
 use approval::{agent_clear_session_approval, agent_tool_decision, ApprovalState};
 use file_ref::{
-    list_dir_entries, list_directory_tree, read_file_scoped, read_file_snippet, read_file_text,
-    write_file_text,
+    create_dir, list_dir_entries, list_directory_tree, move_file, read_file_scoped,
+    read_file_snippet, read_file_text, write_file_text,
 };
 use load_chat::load_chat_markdown;
 use save_chat::save_chat_markdown;
@@ -91,6 +91,8 @@ pub fn run() {
             write_file_text,
             list_dir_entries,
             list_directory_tree,
+            create_dir,
+            move_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

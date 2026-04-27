@@ -7,6 +7,24 @@ import { MODEL_LIBRARY } from "./models";
 import { invoke } from "@tauri-apps/api/core";
 import { Workspace } from "./workspace";
 
+/**
+ * Escape user / filesystem-derived strings before interpolating into
+ * innerHTML. Most content here is registry-static (model descriptions)
+ * or filesystem paths the user themselves owns, so this isn't an XSS
+ * surface today \u2014 but a quoted character in a chat filename would
+ * silently break the load button's data-path attribute, and a future
+ * \"custom model from config\" feature would land here as a real
+ * vector. Cheap insurance.
+ */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 type SkillFileEntry = {
   name: string;
   path: string;
@@ -171,20 +189,23 @@ export class SettingsUI {
     `;
 
     html += models.map(m => {
-      const isEnabled = settings.isModelEnabled(m.slug);
+      // Pair the registry default with the user override so a model
+      // shipped `enabled: false` reads as off on first run, even when
+      // the user has never opened settings before.
+      const isEnabled = settings.isModelEnabled(m.slug, m.enabled !== false);
       const tierLabel = m.tier === "main" ? "Main" : "Explore";
-      
+
       return `
         <div class="model-setting-card">
           <div class="model-setting-info">
             <div class="model-setting-name">
-              ${m.aliases[0]} 
+              ${escapeHtml(m.aliases[0])} 
               <span class="model-setting-tier ${m.tier}">${tierLabel}</span>
             </div>
-            <div class="model-setting-desc">${m.description}</div>
+            <div class="model-setting-desc">${escapeHtml(m.description)}</div>
           </div>
           <label class="prism-toggle">
-            <input type="checkbox" data-slug="${m.slug}" ${isEnabled ? "checked" : ""}>
+            <input type="checkbox" data-slug="${escapeHtml(m.slug)}" ${isEnabled ? "checked" : ""}>
             <span class="toggle-slider"></span>
           </label>
         </div>
@@ -227,9 +248,15 @@ export class SettingsUI {
     this.content.innerHTML = `
       <div class="settings-header-row">
         <h2 class="settings-section-title">Prism Skill Library</h2>
-        <button id="skills-refresh" class="settings-refresh-btn" title="Refresh library">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
-        </button>
+        <div class="settings-header-actions">
+          <button id="skills-new-group" class="settings-action-btn" title="Save the current search as a named group (type a search first)" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            Group
+          </button>
+          <button id="skills-refresh" class="settings-refresh-btn" title="Refresh library">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+          </button>
+        </div>
       </div>
       <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 20px;">
         Skills are persistent behavioral guides loaded from <code>.prism/skills/</code>. Enabled skills are injected into the agent's context.
@@ -247,65 +274,165 @@ export class SettingsUI {
     const skillsListEl = document.getElementById("skills-list")!;
     const searchInput = document.getElementById("skills-search") as HTMLInputElement;
     const refreshBtn = document.getElementById("skills-refresh")!;
+    const newGroupBtn = document.getElementById("skills-new-group")!;
 
     refreshBtn.addEventListener("click", () => this.renderSkills());
+    // `+ Group` is repurposed: instead of creating a filesystem
+    // subdirectory (the legacy behavior), it saves the current search
+    // bar text as a named virtual group. The group's contents are
+    // \"whatever currently matches the term\" \u2014 see
+    // `SavedSearchGroup` in settings.ts. The button is disabled
+    // whenever the search bar is empty so the affordance is honest
+    // (no search = nothing to save).
+    newGroupBtn.addEventListener("click", () => {
+      const term = (searchInput.value ?? "").trim();
+      if (term.length === 0) return; // belt-and-suspenders; button is disabled in this state
+      // Default the group's name to the search term itself \u2014 most users
+      // will want \"vc\" \u2192 group named \"vc\" rather than typing both.
+      // The prompt is editable so they can pick a friendlier name
+      // when the search syntax is more complex (e.g. a quoted phrase).
+      const name = prompt(
+        `Save \"${term}\" as a group? Pick a name:`,
+        term,
+      );
+      if (!name) return;
+      const created = settings.addSavedGroup(name, term);
+      if (!created) {
+        alert("Could not save group (empty name or term).");
+        return;
+      }
+      this.renderSkills();
+    });
 
     try {
       const skillsPath = `${cwd}/.prism/skills`;
       const result = await invoke<any>("list_dir_entries", { cwd: skillsPath, partial: "" });
-      const skillFiles = (result.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
+      const entries = result.entries as any[];
+      const skillFiles = entries.filter(e => e.kind === "file" && e.name.endsWith(".md"));
 
       if (skillFiles.length === 0) {
         skillsListEl.innerHTML = `<div class="empty-state">No skills found in .prism/skills/</div>`;
         return;
       }
 
-      // Grouping logic
+      // Grouping logic: Root files in "Other", subdirectories as Families
       const families: Record<string, SkillFileEntry[]> = {};
-      for (const file of skillFiles) {
-        const parts = file.name.split("-");
-        let familyName = "Other";
-        if (parts.length > 1) {
-          familyName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      const familyNames = ["Other"];
+
+      const rootFiles = entries.filter(e => e.kind === "file" && e.name.endsWith(".md"));
+      if (rootFiles.length > 0) {
+        families["Other"] = rootFiles.map(f => ({ name: f.name, path: `${skillsPath}/${f.name}` }));
+      }
+
+      for (const entry of entries) {
+        if (entry.kind === "dir") {
+          familyNames.push(entry.name);
+          const subResult = await invoke<any>("list_dir_entries", { cwd: `${skillsPath}/${entry.name}`, partial: "" });
+          const subFiles = (subResult.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
+          if (subFiles.length > 0) {
+            families[entry.name] = subFiles.map(f => ({ name: f.name, path: `${skillsPath}/${entry.name}/${f.name}` }));
+          }
         }
-        if (!families[familyName]) families[familyName] = [];
-        // Construct full path for persistence
-        const fullPath = `${skillsPath}/${file.name}`;
-        families[familyName].push({ name: file.name, path: fullPath });
       }
 
       const renderList = (filter = "") => {
         const filteredFamilies = filterSkillFamilies(families, filter);
         let html = "";
 
-        for (const { familyName, files } of filteredFamilies) {
-          const allPaths = files.map(f => f.path);
-          const allEnabled = files.every(f => settings.isSkillEnabled(f.path));
-          
+        // ---- Saved-search groups (virtual; user-defined) ------------------
+        // Render BEFORE filesystem families so the user's curated views
+        // sit at the top. Saved groups intentionally ignore the search
+        // bar text \u2014 they're pre-curated views, not exploratory
+        // searches. Their contents are computed by re-running the
+        // group's stored searchTerm against the same `families` map
+        // the search bar uses, so whatever \"vc\" matches today, the
+        // saved \"vc\" group surfaces today.
+        const savedGroups = settings.getSavedGroups();
+        for (const group of savedGroups) {
+          const matches = filterSkillFamilies(families, group.searchTerm).flatMap(
+            (g) => g.files,
+          );
           html += `
-            <div class="skill-family">
+            <div class="skill-family skill-family--saved" data-saved-group-id="${group.id}">
               <div class="skill-family-header">
-                <span class="skill-family-name">${familyName}</span>
+                <span class="skill-family-name">
+                  ${escapeHtml(group.name)}
+                  <span class="skill-family-meta" style="font-size:10px;color:#6b7280;font-weight:400;margin-left:6px;">search: \u201c${escapeHtml(group.searchTerm)}\u201d</span>
+                </span>
                 <div class="skill-family-actions">
-                  <span class="skill-count">${files.length} skills</span>
+                  <span class="skill-count">${matches.length} skill${matches.length === 1 ? "" : "s"}</span>
+                  <button class="saved-group-delete" data-group-id="${group.id}" title="Delete this saved group" style="background:transparent;border:none;color:#6b7280;cursor:pointer;font-size:14px;padding:0 4px;">\u00d7</button>
                   <label class="prism-toggle mini">
-                    <input type="checkbox" class="family-toggle" data-paths='${JSON.stringify(allPaths)}' ${allEnabled ? "checked" : ""}>
+                    <input type="checkbox" class="saved-group-toggle" data-group-id="${group.id}" ${group.enabled ? "checked" : ""}>
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
               </div>
               <div class="skill-family-content">
-                ${files.map(f => `
-                  <div class="skill-item">
-                    <div class="skill-item-info">
-                      <div class="skill-item-name">${f.name}</div>
+                ${
+                  matches.length === 0
+                    ? `<div class="empty-state" style="font-size:11px;color:#6b7280;padding:8px 12px;">No skills currently match \u201c${escapeHtml(group.searchTerm)}\u201d.</div>`
+                    : matches
+                        .map((f) => {
+                          const displayName = f.name.replace(".md", "");
+                          return `
+                            <div class="skill-item">
+                              <div class="skill-item-info">
+                                <div class="skill-item-name">${escapeHtml(displayName)}</div>
+                              </div>
+                              <div class="skill-item-controls">
+                                <label class="prism-toggle mini">
+                                  <input type="checkbox" class="skill-toggle" data-path="${escapeHtml(f.path)}" ${settings.isSkillEnabled(f.path) ? "checked" : ""}>
+                                  <span class="toggle-slider"></span>
+                                </label>
+                              </div>
+                            </div>
+                          `;
+                        })
+                        .join("")
+                }
+              </div>
+            </div>
+          `;
+        }
+
+        // ---- Filesystem families (existing behavior) ----------------------
+        for (const { familyName, files } of filteredFamilies) {
+          const allPaths = files.map(f => f.path);
+          const allEnabled = files.length > 0 && files.every(f => settings.isSkillEnabled(f.path));
+          
+          html += `
+            <div class="skill-family">
+              <div class="skill-family-header">
+                <span class="skill-family-name">${escapeHtml(familyName)}</span>
+                <div class="skill-family-actions">
+                  <span class="skill-count">${files.length} skills</span>
+                  <label class="prism-toggle mini">
+                    <input type="checkbox" class="family-toggle" data-paths='${escapeHtml(JSON.stringify(allPaths))}' ${allEnabled ? "checked" : ""}>
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="skill-family-content">
+                ${files.map(f => {
+                  const displayName = f.name.replace(".md", "");
+                  return `
+                    <div class="skill-item">
+                      <div class="skill-item-info">
+                        <div class="skill-item-name">${displayName}</div>
+                      </div>
+                      <div class="skill-item-controls">
+                        <select class="skill-move-select" data-path="${f.path}" data-current="${familyName}">
+                          ${familyNames.map(name => `<option value="${name}" ${name === familyName ? "selected" : ""}>Move to ${name}</option>`).join("")}
+                        </select>
+                        <label class="prism-toggle mini">
+                          <input type="checkbox" class="skill-toggle" data-path="${f.path}" ${settings.isSkillEnabled(f.path) ? "checked" : ""}>
+                          <span class="toggle-slider"></span>
+                        </label>
+                      </div>
                     </div>
-                    <label class="prism-toggle mini">
-                      <input type="checkbox" class="skill-toggle" data-path="${f.path}" ${settings.isSkillEnabled(f.path) ? "checked" : ""}>
-                      <span class="toggle-slider"></span>
-                    </label>
-                  </div>
-                `).join("")}
+                  `;
+                }).join("")}
               </div>
             </div>
           `;
@@ -324,16 +451,80 @@ export class SettingsUI {
           input.addEventListener("change", () => {
             const paths = JSON.parse(input.dataset.paths!);
             settings.setFamilyEnabled(paths, input.checked);
-            renderList(searchInput.value); // Refresh state
+            renderList(searchInput.value);
+          });
+        });
+
+        // Saved-group toggle: enable/disable the group's logical
+        // inclusion in agent context. Doesn't touch individual skill
+        // toggles \u2014 OR-composition (group on \u2228 skill on) is what the
+        // future agent-loader will check.
+        skillsListEl
+          .querySelectorAll<HTMLInputElement>(".saved-group-toggle")
+          .forEach((input) => {
+            input.addEventListener("change", () => {
+              const id = input.dataset.groupId!;
+              settings.setSavedGroupEnabled(id, input.checked);
+            });
+          });
+
+        // Saved-group delete: removes the virtual grouping. Individual
+        // skill toggles + filesystem families are untouched. We re-run
+        // the full skill render so the now-deleted card disappears.
+        skillsListEl
+          .querySelectorAll<HTMLButtonElement>(".saved-group-delete")
+          .forEach((btn) => {
+            btn.addEventListener("click", () => {
+              const id = btn.dataset.groupId!;
+              const group = settings
+                .getSavedGroups()
+                .find((g) => g.id === id);
+              const label = group?.name ?? "this group";
+              if (!confirm(`Delete saved group \u201c${label}\u201d?`)) return;
+              settings.removeSavedGroup(id);
+              this.renderSkills();
+            });
+          });
+
+        // Wire Move selects
+        skillsListEl.querySelectorAll<HTMLSelectElement>(".skill-move-select").forEach(select => {
+          select.addEventListener("change", async () => {
+            const from = select.dataset.path!;
+            const targetName = select.value;
+            const targetDir = targetName === "Other" ? ".prism/skills" : `.prism/skills/${targetName}`;
+            
+            try {
+              await invoke("move_file", { cwd, from, to: targetDir });
+              this.renderSkills(); // Refresh
+            } catch (err) {
+              alert(`Move failed: ${err}`);
+              select.value = select.dataset.current!;
+            }
           });
         });
       };
 
       renderList();
 
+      // Keep the `+ Group` button's disabled state in sync with the
+      // search bar: enabled iff there's a non-empty term to save.
+      // Updating it here means tab-switches (which re-run renderSkills)
+      // and direct edits both stay correct.
+      const updateNewGroupButtonState = (rawValue: string) => {
+        const hasTerm = rawValue.trim().length > 0;
+        (newGroupBtn as HTMLButtonElement).disabled = !hasTerm;
+        newGroupBtn.title = hasTerm
+          ? `Save \u201c${rawValue.trim()}\u201d as a named group`
+          : "Save the current search as a named group (type a search first)";
+      };
+      updateNewGroupButtonState(searchInput.value);
+
       let searchDebounce: number | null = null;
       searchInput.addEventListener("input", (e) => {
         const nextValue = (e.target as HTMLInputElement).value;
+        // Button state tracks the live input value (no debounce) so
+        // the affordance flips immediately on the first keystroke.
+        updateNewGroupButtonState(nextValue);
         if (searchDebounce !== null) {
           window.clearTimeout(searchDebounce);
         }
@@ -410,30 +601,39 @@ export class SettingsUI {
         return `
           <div class="history-item">
             <div class="history-info">
-              <div class="history-name">${c.name}</div>
-              <div class="history-meta">${fullPath}</div>
+              <div class="history-name">${escapeHtml(c.name)}</div>
+              <div class="history-meta">${escapeHtml(fullPath)}</div>
             </div>
-            <button class="history-load-btn" data-path="${fullPath}">Load</button>
+            <button class="history-load-btn" data-path="${escapeHtml(fullPath)}">Load</button>
           </div>
         `;
       }).join("");
 
-      // Wire load buttons
+      // Wire load buttons. Routes through Workspace.loadSavedChat()
+      // (the same code path /load uses) so the active tab refreshes its
+      // model badge, adopts the saved title, prints the [load]
+      // confirmation in xterm, and offers transcript replay. Without
+      // this, a Load click would seed the backend session but leave
+      // the user staring at an unchanged terminal \u2014 the \"did anything
+      // happen?\" gap the original code's TODO comment named.
       historyEl.querySelectorAll(".history-load-btn").forEach(btn => {
         btn.addEventListener("click", async () => {
           const path = (btn as HTMLElement).dataset.path!;
-          const chatId = this.activeWorkspace!.getId();
-          
+          const ws = this.activeWorkspace;
+          if (!ws) return;
+
           try {
             (btn as HTMLButtonElement).disabled = true;
             (btn as HTMLButtonElement).textContent = "Loading...";
-            
-            await invoke("load_chat_markdown", { chatId, path });
-            
             this.close();
-            // The workspace will need a way to refresh its terminal or show a "Chat Loaded" message.
-            // For now, we'll assume load_chat_markdown does its job on the backend.
+            // loadSavedChat handles invoke + agent.refreshSession +
+            // title adoption + xterm feedback + transcript-replay
+            // prompt. Same surface as /load.
+            await ws.loadSavedChat(path);
           } catch (err) {
+            // Fallback only \u2014 loadSavedChat catches its own errors and
+            // writes them to xterm, so this branch is essentially
+            // unreachable. Kept defensively.
             alert(`Failed to load chat: ${err}`);
             (btn as HTMLButtonElement).disabled = false;
             (btn as HTMLButtonElement).textContent = "Load";
@@ -444,14 +644,6 @@ export class SettingsUI {
     } catch (err) {
       historyEl.innerHTML = `<div class="error-state">No .prism directory found in this workspace.</div>`;
     }
-  }
-
-  private formatBytes(bytes: number): string {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
   }
 
   private renderSubstrate(): void {

@@ -136,8 +136,12 @@ export function modelCompletions(): {
   info: string;
 }[] {
   // Only show models that are enabled in Settings and are not internal backends.
+  // `m.enabled !== false` is the registry default; the settings store
+  // overrides it on a per-user basis.
   return MODEL_LIBRARY.filter(
-    (m) => m.tier !== "backend" && settings.isModelEnabled(m.slug),
+    (m) =>
+      m.tier !== "backend" &&
+      settings.isModelEnabled(m.slug, m.enabled !== false),
   ).map((m) => ({
     label: m.aliases[0],
     // Append "[img]" to the slug shown on row 1 when the model supports images.

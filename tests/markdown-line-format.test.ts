@@ -108,11 +108,13 @@ test("bullet: '**bold**' (double asterisk) is NOT a bullet", () => {
   assert.equal(out, "**bold**\n");
 });
 
-test("bullet: indented bullets are NOT recognized (line-start only, by design)", () => {
-  // v1 deliberately handles only unindented markers. Nested bullets
-  // stream verbatim. Listed in the futurework doc.
+test("bullet: indented bullets ARE recognized and keep their leading whitespace", () => {
+  // v1 was line-start-only; v2 supports nested bullets so the agent's
+  // multi-level lists render with proper indentation. The leading
+  // whitespace is preserved verbatim and only the marker is rewritten
+  // to the dim-cyan bullet glyph.
   const out = render("  - nested\n");
-  assert.equal(out, "  - nested\n");
+  assert.equal(out, `  ${BULLET_OPEN}\u2022${RESET} nested\n`);
 });
 
 // ---------------------------------------------------------------------------

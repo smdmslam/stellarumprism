@@ -2,6 +2,21 @@
 
 This folder contains reusable Prism skills: durable guidance files that help the agent perform recurring tasks with better structure, framing, and consistency.
 
+## UI search filtering skill family
+
+The `ui-search-filtering-` files preserve reusable patterns for building stronger client-side search and filtering experiences across Prism and other apps.
+
+### Files
+- `ui-search-filtering-patterns.md` — generalized method for expressive, performant, multi-field UI search and filtering
+
+### Example usage
+- Upgrade a weak settings search bar
+- Add richer filtering to a skills browser
+- Reuse advanced CRM-card filtering patterns in a new UI
+- Design a search experience that combines text, tags, categories, and toggles predictably
+
+If more UI-search companions are added later, keep the `ui-search-filtering-` prefix so they stay grouped naturally in folder listings.
+
 ## VC pitch deck skill family
 
 The `vc-pitchdeck-` files are a grouped companion set for creating, rewriting, reviewing, and presenting investor pitch decks.

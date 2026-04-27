@@ -135,6 +135,17 @@ export class MarkdownLineFormatter {
       }
     }
 
+    // Inside a fenced block, only the closing ``` at line start matters.
+    // Without this branch, the closing fence streams through verbatim
+    // and `inFencedCode` stays true forever \u2014 every later heading on
+    // the same turn would render as plain text. Buffering the backtick
+    // here lets `tryResolve()` confirm the triple and toggle the fence
+    // off cleanly. Everything else inside a fence still passes through.
+    if (this.atLineStart && this.inFencedCode && ch === "`") {
+      this.buffer = ch;
+      return "";
+    }
+
     this.atLineStart = false;
     return ch;
   }

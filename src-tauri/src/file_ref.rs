@@ -682,6 +682,32 @@ pub fn write_file_text(
     })
 }
 
+#[tauri::command]
+pub fn create_dir(cwd: String, path: String) -> Result<String, String> {
+    let resolved = resolve_path(&cwd, &path)?;
+    fs::create_dir_all(&resolved).map_err(|e| format!("cannot create dir {}: {}", resolved.display(), e))?;
+    Ok(resolved.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn move_file(cwd: String, from: String, to: String) -> Result<String, String> {
+    let resolved_from = resolve_path(&cwd, &from)?;
+    let resolved_to = resolve_path(&cwd, &to)?;
+
+    // If 'to' is a directory, move into it with same name
+    let target = if resolved_to.is_dir() {
+        let name = resolved_from.file_name().ok_or("invalid source filename")?;
+        resolved_to.join(name)
+    } else {
+        resolved_to
+    };
+
+    fs::rename(&resolved_from, &target)
+        .map_err(|e| format!("cannot move from {} to {}: {}", resolved_from.display(), target.display(), e))?;
+    
+    Ok(target.to_string_lossy().into_owned())
+}
+
 fn mtime_unix_secs(meta: &fs::Metadata) -> u64 {
     use std::time::UNIX_EPOCH;
     meta.modified()

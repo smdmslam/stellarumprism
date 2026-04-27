@@ -55,19 +55,27 @@ test("WRITE_TOOL_NAMES: covers the two known write tools", () => {
 // cleanToolSummary
 // ---------------------------------------------------------------------------
 
+// cleanToolSummary now returns a structured `CleanSummary { verb, pill?,
+// full }` so the renderer can style the verb (bright) and the pill
+// (dim) independently. Tests assert against the structured shape
+// directly \u2014 the `full` field is the convenience
+// `${verb} ${pill}` string the v1 contract returned.
+
 test("cleanToolSummary: strips path from read_file summary", () => {
-  // Rust emits 'read /Users/.../foo.ts (1.2 KB)'; we want just the
-  // verb + parenthetical content since the path is on the args line.
   const out = cleanToolSummary(
     "read_file",
     "read /Users/x/proj/src/foo.ts (1.2 KB)",
   );
-  assert.equal(out, "read 1.2 KB");
+  assert.equal(out.verb, "read");
+  assert.equal(out.pill, "1.2 KB");
+  assert.equal(out.full, "read 1.2 KB");
 });
 
 test("cleanToolSummary: strips path from write_file (created)", () => {
   const out = cleanToolSummary("write_file", "created /path/to/new.md (820 B)");
-  assert.equal(out, "created 820 B");
+  assert.equal(out.verb, "created");
+  assert.equal(out.pill, "820 B");
+  assert.equal(out.full, "created 820 B");
 });
 
 test("cleanToolSummary: strips path from edit_file (replacements)", () => {
@@ -75,36 +83,46 @@ test("cleanToolSummary: strips path from edit_file (replacements)", () => {
     "edit_file",
     "edited /path/file.ts (3 replacements)",
   );
-  assert.equal(out, "edited 3 replacements");
+  assert.equal(out.verb, "edited");
+  assert.equal(out.pill, "3 replacements");
+  assert.equal(out.full, "edited 3 replacements");
 });
 
 test("cleanToolSummary: strips path from list_directory", () => {
   const out = cleanToolSummary("list_directory", "listed /repo/src (14 entries)");
-  assert.equal(out, "listed 14 entries");
+  assert.equal(out.verb, "listed");
+  assert.equal(out.pill, "14 entries");
+  assert.equal(out.full, "listed 14 entries");
 });
 
 test("cleanToolSummary: passes through non-path tools verbatim", () => {
   // grep, http_fetch, run_shell, etc. don't carry a duplicated path
-  // and we must not chop their summaries.
-  const grep = cleanToolSummary("grep", 'matched 12 lines in 3 files');
-  assert.equal(grep, "matched 12 lines in 3 files");
+  // and we must not chop their summaries. For non-path tools `verb`
+  // is empty (no parsing happened); `full` is the original summary.
+  const grep = cleanToolSummary("grep", "matched 12 lines in 3 files");
+  assert.equal(grep.verb, "");
+  assert.equal(grep.pill, undefined);
+  assert.equal(grep.full, "matched 12 lines in 3 files");
 
   const fetch = cleanToolSummary(
     "http_fetch",
     "http_fetch GET http://localhost:3000/api/health \u2192 200 OK (123 ms)",
   );
   assert.equal(
-    fetch,
+    fetch.full,
     "http_fetch GET http://localhost:3000/api/health \u2192 200 OK (123 ms)",
   );
 });
 
 test("cleanToolSummary: passes through unparseable summary unchanged", () => {
   // Defensive: if a path-tool's summary doesn't match the
-  // 'verb path (info)' shape (e.g. an error message), return verbatim
-  // so we don't lose information.
+  // 'verb path (info)' shape (e.g. an error message), the helper
+  // returns the original summary on `full` with no verb/pill so the
+  // renderer can fall back to its plain-text path.
   const out = cleanToolSummary("read_file", "error: cannot read file");
-  assert.equal(out, "error: cannot read file");
+  assert.equal(out.verb, "");
+  assert.equal(out.pill, undefined);
+  assert.equal(out.full, "error: cannot read file");
 });
 
 // ---------------------------------------------------------------------------

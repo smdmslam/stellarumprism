@@ -33,6 +33,19 @@ export interface ModelEntry {
   vision?: boolean;
   /** Rough cost tier: 1 = cheap, 2 = mid, 3 = premium. */
   cost?: 1 | 2 | 3;
+  /**
+   * Default visibility for this model in user-facing pickers.
+   * `undefined` (the common case) and `true` are treated identically:
+   * the model ships visible. Set to `false` for models we've
+   * tested and decided ship subpar by default \u2014 the user can
+   * still re-enable via Settings \u2192 Models, and the registry default
+   * is the single source of truth for what gets surfaced on first run
+   * (no user-curation state required).
+   *
+   * `settings.isModelEnabled(slug, registryDefault)` consults this
+   * field plus any stored user override; the override always wins.
+   */
+  enabled?: boolean;
 
   // -- capability flags for the capability-gated router -------------------
   //
@@ -339,13 +352,17 @@ export function renderModelListAnsi(current: string): string {
     {
       title: "Main",
       entries: MODEL_LIBRARY.filter(
-        (m) => m.tier === "main" && settings.isModelEnabled(m.slug),
+        (m) =>
+          m.tier === "main" &&
+          settings.isModelEnabled(m.slug, m.enabled !== false),
       ),
     },
     {
       title: "Explore",
       entries: MODEL_LIBRARY.filter(
-        (m) => m.tier === "explore" && settings.isModelEnabled(m.slug),
+        (m) =>
+          m.tier === "explore" &&
+          settings.isModelEnabled(m.slug, m.enabled !== false),
       ),
     },
   ];

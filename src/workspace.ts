@@ -2754,7 +2754,18 @@ export class Workspace {
       return;
     }
     if (!target) return; // user cancelled
+    await this.loadSavedChat(target);
+  }
 
+  /**
+   * Load a chat from a known path WITHOUT opening the file dialog.
+   * Same post-load behavior as `loadChat()`: refreshes the agent
+   * session, adopts the saved title, prints the [load] confirmation,
+   * and offers transcript replay. Public so callers like the Settings
+   * UI history tab can reuse the workspace-refresh flow without
+   * duplicating it.
+   */
+  async loadSavedChat(target: string): Promise<void> {
     const priorCount = this.agent.getMessageCount();
     let result: {
       message_count: number;
