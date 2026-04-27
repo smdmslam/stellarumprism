@@ -268,7 +268,9 @@ export class Workspace {
       <div class="content">
         <div class="file-preview" data-visible="false" aria-hidden="true"></div>
         <div class="layout-divider layout-divider-preview" data-divider="preview" data-visible="false" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize file preview"></div>
-        <div class="terminal-host"></div>
+        <div class="terminal-host">
+          <div class="terminal-stage"></div>
+        </div>
         <div class="agent-actions"></div>
         <div class="attachments"></div>
         <div class="input-bar">
@@ -352,7 +354,10 @@ export class Workspace {
   // -- init -----------------------------------------------------------------
 
   private async init(): Promise<void> {
-    const host = this.root.querySelector<HTMLDivElement>(".terminal-host")!;
+    // xterm mounts into the inner `.terminal-stage`; the outer
+    // `.terminal-host` is just chrome (background, left padding) and
+    // never has anything queried off it during init.
+    const stage = this.root.querySelector<HTMLDivElement>(".terminal-stage")!;
 
     this.term = new Terminal({
       fontFamily:
@@ -367,7 +372,12 @@ export class Workspace {
     this.fit = new FitAddon();
     this.term.loadAddon(this.fit);
     this.term.loadAddon(new WebLinksAddon());
-    this.term.open(host);
+    // xterm mounts into the inner `.terminal-stage` (not `.terminal-host`)
+    // so its renderable width is the stage's width, which is narrower than
+    // the host by a real `margin-right`. This makes FitAddon's column math
+    // and xterm's cell rendering agree with a hard layout boundary, instead
+    // of fighting macOS WebKit overlay-scrollbar geometry.
+    this.term.open(stage);
     this.fit.fit();
 
     this.blocks = new BlockManager(this.term);
@@ -438,7 +448,11 @@ export class Workspace {
       // fitTerminal() rAFs internally, so we don't double-defer here.
       this.fitTerminal();
     });
-    this.resizeObserver.observe(host);
+    // Observe the stage (xterm's actual mount node), not the outer host:
+    // host width changes that don't change stage width (e.g. host padding
+    // tweaks) shouldn't trigger refits, and stage width is what FitAddon
+    // actually measures.
+    this.resizeObserver.observe(stage);
 
     // Agent + editor.
     this.agent = new AgentController({
@@ -466,20 +480,21 @@ export class Workspace {
   }
 
   /**
-   * Fit xterm to the current `.terminal-host` content box. The right
-   * gutter is enforced by CSS `padding-right` on the host (32px), so
-   * FitAddon's measurement reflects the real text-area width and
-   * xterm cells physically cannot reach the scrollbar. Defers to
-   * `requestAnimationFrame` so layout has settled (post-resize,
-   * post-tab-switch, post-divider-drag) before FitAddon reads widths.
+   * Fit xterm to the current `.terminal-stage` content box. The right
+   * gutter is enforced by the inner `.terminal-stage` width (a real
+   * `margin-right` on the mount node), so FitAddon's measurement
+   * reflects the actual renderable text area and xterm cells wrap
+   * before the scrollbar. Defers to `requestAnimationFrame` so layout
+   * has settled (post-resize, post-tab-switch, post-divider-drag)
+   * before FitAddon reads widths.
    *
-   * Replaces the older fitTerminalWithGutter() that fudged columns to
-   * fake a gutter \u2014 that approach disagreed with macOS overlay
+   * Replaces the older padding-on-host / column-shaving approaches
+   * that fudged a gutter \u2014 those disagreed with macOS overlay
    * scrollbars and produced text-under-scrollbar bugs.
    */
   private fitTerminal(): void {
     if (!this.fit || !this.term) return;
-    const host = this.root.querySelector<HTMLDivElement>(".terminal-host");
+    const host = this.root.querySelector<HTMLDivElement>(".terminal-stage");
     if (!host) return;
     if (host.clientWidth <= 0 || host.clientHeight <= 0) return;
     requestAnimationFrame(() => {

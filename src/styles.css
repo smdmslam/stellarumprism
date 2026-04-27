@@ -274,7 +274,16 @@ body {
   display: none;
   flex-direction: row;
   gap: 4px;
-  padding: 12px 14px 14px 14px;
+  /* Asymmetric padding (right < left) so the .content panel's right
+   * edge \u2014 and therefore xterm's scrollbar \u2014 sits close to the
+   * window's right edge. The full 14px on the left preserves the
+   * sidebar's breathing room from the window border, while the
+   * tighter 6px on the right keeps just enough space for the
+   * .content panel's 12px border-radius to render its rounded corner
+   * without clipping against the window edge. Reducing further
+   * (e.g. 2-4px) starts to look like the scrollbar is jammed into
+   * the chrome; 6px is the sweet spot. */
+  padding: 12px 6px 14px 14px;
   box-sizing: border-box;
   /* Anchor for `.confirm-dialog` (load-render prompt). Without this the
    * absolute-positioned overlay resolves to `#workspaces`, which works
@@ -426,30 +435,64 @@ body {
 .terminal-host {
   flex: 1 1 auto;
   min-height: 0;
-  /* Asymmetric margins: the LEFT margin is intentionally larger than
-   * the right so terminal output reads like a page (where the eye
-   * starts \u2014 the leading edge needs more breathing room).
-   *
-   * Padding-right (32px) is the SOURCE OF TRUTH for the scrollbar
-   * gutter. We previously shaved columns off the FitAddon proposal in
-   * workspace.ts to fake a gutter, but that approach is brittle on
-   * macOS WebKit overlay scrollbars (xterm renderer, scrollbar
-   * compositor, devicePixelRatio rounding, and FitAddon measurement
-   * disagree on geometry, so glyphs end up under the scrollbar). With
-   * a real DOM-level right padding the layout boundary is enforced by
-   * the box model itself; FitAddon then computes columns inside the
-   * narrower content box and xterm renders cells that physically
-   * cannot reach the scrollbar. Keep this value strictly less than
-   * the left padding so the asymmetry holds. */
-  padding: 10px 32px 10px 40px;
   background-color: #0d0f14;
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
   box-sizing: border-box;
+  /* Left breathing room stays on the outer host so terminal output
+   * reads like a page (the leading edge needs more room). The right-
+   * side wrap gutter is created by making the actual xterm mount node
+   * (`.terminal-stage`) narrower via `margin-right`, not by hoping
+   * host padding and overlay scrollbars line up. */
+  padding: 10px 0 10px 40px;
+}
+
+.terminal-stage {
+  /* The actual xterm mount node. Fills the host edge-to-edge so the
+   * scrollbar (which xterm renders at the right edge of `.xterm`)
+   * sits flush against the host's right edge \u2014 i.e. right next to
+   * the window border, where users expect a scrollbar to live.
+   *
+   * The breathing room between rendered text and the scrollbar is NOT
+   * created here \u2014 see `.terminal-host .xterm` below for the actual
+   * mechanism. Putting margin/padding on `.terminal-stage` would also
+   * push the scrollbar inward (because xterm mounts INTO this node),
+   * which read as a visually orphaned scrollbar floating in dead
+   * space. Don't add right margin here. */
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
 }
-.terminal-host .xterm { height: 100%; }
+
+.terminal-host .xterm {
+  height: 100%;
+  /* SOURCE OF TRUTH for the wrap-before-scrollbar gap.
+   *
+   * xterm's internal layout is:
+   *   .xterm                        (this element)
+   *     .xterm-viewport            position: absolute; inset: 0;
+   *                                 \u2014 carries the native scrollbar
+   *     .xterm-screen              position: relative; in normal flow
+   *                                 \u2014 carries the rendered cells
+   *
+   * Because `.xterm-viewport` is absolute with inset:0, it fills the
+   * PADDING BOX of `.xterm` and the scrollbar sits at the outer right
+   * edge regardless of padding-right. `.xterm-screen` is in normal
+   * flow, so it respects padding-right and stops at the content-box
+   * edge. FitAddon also reads padding-right off this element when
+   * computing column count, so the wrap point lines up with the
+   * screen edge.
+   *
+   * Net effect: scrollbar pinned to the host's right edge, text ends
+   * 24px before the scrollbar, no dead space, no overlap. Bump to
+   * 28-32px if the cursor block clips at extreme zoom. */
+  padding-right: 24px;
+  box-sizing: border-box;
+}
 .terminal-host .xterm-viewport {
   background-color: transparent !important;
-  scrollbar-gutter: stable;
 }
 
 /* macOS WebKit defaults to overlay scrollbars that hover on top of content.
