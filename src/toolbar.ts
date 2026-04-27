@@ -59,7 +59,7 @@ export class ToolbarManager {
     });
 
     settingsBtn?.addEventListener("click", () => {
-      this.settingsUI.open();
+      this.settingsUI.open(this.tabs.getActiveWorkspace());
     });
   }
 

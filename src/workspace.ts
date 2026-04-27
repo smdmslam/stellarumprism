@@ -127,6 +127,9 @@ export class Workspace {
 
   private title = "New Tab";
   private cwd = ""; // populated by OSC 7 from the shell integration
+
+  public getId(): string { return this.id; }
+  public getCwd(): string { return this.cwd; }
   /** Pending image attachments for the next agent query. */
   private pendingImages: PendingImage[] = [];
   /**
