@@ -6,6 +6,7 @@ import type { BlockManager } from "./blocks";
 import { route as routeModel, parseAutoSlug, PRESETS } from "./router";
 import { modelSupportsToolUse } from "./models";
 import { InlineCodeFormatter } from "./inline-code-format";
+import { MarkdownLineFormatter } from "./markdown-line-format";
 import { detectRigorViolation } from "./grounded-rigor";
 import {
   WRITE_TOOL_NAMES,
@@ -277,6 +278,16 @@ export class AgentController {
    * an unbalanced inline span can't leak color into the next prompt.
    */
   private readonly inlineCodeFormatter = new InlineCodeFormatter();
+  /**
+   * Streaming markdown line-marker formatter. Recognizes `^#{1,3} `
+   * headings and `^- ` / `^\* ` bullets at line starts, replacing the
+   * markers with ANSI styling so structured prose reads with shape
+   * instead of as a wall of dim text. Runs BEFORE `inlineCodeFormatter`
+   * in the onToken pipeline so the inline-code pass still sees raw
+   * backticks; both formatters track fenced-block state independently
+   * but reach the same decision off the same input.
+   */
+  private readonly markdownLineFormatter = new MarkdownLineFormatter();
 
   constructor(opts: AgentControllerOptions) {
     this.opts = opts;
@@ -480,6 +491,7 @@ export class AgentController {
     this.currentRuntimeProbes = [];
     this.currentSubstrateRuns = [];
     this.inlineCodeFormatter.reset();
+    this.markdownLineFormatter.reset();
     this.clearActionBar();
     // Reset the grounded-rigor counters so the previous turn's tool
     // calls or grounded flag don't leak into the new one.
@@ -666,12 +678,22 @@ export class AgentController {
         `\r\n\r\n\x1b[2m\u2500\u2500\u2500 answer \u2500\u2500\u2500\x1b[0m\r\n\r\n`,
       );
     }
-    // Inline-code colorization: wrap every backtick-delimited span in
-    // ANSI cyan as it streams in. The formatter is stateful across
-    // chunks so a backtick split between two tokens still detects
-    // single vs triple correctly. Trailing backticks are buffered
-    // until the next chunk's first non-backtick char.
-    const colored = this.inlineCodeFormatter.process(piece);
+    // Two-pass formatting on each streaming chunk:
+    //
+    //   1. MarkdownLineFormatter detects ^#{1,3} space / ^- space /
+    //      ^\* space at line starts and rewrites them into ANSI-styled
+    //      heading / bullet markers. Headings keep a bold-cyan scope
+    //      open until the next \n closes it.
+    //
+    //   2. InlineCodeFormatter wraps every remaining `backtick`-delimited
+    //      span in cyan so identifiers and paths pop against prose.
+    //
+    // Order matters: markdown runs first so the inline-code pass still
+    // sees the raw text (it cares about backticks, which markdown
+    // doesn't strip). Both formatters are stateful across chunks so
+    // markers split between two tokens still detect correctly.
+    const structured = this.markdownLineFormatter.process(piece);
+    const colored = this.inlineCodeFormatter.process(structured);
     // xterm expects CRLF for newlines. Bare \n moves the cursor down without
     // returning to column 0, so lines stair-step. Normalize on write.
     const normalized = colored.replace(/\r?\n/g, "\r\n");
@@ -846,12 +868,15 @@ export class AgentController {
   }
 
   private onDone(): void {
-    // Flush any inline-code backticks held back at end-of-stream and
-    // close any unbalanced cyan span so it can't bleed into the next
-    // prompt's `you \u203a` line.
+    // Flush both formatters in pipeline order: markdown first (which
+    // may emit a held heading-close ANSI on the way out), then
+    // inline-code (which closes any unbalanced backtick span). Without
+    // the markdown flush, an open heading scope could leak bold-cyan
+    // ANSI into the next prompt's `you \u203a` line.
+    const mdTail = this.markdownLineFormatter.flush();
     const tail = this.inlineCodeFormatter.flush();
-    if (tail.length > 0) {
-      this.opts.term.write(tail.replace(/\r?\n/g, "\r\n"));
+    if (mdTail.length > 0 || tail.length > 0) {
+      this.opts.term.write((mdTail + tail).replace(/\r?\n/g, "\r\n"));
     }
     this.opts.term.write("\r\n");
     this.inflightId = null;
@@ -978,12 +1003,14 @@ export class AgentController {
   }
 
   private onError(msg: string): void {
-    // Flush colorizer first so any open inline-code ANSI is reset
-    // before the [agent error] line is written; otherwise the error
-    // text could pick up the cyan from a half-closed span.
+    // Flush both formatters first so any open ANSI scopes (heading
+    // bold-cyan, inline-code cyan) are reset before the
+    // [agent error] line is written; otherwise the error text could
+    // inherit color/weight from a half-closed span.
+    const mdTail = this.markdownLineFormatter.flush();
     const tail = this.inlineCodeFormatter.flush();
-    if (tail.length > 0) {
-      this.opts.term.write(tail.replace(/\r?\n/g, "\r\n"));
+    if (mdTail.length > 0 || tail.length > 0) {
+      this.opts.term.write((mdTail + tail).replace(/\r?\n/g, "\r\n"));
     }
     this.writeLineToTerm(`${PREFIX_OPEN}[agent error]${RESET} ${msg}`);
     this.inflightId = null;
