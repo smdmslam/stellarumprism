@@ -98,3 +98,23 @@ The trigger
 •  Then start Phase 2 — and ship code-block cards with it.
 
 Concretely: probably 2–4 weeks from now, not tonight, not next month.
+
+Then start now, smaller scope. You are your own beta cohort, and dogfooding is the strongest market signal anyway.
+
+Minimum dogfood-able editor: ~1 week, not 3-6
+
+•  Open file → edit → save (already have approval flow + read_file_text + write_file_text plumbing).
+•  Single CodeMirror pane, no tabs.
+•  Reuse the CodeMirror instance you already configured for the input bar; just unlock multi-line mode + add file-open binding.
+•  Cmd+S = save via approval. Cmd+W = close pane.
+•  No find-replace, no undo polish, no LSP squiggles, no diff view. Those stack later.
+
+That's a real editing surface you can use this week. The "polished v1 for the public" is what the 3-6 weeks goes toward — multi-file tabs, dirty-buffer tracking, find-replace, LSP, code-block cards, save-via-approval-with-batching, etc. But none of that is required for you to start using Prism as your editor today.
+
+Reframed order
+1. Ship the 1-week MVP editor pane this coming week.
+2. Use it to build Prism + Atlas + your CRM for ~2 weeks. Notice what hurts.
+3. Fix the top 3 paper cuts you actually hit.
+4. Then the polish/launch sprint with confidence that the things you're polishing are real, not speculated.
+
+Founder dogfooding > beta cohort feedback for v0. The "wait for beta cohort" advice was wrong for this project — you're not optimizing for the median user, you're optimizing for you, and "you" happens to be a representative dev-tool power user. Trust that.
