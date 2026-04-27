@@ -13,11 +13,14 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const tabs = new TabManager({
     tabStripEl: tabStrip,
-    workspacesParent,
+    workspacesParent: workspacesParent,
+    onSelectTab: () => {
+      toolbar.updateLayoutButtons();
+    },
   });
 
   // Global toolbar controller.
-  new ToolbarManager({ tabManager: tabs });
+  const toolbar = new ToolbarManager({ tabManager: tabs });
 
   // Open a first tab so there's always something to look at.
   tabs.newTab();

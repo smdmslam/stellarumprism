@@ -8,6 +8,7 @@ import { Workspace } from "./workspace";
 export interface TabManagerOptions {
   tabStripEl: HTMLElement;
   workspacesParent: HTMLElement;
+  onSelectTab?: (id: string) => void;
 }
 
 export class TabManager {
@@ -59,6 +60,16 @@ export class TabManager {
       } else if (e.key === "[" && e.shiftKey) {
         e.preventDefault();
         this.cycle(-1);
+      } else if (e.key === "b" || e.key === "B") {
+        e.preventDefault();
+        const ws = this.getActiveWorkspace();
+        if (ws) {
+          ws.toggleSidebar();
+          // We don't have a direct reference to ToolbarManager here, 
+          // but we can trigger the onSelectTab callback which main.ts 
+          // uses to sync the UI.
+          this.opts.onSelectTab?.(this.activeId!);
+        }
       }
     });
   }
@@ -89,6 +100,7 @@ export class TabManager {
     }
     this.activeId = id;
     this.render();
+    this.opts.onSelectTab?.(id);
   }
 
   selectByIndex(idx: number): void {

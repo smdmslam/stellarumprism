@@ -239,6 +239,8 @@ export class Workspace {
    * regardless of this flag (handled by the backend allowlist).
    */
   private showHiddenFiles = false;
+  private sidebarVisible = true;
+  private consoleVisible = true;
   private readonly cb: WorkspaceCallbacks;
 
   private term!: Terminal;
@@ -351,6 +353,34 @@ export class Workspace {
       this.input.setValue(initialValue);
     }
     this.input.focus();
+  }
+
+  public getLayoutState(): { sidebar: boolean; console: boolean; problems: boolean } {
+    return {
+      sidebar: this.sidebarVisible,
+      console: this.consoleVisible,
+      problems: this.problemsVisible,
+    };
+  }
+
+  public toggleSidebar(): void {
+    this.sidebarVisible = !this.sidebarVisible;
+    this.root.classList.toggle("sidebar-hidden", !this.sidebarVisible);
+    this.fitTerminal();
+  }
+
+  public toggleConsole(): void {
+    this.consoleVisible = !this.consoleVisible;
+    this.root.classList.toggle("console-hidden", !this.consoleVisible);
+    this.fitTerminal();
+  }
+
+  public toggleProblems(): void {
+    if (this.problemsVisible) {
+      this.hideProblemsPanel();
+    } else {
+      this.showProblemsPanel();
+    }
   }
 
   async dispose(): Promise<void> {
