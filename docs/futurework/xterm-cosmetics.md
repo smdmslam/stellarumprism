@@ -31,6 +31,8 @@
   - **Status:** pending
   - **Evidence:** no matching implementation found in current UI code
 
+- () ** Prism made changes to the file xterm-cosmetics.md. but when i asked it to git and push the check status function did not find any changes...
+  -  actually maybe they they need to be staged then committed? investigate. 
 ### Resizable layout
 
 - [x] **Sidebar width drag-handle**
@@ -74,3 +76,4 @@
 - [ ] **Rounded fenced code-block cards / HTML overlay**
   - **Status:** pending / deferred
   - **Evidence:** no `code-card` overlay implementation found; `src/inline-code-format.ts` comments explicitly defer fenced-block rendering
+
