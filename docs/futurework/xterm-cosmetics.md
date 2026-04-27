@@ -102,14 +102,13 @@ Goal: convert xterm output from "mostly noise" to "scannable diary" so Prism can
 
 ### Tier B — polish that compounds
 
-- [ ] **Markdown heading + bullet rendering**
+- [x] **Markdown heading + bullet rendering**
   - Stream-aware regex on line starts:
     - `^#{1,3} ` → bold + brand-cyan, dim hash glyph
     - `^- ` / `^\* ` → swap dash for `•` in dim cyan
     - `^\d+\. ` → keep digit, dim the period
-  - Reuses the streaming state-machine pattern from `src/inline-code-format.ts`
-  - **Estimate:** ~2–3 hours including tests
-  - **Why:** assistant prose stops reading like a wall of dim text
+  - **Status:** done
+  - **Evidence:** `src/markdown-line-format.ts` implemented as a streaming state machine; enhanced to support indentation and numbered lists. Integrated into `onToken` in `src/agent.ts`.
 
 - [x] **Suppress shell prompt leakage during agent turns**
   - When `agent.busy === true`, buffer or dim PTY output matching the prompt pattern (OSC 7 + the `%` / `$` line)

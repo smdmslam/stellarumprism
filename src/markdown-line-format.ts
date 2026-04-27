@@ -125,21 +125,14 @@ export class MarkdownLineFormatter {
       return this.tryResolve();
     }
 
-    // No buffer, at line start, NOT inside a code fence: the only
-    // chars that could begin a marker are #, -, *, and `. Anything
-    // else streams immediately and clears the line-start flag.
+    // No buffer, at line start, NOT inside a code fence: digits, hashes,
+    // bullets and fences could all be markers. Any whitespace is
+    // swallowed into the buffer to support nesting.
     if (this.atLineStart && !this.inFencedCode) {
-      if (ch === "#" || ch === "-" || ch === "*" || ch === "`") {
+      if (ch === " " || ch === "\t" || ch === "#" || ch === "-" || ch === "*" || ch === "`" || /[0-9]/.test(ch)) {
         this.buffer = ch;
         return "";
       }
-    }
-
-    // Inside a fenced block, the only marker we care about is the
-    // closing ``` at line start. Everything else passes through.
-    if (this.atLineStart && this.inFencedCode && ch === "`") {
-      this.buffer = ch;
-      return "";
     }
 
     this.atLineStart = false;
@@ -153,74 +146,83 @@ export class MarkdownLineFormatter {
    */
   private tryResolve(): string {
     const buf = this.buffer;
-    const first = buf[0];
 
-    // ---- Fenced block delimiter (``` at line start) -------------------
+    // Split leading whitespace from the actual marker prefix.
+    const wsMatch = /^(\s*)/.exec(buf);
+    const ws = wsMatch ? wsMatch[1] : "";
+    const prefix = buf.slice(ws.length);
+    if (prefix.length === 0) return ""; // still just whitespace
+
+    const first = prefix[0];
+
+    // ---- Fenced block delimiter (``` at line start, no nesting allowed) ----
     if (first === "`") {
-      // Need exactly 3 backticks to toggle. Any non-backtick before
-      // we hit 3 means it wasn't a fence \u2014 emit verbatim.
-      if (buf.length < 3) {
-        if (buf[buf.length - 1] !== "`") {
-          return this.giveUpBuffer();
-        }
-        return ""; // keep buffering toward 3
+      if (ws.length > 0) return this.giveUpBuffer();
+      // Need exactly 3 backticks to toggle.
+      if (prefix.length < 3) {
+        if (prefix[prefix.length - 1] !== "`") return this.giveUpBuffer();
+        return "";
       }
-      if (buf === "```") {
+      if (prefix === "```") {
         this.inFencedCode = !this.inFencedCode;
         this.buffer = "";
         this.atLineStart = false;
-        // Emit the literal ``` so the InlineCodeFormatter downstream
-        // still sees and handles it (backtick coloring of fence).
         return "```";
       }
-      // 3 chars but not all backticks (impossible given the per-char
-      // check above, but handled defensively).
       return this.giveUpBuffer();
     }
 
-    // ---- Headings (1-3 # then space then content) ---------------------
+    // ---- Headings (hashes and space at start of line, no nesting allowed) ----
     if (first === "#") {
-      const lastCh = buf[buf.length - 1];
-      // Still in the run of #'s: keep buffering until a space (or
-      // overflow at 4+). 4+ # is not a heading by CommonMark; emit
-      // verbatim.
+      if (ws.length > 0) return this.giveUpBuffer();
+      const lastCh = prefix[prefix.length - 1];
       if (lastCh === "#") {
-        if (buf.length > 3) return this.giveUpBuffer();
+        if (prefix.length > 3) return this.giveUpBuffer();
         return "";
       }
-      // Run ended. Was it ended by a space? Then it's a heading
-      // (1-3 hashes guaranteed by the overflow check above).
-      const hashes = buf.length - 1;
+      const hashes = prefix.length - 1;
       if (lastCh === " " && hashes >= 1 && hashes <= 3) {
         this.buffer = "";
         this.atLineStart = false;
         this.inHeading = true;
-        // Dim hashes (subtle marker) + space + bold-cyan open. The
-        // bold-cyan stays open until the next '\n' closes it.
         return `${ANSI_DIM}${"#".repeat(hashes)}${ANSI_RESET} ${ANSI_HEADING_OPEN}`;
       }
-      // Run ended on a non-space (e.g. "#foo" — not a heading per
-      // CommonMark which requires space after the hashes).
       return this.giveUpBuffer();
     }
 
-    // ---- Unordered bullets ('- ' or '* ' at line start) ---------------
+    // ---- Unordered bullets ('- ' or '* ' with optional nesting) ------------
     if (first === "-" || first === "*") {
-      if (buf.length === 1) return ""; // peek the next char first
-      const next = buf[1];
+      if (prefix.length === 1) return "";
+      const next = prefix[1];
       if (next === " ") {
         this.buffer = "";
         this.atLineStart = false;
-        // Replace the dash/star with a small dim-cyan bullet glyph
-        // and the space the model emitted. The body of the bullet
-        // streams through normally afterward.
-        return `${ANSI_BULLET_OPEN}\u2022${ANSI_RESET} `;
+        return `${ws}${ANSI_BULLET_OPEN}\u2022${ANSI_RESET} `;
       }
-      // Not a bullet \u2014 could be '**bold**', '--flag', etc.
       return this.giveUpBuffer();
     }
 
-    // Shouldn't reach here \u2014 we only buffer on the chars above.
+    // ---- Numbered bullets ('1. ' etc. with optional nesting) ---------------
+    if (/[0-9]/.test(first)) {
+      // Continue buffering while it's a digit.
+      const lastCh = prefix[prefix.length - 1];
+      if (/[0-9]/.test(lastCh)) {
+        if (prefix.length > 4) return this.giveUpBuffer(); // Too long for a typical list.
+        return "";
+      }
+      // Followed by a period and a space?
+      const periodIdx = prefix.indexOf(".");
+      const spaceIdx = prefix.indexOf(" ");
+      if (periodIdx > 0 && spaceIdx === periodIdx + 1) {
+        const digits = prefix.slice(0, periodIdx);
+        this.buffer = "";
+        this.atLineStart = false;
+        // Keep the digit bright, dim the period.
+        return `${ws}${digits}${ANSI_DIM}.${ANSI_RESET} `;
+      }
+      return this.giveUpBuffer();
+    }
+
     return this.giveUpBuffer();
   }
 
