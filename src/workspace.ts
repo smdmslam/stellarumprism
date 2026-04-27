@@ -119,6 +119,27 @@ export interface WorkspaceCallbacks {
   onRequestNewTab: () => void;
   /** Fired when the user presses Cmd+1..9. */
   onRequestSelectIndex: (index: number) => void;
+  /**
+   * Fired whenever OSC 7 reports a new shell cwd. Optional; the
+   * TabManager subscribes so it can debounce-write the session
+   * restore file. No back-pressure; callbacks must be cheap.
+   */
+  onCwdChange?: (id: string, cwd: string) => void;
+}
+
+/** Optional restore hints passed to the Workspace constructor when
+ *  rehydrating a tab from `session.json` on app launch. */
+export interface WorkspaceRestoreOptions {
+  /** Pre-existing tab id from the persisted session. When provided,
+   *  the workspace adopts it instead of minting a new uuid so the
+   *  agent / pty session ids stay stable across launches. */
+  id?: string;
+  /** Path to cd into after spawning the shell. Empty / undefined =
+   *  let the shell start in its default cwd ($HOME). */
+  cwd?: string;
+  /** Display title to seed the tab strip with at zero latency,
+   *  before any cwd-derived auto-title catches up. */
+  title?: string;
 }
 
 export class Workspace {
@@ -257,9 +278,23 @@ export class Workspace {
   private disposed = false;
   private initPromise: Promise<void>;
 
-  constructor(parent: HTMLElement, cb: WorkspaceCallbacks) {
-    this.id = cryptoRandomId();
+  /** Restore hints captured at construction. Empty {} for fresh tabs. */
+  private readonly restore: WorkspaceRestoreOptions;
+
+  constructor(
+    parent: HTMLElement,
+    cb: WorkspaceCallbacks,
+    restore: WorkspaceRestoreOptions = {},
+  ) {
+    // Use the persisted id when restoring so backend session-keyed
+    // resources (chat history, pty session) line up with frontend
+    // ids without a remap. Mint a new id only on truly fresh tabs.
+    this.id = restore.id ?? cryptoRandomId();
+    this.restore = restore;
     this.cb = cb;
+    if (restore.title && restore.title.trim().length > 0) {
+      this.title = restore.title;
+    }
 
     // Build DOM subtree for this workspace.
     this.root = document.createElement("div");
@@ -444,6 +479,14 @@ export class Workspace {
       if (parsed && parsed !== this.cwd) {
         this.cwd = parsed;
         this.updateCwdBadge();
+        // Notify the TabManager so it can debounce-persist the
+        // session restore file. Wrapped in try/catch because a
+        // single-tab cwd update must never take down the OSC handler.
+        try {
+          this.cb.onCwdChange?.(this.id, parsed);
+        } catch (e) {
+          console.error("onCwdChange threw", e);
+        }
         // cwd changed \u2014 the file tree is now stale. We don't proactively
         // re-fetch (might be a transient `cd`); the next time the Files
         // tab is shown, it'll lazy-load.
@@ -478,6 +521,27 @@ export class Workspace {
         `\x1b[1;31mFailed to start shell:\x1b[0m ${String(err)}`,
       );
       return;
+    }
+
+    // Session restore: if this tab is being rehydrated from
+    // session.json with a saved cwd, inject a `cd <path>` into the
+    // freshly-spawned shell. The shell processes it as if the user
+    // had typed it; OSC 7 fires naturally on the next prompt and
+    // updates `this.cwd` via the handler above. Quoting handles
+    // paths containing spaces or apostrophes via the standard
+    // POSIX single-quote-with-escape pattern.
+    //
+    // We deliberately don't validate the path here \u2014 if the saved
+    // project moved or was deleted, the shell prints `cd: no such
+    // file or directory: ...` which is the correct, debuggable
+    // signal. Forwarding to home would silently mask the problem.
+    if (this.restore.cwd && this.restore.cwd.trim().length > 0) {
+      const cwd = this.restore.cwd;
+      const escaped = cwd.replace(/'/g, `'\\''`);
+      void invoke("write_to_shell", {
+        sessionId: this.id,
+        data: `cd '${escaped}'\r`,
+      });
     }
 
     this.disposers.push(

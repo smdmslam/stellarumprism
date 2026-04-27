@@ -21,6 +21,7 @@ mod save_chat;
 pub mod run_shell;
 pub mod schema;
 mod second_pass;
+mod session;
 mod shell_integration;
 mod tools;
 mod workspace_state;
@@ -37,6 +38,7 @@ use file_ref::{
 use load_chat::load_chat_markdown;
 use save_chat::save_chat_markdown;
 use second_pass::{read_latest_audit_report, write_audit_report};
+use session::{read_session_state, write_session_state};
 use workspace_state::{
     read_latest_build_report, read_workspace_state, write_build_report, write_workspace_state,
 };
@@ -93,6 +95,8 @@ pub fn run() {
             list_directory_tree,
             create_dir,
             move_file,
+            read_session_state,
+            write_session_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

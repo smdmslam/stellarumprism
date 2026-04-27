@@ -3,7 +3,8 @@
 // own PTY, chat history, xterm, block manager. The TabManager only handles
 // creating/destroying them and flipping which one is visible.
 
-import { Workspace } from "./workspace";
+import { Workspace, type WorkspaceRestoreOptions } from "./workspace";
+import { writeSessionState, type PersistedTab } from "./session";
 
 export interface TabManagerOptions {
   tabStripEl: HTMLElement;
@@ -11,14 +12,38 @@ export interface TabManagerOptions {
   onSelectTab?: (id: string) => void;
 }
 
+/** Debounce window for writing session.json. Long enough that a
+ *  `cd a; cd b` script doesn't hammer the file, short enough that
+ *  closing the app within a couple seconds of a cwd change still
+ *  captures the change on disk. */
+const SESSION_WRITE_DEBOUNCE_MS = 500;
+
 export class TabManager {
   private readonly opts: TabManagerOptions;
   private readonly workspaces: Workspace[] = [];
   private activeId: string | null = null;
+  /**
+   * Pending debounce timer for the session.json write. Reset on
+   * every event that mutates the persisted shape (cwd change, title
+   * change, tab open, tab close). `null` when no write is pending.
+   */
+  private sessionWriteTimer: number | null = null;
 
   constructor(opts: TabManagerOptions) {
     this.opts = opts;
     this.render();
+
+    // Final flush on window unload so a cwd change in the last 500ms
+    // before quit still lands on disk. `beforeunload` fires reliably
+    // in Tauri / WebView; the immediate (non-debounced) write keeps
+    // it synchronous-enough to land before the process exits.
+    window.addEventListener("beforeunload", () => {
+      if (this.sessionWriteTimer !== null) {
+        window.clearTimeout(this.sessionWriteTimer);
+        this.sessionWriteTimer = null;
+      }
+      void this.flushSessionWrite();
+    });
 
     // Wire the single "+" new-tab button in the strip.
     opts.tabStripEl.addEventListener("click", (e) => {
@@ -76,16 +101,34 @@ export class TabManager {
 
   // -- public API -----------------------------------------------------------
 
-  newTab(): Workspace {
-    const ws = new Workspace(this.opts.workspacesParent, {
-      onTitleChange: (id, title) => this.onTitleChange(id, title),
-      onRequestClose: (id) => this.closeTab(id),
-      onRequestNewTab: () => this.newTab(),
-      onRequestSelectIndex: (i) => this.selectByIndex(i),
-    });
+  /**
+   * Create a new tab. Pass `restore` to rehydrate from a persisted
+   * session entry (id + cwd + title), or omit for a fresh tab. Both
+   * paths flow through the same plumbing; the only difference is
+   * which arguments the Workspace receives.
+   */
+  newTab(restore?: WorkspaceRestoreOptions): Workspace {
+    const ws = new Workspace(
+      this.opts.workspacesParent,
+      {
+        onTitleChange: (id, title) => this.onTitleChange(id, title),
+        onRequestClose: (id) => this.closeTab(id),
+        onRequestNewTab: () => this.newTab(),
+        onRequestSelectIndex: (i) => this.selectByIndex(i),
+        // Cwd updates are the primary trigger for session writeback \u2014
+        // they're the field a user actually cares about restoring.
+        onCwdChange: () => this.scheduleSessionWrite(),
+      },
+      restore,
+    );
     this.workspaces.push(ws);
     this.selectTab(ws.id);
     this.render();
+    // Persist the new tab even if the user closes the app before its
+    // cwd resolves \u2014 they'll get the tab back next launch with no cwd,
+    // which is the same outcome as if it had never been opened, just
+    // explicit instead of implicit.
+    this.scheduleSessionWrite();
     return ws;
   }
 
@@ -138,6 +181,17 @@ export class TabManager {
     await ws.dispose();
     this.workspaces.splice(idx, 1);
 
+    // Tab close is the one event we ALWAYS persist immediately rather
+    // than debouncing \u2014 closing then quitting within 500ms would
+    // otherwise restore the closed tab on next launch, which would
+    // feel broken (\"I closed it, why is it back?\"). Cancel any
+    // pending debounce; flush synchronously.
+    if (this.sessionWriteTimer !== null) {
+      window.clearTimeout(this.sessionWriteTimer);
+      this.sessionWriteTimer = null;
+    }
+    void this.flushSessionWrite();
+
     if (this.workspaces.length === 0) {
       this.activeId = null;
       this.newTab();
@@ -157,6 +211,42 @@ export class TabManager {
     // Cheap re-render \u2014 DOM count is tiny.
     void _title;
     if (this.workspaces.some((w) => w.id === id)) this.render();
+    // Title changes are part of the persisted session shape (so the
+    // tab strip restores with the right labels at zero latency on
+    // launch). They're noisy on /audit / /build turns, hence the
+    // debounce \u2014 a flurry of title updates becomes one write.
+    this.scheduleSessionWrite();
+  }
+
+  /**
+   * Schedule a debounced session.json write. Resets the existing
+   * timer if one is pending. The persisted shape is computed at
+   * flush time, not schedule time, so a cwd that lands during the
+   * debounce window still makes it into the next write.
+   */
+  private scheduleSessionWrite(): void {
+    if (this.sessionWriteTimer !== null) {
+      window.clearTimeout(this.sessionWriteTimer);
+    }
+    this.sessionWriteTimer = window.setTimeout(() => {
+      this.sessionWriteTimer = null;
+      void this.flushSessionWrite();
+    }, SESSION_WRITE_DEBOUNCE_MS);
+  }
+
+  /**
+   * Materialize the current tabs into a `PersistedTab[]` and ship
+   * them to the Rust side. Best-effort \u2014 `writeSessionState`
+   * swallows errors with a console warning. Called from the
+   * scheduler, the tab-close path, and the `beforeunload` hook.
+   */
+  private async flushSessionWrite(): Promise<void> {
+    const tabs: PersistedTab[] = this.workspaces.map((w) => ({
+      id: w.id,
+      cwd: w.getCwd(),
+      title: w.getTitle(),
+    }));
+    await writeSessionState(tabs);
   }
 
   private render(): void {
