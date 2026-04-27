@@ -79,13 +79,23 @@ const PATH_TOOLS: ReadonlySet<string> = new Set([
 
 const PATH_SUMMARY_RE = /^(\w+)\s+.+?\s*\(([^()]+)\)\s*$/;
 
-export function cleanToolSummary(toolName: string, summary: string): string {
-  if (!PATH_TOOLS.has(toolName)) return summary;
+export interface CleanSummary {
+  verb: string;
+  pill?: string;
+  full: string;
+}
+
+export function cleanToolSummary(toolName: string, summary: string): CleanSummary {
+  if (!PATH_TOOLS.has(toolName)) {
+    return { verb: "", full: summary };
+  }
   const m = PATH_SUMMARY_RE.exec(summary);
-  if (!m) return summary;
-  const verb = m[1];
+  if (!m) {
+    return { verb: "", full: summary };
+  }
+  const verb = m[1].toLowerCase();
   const info = m[2];
-  return `${verb} ${info}`;
+  return { verb, pill: info, full: `${verb} ${info}` };
 }
 
 // ---------------------------------------------------------------------------
@@ -161,15 +171,28 @@ export function formatTurnFooter(s: TurnSummary): string {
  */
 export function formatFilesModifiedFooter(writes: WriteEntry[]): string[] {
   if (writes.length === 0) return [];
-  const heading = `files modified (${writes.length})`;
+
+  // Deduplicate by path. If the same file was modified multiple times, we
+  // only care about its final status in this summary.
+  const uniqueWrites = new Map<string, WriteEntry>();
+  for (const w of writes) {
+    uniqueWrites.set(w.path, w);
+  }
+
+  // Sort by path for a stable, predictable list.
+  const sorted = Array.from(uniqueWrites.values()).sort((a, b) =>
+    a.path.localeCompare(b.path),
+  );
+
+  const heading = `files modified (${sorted.length})`;
   // Compute a soft alignment column. Cap at 60 so a single very long
   // path doesn't push the tool column off the right edge of the
   // terminal. Below that cap, line up consistently.
   const maxPath = Math.min(
     60,
-    writes.reduce((m, w) => Math.max(m, w.path.length), 0),
+    sorted.reduce((m, w) => Math.max(m, w.path.length), 0),
   );
-  const lines = writes.map((w) => {
+  const lines = sorted.map((w) => {
     const padded =
       w.path.length >= maxPath
         ? w.path

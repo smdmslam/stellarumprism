@@ -1269,10 +1269,23 @@ export class Workspace {
     if (!busy && this.suspendedPtyBuffer.length > 0) {
       const buffered = this.suspendedPtyBuffer.join("");
       this.suspendedPtyBuffer = [];
+
+      // Suppress shell prompt leakage: filter out the visible text of
+      // the shell prompt that accumulated while the agent was busy.
+      // We look for text between OSC 133;A (prompt start) and
+      // OSC 133;B (prompt end), which is where our shell-integration
+      // places the $PS1.
+      //
+      // We MUST preserve the OSC sequences themselves (\x1b]... \x07)
+      // because xterm's parser needs them to update CWD (OSC 7) and
+      // command blocks (OSC 133;A, B, C, D).
+      const PROMPT_TEXT_RE = /(\x1b\]133;A\x07)([\s\S]*?)(\x1b\]133;B\x07)/g;
+      const suppressed = buffered.replace(PROMPT_TEXT_RE, "$1$3");
+
       // Wrap the entire replay in dim so the shell-prompt re-render
       // doesn't compete with the agent's done-footer. Reset at the
       // end so the next live PTY chunk starts at default brightness.
-      this.term.write(`\x1b[2m${buffered}\x1b[0m`);
+      this.term.write(`\x1b[2m${suppressed}\x1b[0m`);
     }
   }
 

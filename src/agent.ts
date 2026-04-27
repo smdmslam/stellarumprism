@@ -860,10 +860,19 @@ export class AgentController {
     // duplication \u2014 \"read /Users/.../foo.ts (1.2 KB)\" becomes
     // \"read 1.2 KB\". Other tools pass through unchanged so we don't
     // accidentally drop information for non-file tools.
-    const cleanSummary = cleanToolSummary(info.name, info.summary);
+    const clean = cleanToolSummary(info.name, info.summary);
+    let statusLine = "";
+    if (info.ok) {
+      const verb = clean.verb || "ok";
+      const pill = clean.pill ? ` (${clean.pill})` : "";
+      statusLine = `${statusGlyph} ${DIM}${verb}${pill}${RESET}`;
+    } else {
+      statusLine = `${statusGlyph} ${DIM}${info.summary}${RESET}`;
+    }
+
     this.opts.term.write(
       `\r\n${DIM}\u2192${RESET} ${DIM}${CYAN}${info.name}${RESET}${argSegment}` +
-        `\r\n  ${statusGlyph} ${DIM}${cleanSummary}${RESET}\r\n`,
+        `\r\n  ${statusLine}\r\n`,
     );
   }
 
@@ -940,7 +949,7 @@ export class AgentController {
       const summaryLine = formatTurnFooter({
         elapsedMs,
         toolCount: this.currentTurnToolCount,
-        model: this.currentResolvedModel ?? this.model,
+        model: shortSlug(this.currentResolvedModel ?? this.model),
       });
       this.opts.term.write(
         `\r\n\x1b[2m${summaryLine}\x1b[0m\r\n`,

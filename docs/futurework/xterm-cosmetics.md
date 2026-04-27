@@ -85,22 +85,20 @@ Goal: convert xterm output from "mostly noise" to "scannable diary" so Prism can
 
 ### Tier A — ship first, biggest daily payoff
 
-- [ ] **Files Modified footer**
+- [x] **Files Modified footer**
   - End every turn that ran `write_file` / `edit_file` with a grouped footer listing each file + tool used
-  - Already half-instrumented: `onToolCall()` sees every tool invocation; track writes in a per-turn list, render in `onDone()`
-  - **Estimate:** ~1 hour
-  - **Why first:** highest signal-per-keystroke when actually doing work — you immediately see what hit your filesystem
+  - **Status:** done
+  - **Evidence:** `src/agent.ts` uses `formatFilesModifiedFooter` (refactored to deduplicate by path and sort) in `onDone()`.
 
-- [ ] **"Worked for Ns" turn footer**
+- [x] **"Worked for Ns" turn footer**
   - Capture `Date.now()` at `query()`, render a dim summary in `onDone()`: `[done in 4.2s · 3 tools · <model>]`
-  - **Estimate:** ~30 minutes
-  - **Why:** closes the psychological "is it done?" gap on long turns; gives scroll-back anchors
+  - **Status:** done
+  - **Evidence:** `src/agent.ts` uses `formatTurnFooter` from `src/turn-summary.ts` in `onDone()`.
 
-- [ ] **Tool result size pill**
+- [x] **Tool result size pill**
   - Append a dim pill to the tool-summary line: `✓ ok (2,134 lines · 87 KB)` or `✓ ok (12 matches)`
-  - Summary string already carries the data; just format it
-  - **Estimate:** ~30 minutes
-  - **Why:** tells you at a glance whether the agent saw a lot or a little
+  - **Status:** done
+  - **Evidence:** `cleanToolSummary` refactored to extract pill data; `onToolCall` in `src/agent.ts` renders success as `ok (pill)`.
 
 ### Tier B — polish that compounds
 
@@ -113,7 +111,7 @@ Goal: convert xterm output from "mostly noise" to "scannable diary" so Prism can
   - **Estimate:** ~2–3 hours including tests
   - **Why:** assistant prose stops reading like a wall of dim text
 
-- [ ] **Suppress shell prompt leakage during agent turns**
+- [x] **Suppress shell prompt leakage during agent turns**
   - When `agent.busy === true`, buffer or dim PTY output matching the prompt pattern (OSC 7 + the `%` / `$` line)
   - Drop on the floor, or replay dimmed after `onDone()`
   - **Estimate:** ~1–2 hours
