@@ -104,6 +104,10 @@ export class TabManager {
     this.selectTab(this.workspaces[next].id);
   }
 
+  getActiveWorkspace(): Workspace | null {
+    return this.workspaces.find((w) => w.id === this.activeId) || null;
+  }
+
   async closeTab(id: string): Promise<void> {
     const idx = this.workspaces.findIndex((w) => w.id === id);
     if (idx < 0) return;

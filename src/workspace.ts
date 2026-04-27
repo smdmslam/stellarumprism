@@ -345,6 +345,14 @@ export class Workspace {
     this.root.classList.remove("active");
   }
 
+  /** Focus the input editor, optionally seeding it with text. */
+  focusInput(initialValue?: string): void {
+    if (initialValue !== undefined) {
+      this.input.setValue(initialValue);
+    }
+    this.input.focus();
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;

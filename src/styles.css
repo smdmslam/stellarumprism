@@ -259,6 +259,93 @@ body {
   letter-spacing: 0.16em;
 }
 
+/* ---------- global toolbar (ribbon) ---------- */
+
+.global-toolbar {
+  flex: 0 0 auto;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background-color: #0d0f14;
+  border-bottom: 1px solid #1f2937;
+  gap: 8px;
+  user-select: none;
+}
+
+.toolbar-section {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+.toolbar-item {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 120ms ease;
+  font-family: inherit;
+}
+
+.toolbar-item:hover {
+  background: rgba(148, 163, 184, 0.08);
+  color: #e5e7eb;
+  border-color: rgba(148, 163, 184, 0.15);
+}
+
+.toolbar-item:active {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.tb-icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.5px;
+}
+
+.tb-sep {
+  width: 1px;
+  height: 14px;
+  background-color: #1f2937;
+  margin: 0 4px;
+}
+
+.tb-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.indicator-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.indicator-dot.status-ok {
+  background-color: var(--prism-emerald);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.3);
+}
+
 /* ---------- workspaces container ---------- */
 
 #workspaces {
