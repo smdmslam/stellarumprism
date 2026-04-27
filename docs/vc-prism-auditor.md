@@ -110,6 +110,8 @@ Prism reads markdown files from `~/.prism/skills/` (global) and `./.prism/skills
 
 This is where Second Pass compounds into something more than a lint tool. Every audit you run can be archived as a skill: `./.prism/skills/past-refactor-gotchas.md`. Over time the agent gets smarter at *your specific codebase* because its own past findings feed back in. You build institutional memory automatically, just by using the tool.
 
+Skill engagement carries a deliberate token-cost discipline: per-skill soft warn at 18 KB, hard cap at 32 KB, per-session budget of 128 KB across all engaged skills. The caps are forcing functions — they push authors toward focused, principle-stated skills that compose into families rather than encyclopedic monoliths. The full rules live in `docs/skills.md` and the constants in `src/skill-limits.ts`, calibrated against the current corpus rather than guessed at. The point is the same as the substrate-gate thesis applied to the chat layer: structural guardrails that keep the system honest as it scales.
+
 ## Why this, why now
 
 Three market conditions make this the right wedge, right now.

@@ -2,6 +2,8 @@
 
 This folder contains reusable Prism skills: durable guidance files that help the agent perform recurring tasks with better structure, framing, and consistency.
 
+> **Authoring rules + size caps live in [`docs/skills.md`](../../docs/skills.md).** Read that first before writing a new skill. Headline numbers: soft warn at 18 KB per skill, hard cap at 32 KB per skill, 128 KB session budget across all engaged skills in a tab.
+
 ## UI search filtering skill family
 
 The `ui-search-filtering-` files preserve reusable patterns for building stronger client-side search and filtering experiences across Prism and other apps.
