@@ -7,6 +7,14 @@ import { route as routeModel, parseAutoSlug, PRESETS } from "./router";
 import { modelSupportsToolUse } from "./models";
 import { InlineCodeFormatter } from "./inline-code-format";
 import { detectRigorViolation } from "./grounded-rigor";
+import {
+  WRITE_TOOL_NAMES,
+  cleanToolSummary,
+  extractWritePath,
+  formatFilesModifiedFooter,
+  formatTurnFooter,
+  type WriteEntry,
+} from "./turn-summary";
 import type { RuntimeProbe, SubstrateRun } from "./findings";
 
 /**
@@ -244,6 +252,21 @@ export class AgentController {
    */
   private currentTurnToolCount = 0;
   /**
+   * `Date.now()` captured at the start of the in-flight query. Read on
+   * onDone() to compose the dim turn-footer line ("done in 4.2s"). Reset
+   * to null on completion / error so a stale value can't leak into a
+   * later turn that doesn't go through query() (shouldn't happen, but
+   * cheap defense).
+   */
+  private currentTurnStartedAt: number | null = null;
+  /**
+   * Per-turn record of every write_file / edit_file invocation that
+   * fired (including failures). Read on onDone() to render the
+   * "files modified" footer so the user sees at a glance which files
+   * the agent touched. Reset on every query().
+   */
+  private currentTurnWrites: WriteEntry[] = [];
+  /**
    * Streaming-safe inline-code colorizer. Each backtick-delimited span
    * in assistant prose is wrapped in ANSI cyan as it streams in, so
    * file paths and identifiers visually pop against the surrounding
@@ -462,6 +485,11 @@ export class AgentController {
     // calls or grounded flag don't leak into the new one.
     this.currentGroundedActive = !!options.systemPrefix;
     this.currentTurnToolCount = 0;
+    // Reset the per-turn footer trackers (elapsed time + writes list)
+    // before entering busy state so any rendering hook reading them sees
+    // a clean slate.
+    this.currentTurnStartedAt = Date.now();
+    this.currentTurnWrites = [];
 
     // Enter busy state now. Anything that short-circuits below must call
     // setBusy(false) before returning.
@@ -752,6 +780,20 @@ export class AgentController {
     // call any tools at all). Read in onDone() to enforce the
     // \"\u2713 Observed requires a tool call\" Grounded-Chat invariant.
     this.currentTurnToolCount += 1;
+    // Track write_file / edit_file invocations so onDone() can render a
+    // \"files modified\" footer at end-of-turn. Both tools have a string
+    // `path` arg; if extraction fails (malformed args) we drop silently
+    // rather than emit a footer line with no path.
+    if (WRITE_TOOL_NAMES.has(info.name)) {
+      const path = extractWritePath(info.args);
+      if (path !== null) {
+        this.currentTurnWrites.push({
+          tool: info.name,
+          path,
+          ok: info.ok,
+        });
+      }
+    }
     // Capture http_fetch invocations into a sibling probe trail so the
     // audit report can preserve runtime evidence even when the model
     // forgets the `evidence:` stanza on a finding line.
@@ -791,9 +833,15 @@ export class AgentController {
     const prettyArgs = prettyToolArgs(info.name, info.args);
     const argSegment = prettyArgs ? ` ${DIM}${prettyArgs}${RESET}` : "";
     const statusGlyph = info.ok ? `${GREEN}\u2713${RESET}` : `${RED}\u2717${RESET}`;
+    // For path-touching tools, the Rust-side summary repeats the path
+    // we've already shown on the args line. cleanToolSummary trims that
+    // duplication \u2014 \"read /Users/.../foo.ts (1.2 KB)\" becomes
+    // \"read 1.2 KB\". Other tools pass through unchanged so we don't
+    // accidentally drop information for non-file tools.
+    const cleanSummary = cleanToolSummary(info.name, info.summary);
     this.opts.term.write(
       `\r\n${DIM}\u2192${RESET} ${DIM}${CYAN}${info.name}${RESET}${argSegment}` +
-        `\r\n  ${statusGlyph} ${DIM}${info.summary}${RESET}\r\n`,
+        `\r\n  ${statusGlyph} ${DIM}${cleanSummary}${RESET}\r\n`,
     );
   }
 
@@ -838,6 +886,42 @@ export class AgentController {
       );
     }
 
+    // \"Files modified\" footer. Renders only when at least one
+    // write_file / edit_file fired this turn. Most useful for
+    // /build, /fix, /refactor, /new \u2014 chat-only turns are silent.
+    // Each line shows the path the model passed (verbatim, not
+    // resolved) plus the tool that wrote it; failed writes get a
+    // \"(failed)\" tag so the user sees \"the agent tried but couldn't\"
+    // rather than thinking nothing was attempted.
+    if (this.currentTurnWrites.length > 0) {
+      const footer = formatFilesModifiedFooter(this.currentTurnWrites);
+      // Cyan heading + dim body so the heading anchors the eye.
+      const [heading, ...rows] = footer;
+      this.opts.term.write(
+        `\r\n\x1b[36m${heading}\x1b[0m\r\n`,
+      );
+      for (const row of rows) {
+        this.opts.term.write(`\x1b[2m${row}\x1b[0m\r\n`);
+      }
+    }
+
+    // \"Done in Ns \u00b7 N tools \u00b7 model\" turn footer. Renders unconditionally
+    // (every turn produces the line) so the user has a consistent
+    // scroll-back anchor at the end of each agent reply. Skipped only
+    // when query() never set currentTurnStartedAt (defensive \u2014
+    // shouldn't happen in practice).
+    if (this.currentTurnStartedAt !== null) {
+      const elapsedMs = Date.now() - this.currentTurnStartedAt;
+      const summaryLine = formatTurnFooter({
+        elapsedMs,
+        toolCount: this.currentTurnToolCount,
+        model: this.currentResolvedModel ?? this.model,
+      });
+      this.opts.term.write(
+        `\r\n\x1b[2m${summaryLine}\x1b[0m\r\n`,
+      );
+    }
+
     this.renderActionBar(extractCodeBlocks(this.responseBuffer));
     this.clearListeners();
     // Fire mode-specific completion hook for audit + build-family
@@ -848,11 +932,13 @@ export class AgentController {
     const modelForHook = this.currentResolvedModel ?? this.model;
     this.currentMode = null;
     this.currentResolvedModel = null;
-    // Reset grounded-rigor state so a follow-up turn starts clean.
-    // (query() resets these too, but doing it here means a stray
+    // Reset grounded-rigor + footer state so a follow-up turn starts
+    // clean. (query() resets these too, but doing it here means a stray
     // event arriving after a cancel can't carry old state forward.)
     this.currentGroundedActive = false;
     this.currentTurnToolCount = 0;
+    this.currentTurnStartedAt = null;
+    this.currentTurnWrites = [];
 
     const hasResponse = respText.trim().length > 0;
     if (finishedMode === "audit" && hasResponse) {
@@ -908,9 +994,11 @@ export class AgentController {
     this.currentMode = null;
     this.currentResolvedModel = null;
     // Same defensive reset as onDone() \u2014 don't let an errored turn's
-    // grounded flag bleed into the next attempt.
+    // grounded flag or footer state bleed into the next attempt.
     this.currentGroundedActive = false;
     this.currentTurnToolCount = 0;
+    this.currentTurnStartedAt = null;
+    this.currentTurnWrites = [];
   }
 
   // -- busy-state plumbing --------------------------------------------------

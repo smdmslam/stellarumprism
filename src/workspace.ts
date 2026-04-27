@@ -222,6 +222,17 @@ export class Workspace {
   /** Last cwd we built the tree for, so we can detect cwd changes. */
   private fileTreeLastCwd = "";
   /**
+   * PTY chunks captured while the agent was busy, replayed (dimmed)
+   * after the agent goes idle. Without this, an idle shell that
+   * re-prints its prompt mid-agent-turn (or a long-running shell
+   * command still streaming output from before the user kicked off the
+   * agent) interleaves with the agent's tokens / tool log and shreds
+   * the visual flow. Buffering during busy + dim-replay on idle keeps
+   * the agent transcript readable AND preserves any shell output the
+   * user actually wanted to see. Empty during normal idle operation.
+   */
+  private suspendedPtyBuffer: string[] = [];
+  /**
    * Whether the file tree includes hidden dotfiles (`.git`,
    * `.gitignore`, etc.). Default false; toggled by the eye-icon
    * button next to the Files tab. `.prism/` is always shown
@@ -430,6 +441,17 @@ export class Workspace {
 
     this.disposers.push(
       await listen<string>(`pty-output-${this.id}`, (e) => {
+        // While the agent is mid-turn, buffer PTY output instead of
+        // writing it straight through. Shell prompt re-renders, OSC 7
+        // updates from a backgrounded `cd`, and any lingering output
+        // from a shell command the user kicked off before the agent
+        // started would otherwise interleave with agent tokens / tool
+        // log lines and break the visual flow. Buffered output is
+        // replayed dimmed after onDone (see setBusyState).
+        if (this.agent?.isBusy()) {
+          this.suspendedPtyBuffer.push(e.payload);
+          return;
+        }
         this.term.write(e.payload);
       }),
       await listen(`pty-exit-${this.id}`, () => {
@@ -1191,13 +1213,28 @@ export class Workspace {
    * (so the next prompt is ready to type without clicking). */
   private setBusyState(busy: boolean): void {
     const pill = this.root.querySelector<HTMLButtonElement>(".busy-pill");
-    if (!pill) return;
-    if (busy) {
-      pill.classList.add("visible");
-      pill.classList.remove("stalled");
-    } else {
-      pill.classList.remove("visible");
-      pill.classList.remove("stalled");
+    if (pill) {
+      if (busy) {
+        pill.classList.add("visible");
+        pill.classList.remove("stalled");
+      } else {
+        pill.classList.remove("visible");
+        pill.classList.remove("stalled");
+      }
+    }
+    // Idle transition: drain any PTY output that accumulated while the
+    // agent was working. Replayed in dim so the user sees \"these are
+    // shell things that happened during the turn\" without confusing
+    // them with the agent's primary output. Carries OSC 7 sequences
+    // through xterm's parser too, so cwd-tracking still fires (it just
+    // fires on flush instead of in real time).
+    if (!busy && this.suspendedPtyBuffer.length > 0) {
+      const buffered = this.suspendedPtyBuffer.join("");
+      this.suspendedPtyBuffer = [];
+      // Wrap the entire replay in dim so the shell-prompt re-render
+      // doesn't compete with the agent's done-footer. Reset at the
+      // end so the next live PTY chunk starts at default brightness.
+      this.term.write(`\x1b[2m${buffered}\x1b[0m`);
     }
   }
 
