@@ -6,6 +6,7 @@ import type { BlockManager } from "./blocks";
 import { route as routeModel, parseAutoSlug, PRESETS } from "./router";
 import { modelSupportsToolUse } from "./models";
 import { InlineCodeFormatter } from "./inline-code-format";
+import { detectRigorViolation } from "./grounded-rigor";
 import type { RuntimeProbe, SubstrateRun } from "./findings";
 
 /**
@@ -227,6 +228,22 @@ export class AgentController {
    */
   private expectingAnswerRule = false;
   /**
+   * True iff this turn was dispatched with a Grounded-Chat system
+   * prefix. Used by onDone() to decide whether to enforce the
+   * \"\u2713 Observed labels require a real tool call\" invariant. Reset on
+   * every query(); only flipped on when `options.systemPrefix` is
+   * provided (today: only the verified-mode trigger sets it).
+   */
+  private currentGroundedActive = false;
+  /**
+   * Count of tool calls that fired during this turn (every onToolCall
+   * increments). Reset on every query(). The rigor check refuses to
+   * trust the model's `\u2713 Observed` / `Verified total: N` claims when
+   * this is zero \u2014 with no tool work this turn, those labels are
+   * structurally impossible to substantiate.
+   */
+  private currentTurnToolCount = 0;
+  /**
    * Streaming-safe inline-code colorizer. Each backtick-delimited span
    * in assistant prose is wrapped in ANSI cyan as it streams in, so
    * file paths and identifiers visually pop against the surrounding
@@ -410,13 +427,18 @@ export class AgentController {
       modelOverride?: string;
       maxToolRounds?: number;
       /**
-       * Optional override for the user-facing echo line. When set, the
-       * terminal shows this string under `you \u203a` while the model
-       * sees the full `prompt` (protocol preamble + original text).
-       * Used by Grounded-Chat to keep the user's view clean while
-       * giving the model the rigor scaffold it needs.
+       * Per-turn system-prompt extension. Prepended to the system
+       * message on the wire ONLY for this single call; never written
+       * into the persisted session history. Used by the Grounded-Chat
+       * protocol so its rigor scaffold reaches the model without
+       * bloating future turns or contaminating saved chats.
+       *
+       * Earlier shape wrapped the user message with the protocol and
+       * had to round-trip a separate `displayPrompt` so the terminal
+       * echo stayed clean. That dance is gone \u2014 the user message
+       * sent and shown is always the user's bare text now.
        */
-      displayPrompt?: string;
+      systemPrefix?: string;
     } = {},
   ): Promise<void> {
     if (!this.hasApiKey) {
@@ -436,6 +458,10 @@ export class AgentController {
     this.currentSubstrateRuns = [];
     this.inlineCodeFormatter.reset();
     this.clearActionBar();
+    // Reset the grounded-rigor counters so the previous turn's tool
+    // calls or grounded flag don't leak into the new one.
+    this.currentGroundedActive = !!options.systemPrefix;
+    this.currentTurnToolCount = 0;
 
     // Enter busy state now. Anything that short-circuits below must call
     // setBusy(false) before returning.
@@ -445,19 +471,20 @@ export class AgentController {
     this.currentMode = options.mode ?? null;
 
     // Echo the user's prompt in the terminal so the dialogue is visible.
-    // Cyan `you:` header, then the prompt in normal weight. Newlines in the
-    // prompt get normalized to CRLF for xterm.
+    // Cyan `you:` header, then the prompt in normal weight. Newlines in
+    // the prompt get normalized to CRLF for xterm.
     //
-    // When the caller has wrapped the prompt with a protocol preamble
-    // (Grounded-Chat) we still want to echo the ORIGINAL user text, so
-    // the chrome doesn't dump the rigor scaffold back at the user.
+    // The prompt sent to the model and the prompt echoed here are now
+    // always the same string \u2014 protocol scaffolding (Grounded-Chat,
+    // future modes) rides on `options.systemPrefix` instead of being
+    // smuggled into the user message, so there's no separate "display"
+    // form to track.
     //
     // Two leading CRLFs give a clean blank line above the echo. The
     // shell PTY auto-emits its own prompt line whenever it goes idle,
     // and without this buffer that shell-prompt line and our `you \u203a`
     // collide visually \u2014 they end up adjacent or even on the same row.
-    const echoSource = options.displayPrompt ?? prompt;
-    const echoed = echoSource.replace(/\r?\n/g, "\r\n");
+    const echoed = prompt.replace(/\r?\n/g, "\r\n");
     this.opts.term.write(
       `\r\n\r\n\x1b[1;36myou\x1b[0m \x1b[2m\u203a\x1b[0m ${echoed}\r\n`,
     );
@@ -532,9 +559,14 @@ export class AgentController {
         mode: options.mode ?? null,
         // Tauri rewrites camelCase keys to snake_case for the Rust side,
         // so this lands as `max_tool_rounds: Option<usize>` on agent_query.
-        // null → None, which means "use the Rust-side default (config
+        // null \u2192 None, which means "use the Rust-side default (config
         // value, or audit-mode boost when in audit mode)".
         maxToolRounds: options.maxToolRounds ?? null,
+        // Per-turn system-prompt extension (Grounded-Chat protocol et al).
+        // null \u2192 None Rust-side. The Rust agent_query merges this onto
+        // the existing system message for the wire request only and
+        // never persists it into session history.
+        systemPrefix: options.systemPrefix ?? null,
       });
     } catch (err) {
       this.writeLineToTerm(`${PREFIX_OPEN}[agent error]${RESET} ${String(err)}`);
@@ -714,6 +746,12 @@ export class AgentController {
     round: number;
   }): void {
     this.resetStallTimer();
+    // Count every tool call this turn (success OR failure \u2014 a failed
+    // tool call still represents real tool work the model attempted,
+    // and the rigor check only cares whether the model bothered to
+    // call any tools at all). Read in onDone() to enforce the
+    // \"\u2713 Observed requires a tool call\" Grounded-Chat invariant.
+    this.currentTurnToolCount += 1;
     // Capture http_fetch invocations into a sibling probe trail so the
     // audit report can preserve runtime evidence even when the model
     // forgets the `evidence:` stanza on a finding line.
@@ -770,6 +808,36 @@ export class AgentController {
     this.opts.term.write("\r\n");
     this.inflightId = null;
     this.setBusy(false);
+
+    // Grounded-Chat rigor enforcement.
+    //
+    // The protocol promises the model will only stamp `\u2713 Observed` on
+    // claims it tool-verified THIS turn, and only emit `Verified total:
+    // N` on counts it computed from source THIS turn. We can't audit
+    // each claim against its supposed source, but we can enforce the
+    // global invariant: if grounded mode was active and zero tool
+    // calls fired, every observation-shaped label is structurally
+    // unbacked. Surface a clear warning so the user doesn't trust a
+    // fabricated `Verified total: 556` like we saw with Kimi K2.5.
+    //
+    // Done BEFORE clearing the per-turn flags so the check runs
+    // against the right state, but AFTER setBusy(false) so the
+    // warning is the last thing the user sees as the busy pill
+    // disappears \u2014 it visually anchors to the response above it.
+    const violation = detectRigorViolation({
+      groundedActive: this.currentGroundedActive,
+      toolCallCount: this.currentTurnToolCount,
+      response: this.responseBuffer,
+    });
+    if (violation) {
+      // Yellow on the label so it reads as a CAUTION rather than an
+      // ERROR (the response itself isn't broken \u2014 it's just unverified).
+      // Dim body so the explanation recedes once read.
+      this.opts.term.write(
+        `\r\n\x1b[1;33m[grounded-chat]\x1b[0m \x1b[2mthe response carries ${violation.summary} but no tool calls fired this turn \u2014 those claims are NOT actually verified. Treat as ? Unverified.\x1b[0m\r\n`,
+      );
+    }
+
     this.renderActionBar(extractCodeBlocks(this.responseBuffer));
     this.clearListeners();
     // Fire mode-specific completion hook for audit + build-family
@@ -780,6 +848,11 @@ export class AgentController {
     const modelForHook = this.currentResolvedModel ?? this.model;
     this.currentMode = null;
     this.currentResolvedModel = null;
+    // Reset grounded-rigor state so a follow-up turn starts clean.
+    // (query() resets these too, but doing it here means a stray
+    // event arriving after a cancel can't carry old state forward.)
+    this.currentGroundedActive = false;
+    this.currentTurnToolCount = 0;
 
     const hasResponse = respText.trim().length > 0;
     if (finishedMode === "audit" && hasResponse) {
@@ -834,6 +907,10 @@ export class AgentController {
     // mode markers so the next turn starts clean.
     this.currentMode = null;
     this.currentResolvedModel = null;
+    // Same defensive reset as onDone() \u2014 don't let an errored turn's
+    // grounded flag bleed into the next attempt.
+    this.currentGroundedActive = false;
+    this.currentTurnToolCount = 0;
   }
 
   // -- busy-state plumbing --------------------------------------------------

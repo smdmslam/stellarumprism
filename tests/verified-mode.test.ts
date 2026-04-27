@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  applyVerifiedProtocol,
+  buildVerifiedSystemPrefix,
   detectVerifiedTrigger,
 } from "../src/verified-mode.ts";
 
@@ -90,44 +90,60 @@ test("instruction: does not fire on commit-style prompts", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Protocol application
+// System-prefix builder
+//
+// The protocol is now injected as a per-turn system prefix on the wire,
+// NOT prepended to the user message. These tests pin the new shape:
+//   - the prefix carries the protocol preamble + the kind addendum
+//   - the prefix DOES NOT contain the user's prompt (the prompt is sent
+//     as a separate user message and the prefix must stay generic so
+//     it doesn't contaminate stored history if a future caller did mix
+//     them by accident).
 // ---------------------------------------------------------------------------
 
-test("applyVerifiedProtocol: preserves the original user question", () => {
+test("buildVerifiedSystemPrefix: does NOT embed the user prompt", () => {
+  // Belt-and-suspenders against a future regression that re-introduces
+  // prompt embedding (which is what caused the history-bloat / silent
+  // empty-response bug we're fixing). The prefix must stay generic so
+  // it can be reused across calls without smuggling user content in.
   const original = "how many tests do we have?";
   const trigger = detectVerifiedTrigger(original)!;
-  const wrapped = applyVerifiedProtocol(original, trigger);
+  const prefix = buildVerifiedSystemPrefix(trigger);
   assert.ok(
-    wrapped.endsWith("User question:\n" + original),
-    "wrapped prompt should end with 'User question:\\n<original>'",
+    !prefix.includes(original),
+    "system prefix must not contain the user's prompt verbatim",
+  );
+  assert.ok(
+    !prefix.includes("User question:"),
+    "system prefix must not carry a 'User question:' header (that was the wrapper era)",
   );
 });
 
-test("applyVerifiedProtocol: includes the protocol preamble", () => {
+test("buildVerifiedSystemPrefix: includes the protocol preamble", () => {
   const trigger = detectVerifiedTrigger("how many tests?")!;
-  const wrapped = applyVerifiedProtocol("how many tests?", trigger);
-  assert.ok(wrapped.includes("[Grounded-Chat protocol active]"));
-  assert.ok(wrapped.includes("EVIDENCE LABELS"));
-  assert.ok(wrapped.includes("NO RECONCILIATION-BY-ARITHMETIC"));
+  const prefix = buildVerifiedSystemPrefix(trigger);
+  assert.ok(prefix.includes("[Grounded-Chat protocol active]"));
+  assert.ok(prefix.includes("EVIDENCE LABELS"));
+  assert.ok(prefix.includes("NO RECONCILIATION-BY-ARITHMETIC"));
 });
 
-test("applyVerifiedProtocol: count addendum requires breakdown to sum", () => {
+test("buildVerifiedSystemPrefix: count addendum requires breakdown to sum", () => {
   const trigger = detectVerifiedTrigger("how many tests?")!;
-  const wrapped = applyVerifiedProtocol("how many tests?", trigger);
-  assert.ok(wrapped.includes("This is a COUNT question"));
-  assert.ok(wrapped.includes("breakdown sums to the total"));
+  const prefix = buildVerifiedSystemPrefix(trigger);
+  assert.ok(prefix.includes("This is a COUNT question"));
+  assert.ok(prefix.includes("breakdown sums to the total"));
 });
 
-test("applyVerifiedProtocol: enumerate addendum requires per-item paths", () => {
+test("buildVerifiedSystemPrefix: enumerate addendum requires per-item paths", () => {
   const trigger = detectVerifiedTrigger("list all tests")!;
-  const wrapped = applyVerifiedProtocol("list all tests", trigger);
-  assert.ok(wrapped.includes("This is an ENUMERATION question"));
-  assert.ok(wrapped.includes("path or identifier for each item"));
+  const prefix = buildVerifiedSystemPrefix(trigger);
+  assert.ok(prefix.includes("This is an ENUMERATION question"));
+  assert.ok(prefix.includes("path or identifier for each item"));
 });
 
-test("applyVerifiedProtocol: repo-fact addendum requires a tool call", () => {
+test("buildVerifiedSystemPrefix: repo-fact addendum requires a tool call", () => {
   const trigger = detectVerifiedTrigger("where is agent.rs?")!;
-  const wrapped = applyVerifiedProtocol("where is agent.rs?", trigger);
-  assert.ok(wrapped.includes("This is a REPO-FACT question"));
-  assert.ok(wrapped.includes("run a tool to fetch the answer"));
+  const prefix = buildVerifiedSystemPrefix(trigger);
+  assert.ok(prefix.includes("This is a REPO-FACT question"));
+  assert.ok(prefix.includes("run a tool to fetch the answer"));
 });

@@ -1304,6 +1304,16 @@ pub async fn agent_query(
     // /audit --max-rounds N syntax) when one specific turn needs more
     // headroom without permanently raising the global cap.
     max_tool_rounds: Option<usize>,
+    // Per-turn system-prompt extension. Prepended to the system
+    // message ON THE WIRE only \u2014 never persisted into session history.
+    // Today's caller is the Grounded-Chat protocol (`verified-mode.ts`),
+    // which used to wrap the user message with a ~150-line rigor
+    // scaffold and write the wrapped form into `messages[]`. That
+    // bloated context, contaminated saved chats, and produced silent
+    // empty completions on retry with Kimi K2.5. Threading it through
+    // here keeps the scaffold off the historical record and out of
+    // future turns.
+    system_prefix: Option<String>,
 ) -> Result<String, String> {
     let snapshot = cfg.snapshot();
     if snapshot.openrouter.api_key.is_empty() {
@@ -1412,6 +1422,13 @@ pub async fn agent_query(
         .map(|c| c.cwd.clone())
         .unwrap_or_default();
 
+    // Move the system_prefix into the spawned task so each round of the
+    // tool-use loop can re-supply it to run_stream. The prefix is small
+    // (a few KB at most) and the clone-cost is dominated by the network
+    // call, so this is fine. We hold it owned because run_stream needs
+    // a `&str` whose lifetime exceeds the request body serialization.
+    let system_prefix_for_task = system_prefix;
+
     // Capture verifier config + the original user prompt so the reviewer
     // pass (run after the primary completes) sees them.
     let verifier_cfg = snapshot.agent.verifier.clone();
@@ -1477,6 +1494,7 @@ pub async fn agent_query(
                 images_for_turn,
                 true, // include tools schema every round
                 mode_system_prompt.as_deref(),
+                system_prefix_for_task.as_deref(),
             )
             .await;
             // Images only attach to the first round; after that the model has
@@ -1749,9 +1767,10 @@ pub async fn agent_query(
                 &base_url,
                 &verifier_cfg.model,
                 &review_messages,
-                &[], // no images for review
+                &[],   // no images for review
                 false, // no tools for the reviewer
-                None, // no mode override for the reviewer
+                None,  // no mode override for the reviewer
+                None,  // no system prefix \u2014 reviewer has its own prompt
             )
             .await;
             let review_payload = match outcome {
@@ -1869,18 +1888,56 @@ async fn run_stream(
     pending_images: &[AgentImage],
     include_tools: bool,
     system_override: Option<&str>,
+    // Per-turn extension prepended to the system message for this wire
+    // call only. Stacks on top of `system_override` (so a mode that
+    // replaces the system prompt AND a Grounded-Chat trigger compose:
+    // prefix + mode prompt). Never written to session history.
+    system_prefix: Option<&str>,
 ) -> Result<StreamOutcome, String> {
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| e.to_string())?;
 
+    // Pre-compute the combined wire-only system content. Owned String
+    // declared in this scope so the &str borrow we hand to OutContent
+    // lives until the request body is serialized and sent. Empty when
+    // neither override nor prefix is set; Some when at least one is.
+    //
+    // Composition rule:
+    //   prefix + "\n\n" + (override OR existing stored system content)
+    // If only override is set: behaves identically to the old single-
+    // override path.
+    // If only prefix is set:   prefix + existing stored system content.
+    // If both are set:         prefix + override (override wins over the
+    //                          stored content, prefix prepends to that).
+    let combined_system_owned: String = if system_prefix.is_some() {
+        let base = system_override.or_else(|| {
+            messages
+                .iter()
+                .find(|m| m.role == "system")
+                .and_then(|m| m.content.as_deref())
+        });
+        let prefix = system_prefix.unwrap_or("");
+        match base {
+            Some(b) if !b.is_empty() => format!("{}\n\n{}", prefix, b),
+            _ => prefix.to_string(),
+        }
+    } else {
+        String::new()
+    };
+
     let mut out_messages = build_out_messages(messages, pending_images);
-    // If a mode override is set, replace the first system message on the
-    // wire for this turn. The session's stored history is unchanged — only
-    // what we send to OpenRouter this call differs. If there's no system
-    // message at all (shouldn't happen in practice; ensure_started always
-    // pushes one), prepend the override.
-    if let Some(override_prompt) = system_override {
+    // Decide what (if anything) replaces the system slot for THIS call.
+    // The session's stored history is unchanged either way \u2014 only the
+    // wire request differs. If there's no system message at all
+    // (shouldn't happen in practice; ensure_started always pushes one),
+    // we prepend a synthetic one carrying the wire content.
+    let final_system: Option<&str> = if system_prefix.is_some() {
+        Some(combined_system_owned.as_str())
+    } else {
+        system_override
+    };
+    if let Some(override_prompt) = final_system {
         if let Some(first) = out_messages.iter_mut().find(|m| m.role == "system") {
             first.content = Some(OutContent::Text(override_prompt));
         } else {

@@ -125,19 +125,38 @@ const ADDENDUMS: Record<VerifiedKind, string> = {
 };
 
 /**
- * Wrap a raw user prompt with the Grounded-Chat protocol preamble + the
- * kind-specific addendum. The original prompt is appended verbatim so
- * the model can read it after consuming the protocol.
+ * Build the Grounded-Chat scaffold to inject for THIS turn ONLY, as a
+ * per-call SYSTEM PREFIX (not as a wrapper around the user message).
  *
- * Callers pass `displayPrompt` separately to agent.query() so the
- * augmented version goes to the model and history while the user's
- * terminal still echoes what they actually typed.
+ * Why this is a system prefix and not a user-message wrapper:
+ *
+ *   1. Persistence. Wrapping the user message bakes the ~150-line
+ *      protocol into session history. Three grounded turns = three
+ *      copies of the scaffold in `messages[]`. Long sessions blow
+ *      context fast and some models (notably Kimi K2.5) silently
+ *      return empty completions when faced with bloated repeating
+ *      instructions \u2014 that produced the "agent did nothing" bug class
+ *      where two consecutive user turns appear in the saved chat
+ *      with no assistant response between them.
+ *
+ *   2. Saved-chat fidelity. /save persists user messages verbatim.
+ *      Wrapping the prompt would mean every saved chat re-plays the
+ *      protocol back at the next session as if the user had typed
+ *      it, even when grounded mode is no longer wanted.
+ *
+ *   3. Echo cleanliness. A wrapped prompt forced the frontend to
+ *      track a separate `displayPrompt` so the terminal didn't dump
+ *      the scaffold back at the user. Sending the bare prompt makes
+ *      that dance unnecessary.
+ *
+ * The returned string is intended to be passed to `agent.query()` as
+ * `options.systemPrefix` and threaded down to the Rust `agent_query`
+ * Tauri command. The Rust side prepends it to the system-message
+ * content for the wire request (only) and never writes it to the
+ * persisted session.
  */
-export function applyVerifiedProtocol(
-  prompt: string,
-  trigger: VerifiedTrigger,
-): string {
-  return PROTOCOL_PREAMBLE + ADDENDUMS[trigger.kind] + "User question:\n" + prompt;
+export function buildVerifiedSystemPrefix(trigger: VerifiedTrigger): string {
+  return PROTOCOL_PREAMBLE + ADDENDUMS[trigger.kind];
 }
 
 /**

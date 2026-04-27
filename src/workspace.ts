@@ -24,7 +24,7 @@ import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { findMode, type Mode } from "./modes";
 import {
-  applyVerifiedProtocol,
+  buildVerifiedSystemPrefix,
   detectVerifiedTrigger,
   verifiedKindLabel,
 } from "./verified-mode";
@@ -1052,25 +1052,32 @@ export class Workspace {
   ): Promise<void> {
     // Grounded-Chat protocol: when this is a regular chat turn (no
     // mode-specific persona like /audit, /fix, /build active) and the
-    // prompt looks like an inspectable factual question, prepend a
-    // rigor scaffold so the model is forced to source \u2192 evidence \u2192
-    // rule \u2192 working \u2192 verified label before answering. Mode-driven
-    // turns already carry their own stricter protocols and are skipped
-    // to avoid double-wrapping.
-    let modelPrompt = prompt;
-    let displayPrompt: string | undefined;
+    // prompt looks like an inspectable factual question, send the
+    // rigor scaffold as a per-turn SYSTEM PREFIX so the model is
+    // forced to source \u2192 evidence \u2192 rule \u2192 working \u2192 verified
+    // label before answering. Mode-driven turns already carry their
+    // own stricter protocols and are skipped to avoid double-wrapping.
+    //
+    // Earlier shape pre-pended the scaffold to the user message,
+    // which then got persisted into session history every triggered
+    // turn. Three grounded turns = three full copies of the ~150-line
+    // scaffold in `messages[]`, which (a) bloated context, (b)
+    // contaminated saved chats, and (c) on Kimi K2.5 specifically
+    // produced silent empty completions on retry. The system-prefix
+    // path sends the scaffold to the model on the wire only and never
+    // writes it to history.
+    let systemPrefix: string | undefined;
     if (!options.mode) {
       const trigger = detectVerifiedTrigger(prompt);
       if (trigger) {
-        modelPrompt = applyVerifiedProtocol(prompt, trigger);
-        displayPrompt = prompt;
+        systemPrefix = buildVerifiedSystemPrefix(trigger);
         this.term.write(
           `\r\n\x1b[2m\u2192 [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched \u201c${sanitize(trigger.matched)}\u201d)\x1b[0m\r\n`,
         );
       }
     }
 
-    const refs = extractFileRefs(modelPrompt);
+    const refs = extractFileRefs(prompt);
     const { resolved, errors } =
       refs.length > 0
         ? await resolveFileRefs(refs, this.cwd)
@@ -1111,14 +1118,14 @@ export class Workspace {
       : [];
 
     void this.agent.query(
-      modelPrompt,
+      prompt,
       resolved.map((r) => ({
         path: r.path,
         content: r.content,
         truncated: r.truncated,
       })),
       imagePayload,
-      { ...options, displayPrompt },
+      { ...options, systemPrefix },
     );
   }
 

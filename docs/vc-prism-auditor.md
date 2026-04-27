@@ -193,7 +193,7 @@ Verification doesn't only belong to edits. It belongs to chat.
 
 Every other AI dev tool exposes a freeform conversational surface where the model decides — turn by turn — whether to inspect the project, whether to verify a claim, whether to commit to a number it can't substantiate. The result is the failure mode developers learn to live with: a confident-sounding answer that turns out to be wrong about a count, a file path, a function signature, a "did we ever…" question. This is not a model defect; it's a workflow defect. The same model produces the right answer when forced to follow a protocol.
 
-Prism's **Grounded-Chat** layer turns that observation into product. When a chat prompt looks like an inspectable factual question — counts ("how many"), enumerations ("which files"), repo-facts ("where is", "what changed") — Prism transparently wraps the user's prompt with a one-shot rigor protocol before it reaches the model:
+Prism's **Grounded-Chat** layer turns that observation into product. When a chat prompt looks like an inspectable factual question — counts ("how many"), enumerations ("which files"), repo-facts ("where is", "what changed") — Prism transparently injects a one-shot rigor protocol as a per-turn **system prefix** alongside the user's bare prompt; the typed message itself is sent verbatim, never wrapped:
 
 1. **Source.** Identify the source of truth before answering.
 2. **Evidence.** Use a tool to fetch it. No memory shortcuts on inspectable facts.
@@ -202,11 +202,15 @@ Prism's **Grounded-Chat** layer turns that observation into product. When a chat
 5. **Labels.** Every paragraph in the reply is prefixed with `✓ Observed`, `∼ Inferred`, or `? Unverified`. Confident claims must be backed by a tool call from THIS turn.
 6. **No reconciliation by arithmetic.** Contradictions are resolved by re-fetching from source, not by re-doing math on prior model outputs.
 
-The user types "how many tests are in the repo?" and sees their prompt echoed back unchanged. Underneath, the model receives the full scaffold and a dim hint line announces that grounded mode is active for this turn. The reply is sourced, verified, and visibly labeled by confidence.
+The user types "how many tests are in the repo?" and sees their prompt echoed back unchanged. Underneath, the model receives the rigor scaffold as a per-turn system prefix alongside the user's bare prompt; a dim hint line announces that grounded mode is active for this turn. The reply is sourced, verified, and visibly labeled by confidence.
+
+The wire-level discipline matters. An earlier prototype prepended the protocol to the user message and persisted the wrapped form into session history — three grounded turns meant three full copies of a ~150-line scaffold baked into `messages[]`, which bloated context, contaminated saved chats, and produced silent empty completions on retry from at least one popular open-weights model. Pushing the scaffold to a per-call system prefix kept the rigor where it belongs (on the model's wire input) without polluting the historical record. Saved chats round-trip clean; long sessions don't decay.
+
+**Rigor enforcement, not just rigor instruction.** A protocol is only as good as the substrate that watches whether the model honored it. Grounded-Chat ships with a post-response check: if grounded mode was active for the turn AND zero tool calls actually fired AND the response carries `✓ Observed` or `Verified total: N` markers, Prism emits a visible terminal warning before the user trusts the answer ("the response carries 1 ✓ Observed, 1 Verified total but no tool calls fired this turn — those claims are NOT actually verified. Treat as ? Unverified."). The model can ignore the protocol; it cannot stamp `✓ Observed` on fabricated content without the user immediately seeing the discrepancy. Substrate over instruction, again.
 
 The discovery moment for this feature was an internal eval. A frontier model, asked in passing to count the prompts in a 113-test eval file, guessed `99`, produced a section breakdown that summed to `113`, and didn't notice the contradiction. Forced through the protocol — re-read the source, state the counting rule, prove the breakdown sums to the total — the same model produced the correct answer in 30 seconds. **Same model, different scaffolding, different answer.** Prism now applies that scaffolding by default whenever the prompt shape warrants it; mode-driven turns (`/audit`, `/fix`, `/build`, etc.) skip the layer because they already carry their own stricter protocols.
 
-This generalizes the substrate thesis to the chat surface. Substrate-gated *edits* keep the AI from shipping wiring gaps. Protocol-gated *chat* keeps it from emitting confident hallucinations. Both are architecture moves, not prompting tricks; both are the kind of discipline competitors who built editor-first cannot retrofit without rewriting their conversation layer.
+This generalizes the substrate thesis to the chat surface. Substrate-gated *edits* keep the AI from shipping wiring gaps. Protocol-gated *chat* keeps it from emitting confident hallucinations, and post-response rigor enforcement keeps it from lying about whether it followed the protocol. All three are architecture moves, not prompting tricks; all three are the kind of discipline competitors who built editor-first cannot retrofit without rewriting their conversation layer.
 
 ## Expansion path
 
@@ -273,13 +277,13 @@ Recommendation: **Second Pass** as the product brand, `/audit` as the in-app com
 
 ## Current state
 
-The project has moved well past the original Phase 4 plan. As of 2026-04-26, the substrate, consumers, CLI, IDE-shape phase 1, and the Grounded-Chat protocol layer are all shipping.
+The project has moved well past the original Phase 4 plan. As of 2026-04-27, the substrate, consumers, CLI, IDE-shape phase 1, and the Grounded-Chat protocol layer (with post-response rigor enforcement) are all shipping.
 
-**Test status (2026-04-26): 220 Rust + 203 TypeScript tests passing; tsc clean.**
+**Test status (2026-04-27): 220 Rust + 228 TypeScript tests passing; tsc clean.**
 
 - **211 Rust lib tests** (`src-tauri/src/`) cover the eight substrate cells, the agent streaming loop, session-history truncation, the tool-approval flow, config parsing, file-ref resolution, the routing matrix, and per-mode prompt-contract assertions.
 - **9 prism-audit binary tests** (`src-tauri/src/bin/prism_audit.rs`) cover the standalone CLI: argv parsing, exit-code policy, and JSON / text / GitHub-Actions output formatters.
-- **203 TypeScript tests** (`tests/*.test.ts`, run via `node --test`) cover the frontend agent controller, model registry + alias resolution, intent detection, slash-command parser, audit / build / fix / new / refactor / test-gen prompt builders, the Findings panel filter, and the Grounded-Chat trigger detection.
+- **228 TypeScript tests** (`tests/*.test.ts`, run via `node --test`) cover the frontend agent controller, model registry + alias resolution, intent detection, slash-command parser, audit / build / fix / new / refactor / test-gen prompt builders, the Findings panel filter, the Grounded-Chat trigger detection, and the post-response rigor scanner that catches `✓ Observed` / `Verified total:` claims unbacked by tool calls.
 
 **Substrate (eight cells, all shipping, Rust):** typecheck, ast_query, run_tests, http_fetch, e2e_run, lsp_diagnostics, schema_inspect, run_shell. Each cell has its own argv-override + per-call timeout knobs in `~/.config/prism/config.toml`, returns a structured payload (not free text), and contributes to a deterministic confidence grader. The grader — not the LLM — decides confidence: `confirmed` (compiler / LSP / runtime / test / schema), `probable` (AST), `candidate` (grep- or LLM-only). The `run_shell` cell is the one capability gap-fill among the eight: write tools (`write_file` / `edit_file`) and now `run_shell` are the only tools that hit the user-approval card; everything else is read-only or substrate-deterministic.
 
@@ -292,7 +296,7 @@ The project has moved well past the original Phase 4 plan. As of 2026-04-26, the
 - File tree (left-side, IDE-shape phase 1, shipped today): gitignore-honored, lazy-loaded, keyboard-navigable. Click-to-preview overlay above the terminal. `.prism/` always visible (audit reports + sidecars surface natively); a Show-hidden toggle reveals other dotfiles when needed.
 - Phases 2–4 in flight: tabbed CodeMirror editor with save-via-approval, inline squiggles fed by the same substrate, run/debug button row tied to the existing PTY blocks.
 
-**Workflow infrastructure:** filesystem-as-database (`./.prism/second-pass/audit-*.md` + JSON sidecar per run); skills loader (`~/.prism/skills/` global + `./.prism/skills/` per-project); approval flow on every write; runtime-probe URL auto-detection; LSP server auto-detection from project shape; ORM auto-detection for schema_inspect; **Grounded-Chat protocol layer** — auto-detects count / enumerate / repo-fact prompt shapes in regular chat turns and wraps them with a six-rule rigor scaffold (source → evidence → rule → working → confidence labels → no arithmetic reconciliation) before they reach the model.
+**Workflow infrastructure:** filesystem-as-database (`./.prism/second-pass/audit-*.md` + JSON sidecar per run); skills loader (`~/.prism/skills/` global + `./.prism/skills/` per-project); approval flow on every write; runtime-probe URL auto-detection; LSP server auto-detection from project shape; ORM auto-detection for schema_inspect; **Grounded-Chat protocol layer** — auto-detects count / enumerate / repo-fact prompt shapes in regular chat turns and injects a six-rule rigor scaffold (source → evidence → rule → working → confidence labels → no arithmetic reconciliation) as a per-turn system prefix on the wire, leaving stored history and saved chats clean; paired with a post-response rigor scanner that surfaces a visible warning whenever the model stamps `✓ Observed` or `Verified total:` on a turn that ran zero tool calls.
 
 **What's NOT built yet (deliberate):** in-editor inline squiggles (IDE phase 3), run/debug surface (IDE phase 4), telemetry / log probe (was queued as substrate v8 — now bumped to v9 since `run_shell` claimed v8), real multi-file refactor beyond rename, deploy/preview integration. System-prompt updates that teach `/new`, `/build`, and `/refactor` to use `run_shell` are queued as a separate review pass so the cell + plumbing PR stayed reviewable.
 
@@ -302,4 +306,4 @@ The project has moved well past the original Phase 4 plan. As of 2026-04-26, the
 
 ---
 
-*Document owner: Steven Morales. Last updated: 2026-04-26.*
+*Document owner: Steven Morales. Last updated: 2026-04-27.*
