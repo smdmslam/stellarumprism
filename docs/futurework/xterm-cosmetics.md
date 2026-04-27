@@ -141,3 +141,60 @@ All four need a DOM overlay sitting on top of xterm with click handlers. Faking 
 
 Do Tier A items 1, 2, 3 + Tier B item 5 (suppress shell-prompt leakage) in one sitting (~4 hours, all four independent, all four hit you on every turn). Then Markdown rendering (Tier B item 4) as a follow-up. Investigate Tier C (the git bug) opportunistically. Together, the four-item batch is the inflection point that makes Prism feel like a daily-driver instead of a demo.
 
+---
+
+## UI surfaces — toolbar + settings page (queued, post Phase 1)
+
+These aren't xterm cosmetics in the strict sense; they're the next layer of UI chrome ON TOP of the terminal stage. Tracked here because this file is the de-facto UI backlog and we want a single place to look. Should ship after the Phase 1 dogfooding window so we have signal on what's worth surfacing first.
+
+### Thin toolbar
+
+- [ ] **Slim chrome strip below the titlebar / tab strip**
+  - Single-row, low-visual-weight band hosting global affordances
+  - First inhabitants:
+    - Settings entry (gear glyph) — opens the settings pane
+    - Model picker (move it here from the input meta row, or mirror it; deciding is part of the design pass)
+    - Verifier on/off toggle (currently buried in slash commands)
+    - Optional: a global busy/cancel indicator that stays visible even when the input bar scrolls off-screen
+  - **Why:** centralizes "global state" controls so the input bar stops carrying turn-scoped + global concerns at once
+  - **Why now:** unblocks the settings page (which needs an entry point) and gives model curation a visible home
+
+### Settings page
+
+- [ ] **Pane or modal (shape TBD) replacing today's `config.toml`-only configuration**
+  - Currently every knob lives in `~/.config/prism/config.toml`. Fine for early users; a non-starter for shipping to anyone who hasn't read the README
+  - **Phase 1 surface area** (in priority order):
+    1. **Models — show/hide curation** (the driver, see next section)
+    2. API key entry + provider toggles (OpenRouter today; future: direct provider keys)
+    3. Default model
+    4. Verifier (enabled / model)
+    5. Approval defaults (per-tool: always-prompt vs session-allow)
+    6. Substrate command overrides (typecheck / run_tests / lsp / schema commands and timeouts)
+  - All of this already exists as config; the work is purely adding a UI that reads + writes the same TOML
+  - **Round-trip principle:** the settings UI MUST read and write `config.toml` directly, not a parallel store. Power users editing the file by hand and casual users clicking toggles must see the same source of truth, or we re-introduce the same divergence problem CRDTs were invented to solve
+
+### Models show/hide curation (the driving requirement)
+
+- [ ] **Per-model visibility flag, exposed in settings**
+  - **Strategic context:** every model in the registry gets tested against real workflows (Prism, Atlas, OnMind). Some give subpar performance — wrong tool-use patterns, hallucinated paths, format drift, runaway loops, silent empty responses. Shipping a smaller, curated, *known-good* set is strictly better than dumping every supported model into the picker and trusting the user to discover which ones work
+  - **Behavior:**
+    - Each `ModelEntry` in `src/models.ts` gains an `enabled: boolean` (default true)
+    - The auto-router (`src/router.ts`) only considers enabled models for its presets
+    - `/model <slug>` allows enabled-only by default; a `--include-disabled` escape hatch keeps power users unblocked
+    - The model picker UI hides disabled rows by default; a "Show all" expander reveals them with a dim caveat ("tested subpar — use at your own risk")
+  - **Storage:**
+    - Default visibility ships with the registry (`enabled: false` on the ones we've identified as subpar)
+    - User overrides live in `config.toml` under `[models.visibility]` so a user can re-enable a hidden model OR disable a default-enabled one
+    - Settings UI writes overrides; the registry default is never mutated at runtime
+  - **Why this matters as product:** quality floor is the wedge. "Everything works" beats "every option available" when the user is shipping real code. Curation is the operational expression of the same thesis as substrate-gated edits and Grounded-Chat rigor enforcement — we filter known failures before the user has to encounter them
+  - **Why this isn't censorship:** the escape hatch is one toggle away. We're not preventing access; we're picking sane defaults the way `git` picks `merge` over `rebase` for the first-time user
+
+### Sequencing
+
+1. Toolbar shell first (visual + entry-point only — no inhabitants beyond the gear glyph)
+2. Settings pane scaffolding (route from gear, render placeholder sections)
+3. Models show/hide (the actual payoff)
+4. Backfill the remaining settings sections opportunistically as each becomes painful to live without
+
+Doing them in this order means each step ships something visible AND each step works even if we stop after it.
+

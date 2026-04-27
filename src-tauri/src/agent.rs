@@ -1471,6 +1471,17 @@ pub async fn agent_query(
         let mut total_chars_all = 0usize;
         let mut final_assistant_text = String::new();
         let mut final_cancelled = false;
+        // True iff the Completed branch fired during the loop (regardless
+        // of whether the model actually produced content). Read AFTER the
+        // loop to distinguish two empty-response paths:
+        //   - Completed with empty text (handled inline below: emit warning,
+        //     append sentinel)
+        //   - Loop ran every round to ToolCalls and hit max_rounds without
+        //     ever producing a final response (handled post-loop: append
+        //     a synthetic assistant turn so history stays well-formed)
+        // Without this distinction we'd either double-record on the
+        // Completed-empty path or miss the cap-reached path.
+        let mut completed_branch_fired = false;
         // Track every tool call we executed so the reviewer can see them.
         let mut tool_summaries: Vec<(String, String, bool)> = Vec::new();
 
@@ -1507,8 +1518,34 @@ pub async fn agent_query(
                     assistant_text,
                 }) => {
                     total_chars_all += total_chars;
-                    // No tool calls emitted — this is the final response.
-                    session_for_task.append_assistant(assistant_text.clone());
+                    completed_branch_fired = true;
+                    // No tool calls emitted \u2014 this is the final response.
+                    if assistant_text.is_empty() {
+                        // Defensive: model returned zero content. Most
+                        // often a degeneracy case (all [PAD] tokens
+                        // stripped, upstream stall caught mid-stream,
+                        // context overflow on a bloated turn). Without
+                        // surfacing this, the user message ends up in
+                        // history with no assistant turn, saved chats
+                        // fail to round-trip, and the user sees absolutely
+                        // nothing in the terminal \u2014 the exact bug class
+                        // the rigor-enforcement sibling fix addresses for
+                        // *fabricated* claims. Make the failure VISIBLE.
+                        let warning = format!(
+                            "\r\n\x1b[1;33m[agent]\x1b[0m \x1b[2mempty response \u{2014} the model returned no content. Try /model to switch upstream, or re-run; the request likely stalled or degenerated.\x1b[0m\r\n",
+                        );
+                        let _ = app_handle.emit(&token_event, warning);
+                        // Record a sentinel in history so saved chats
+                        // round-trip cleanly. final_assistant_text
+                        // intentionally stays empty so the done payload
+                        // and reviewer pass reflect what the model
+                        // actually emitted (zero) rather than our
+                        // sentinel. Tools downstream see honest data;
+                        // history stays well-formed.
+                        session_for_task.append_assistant("[no response]".to_string());
+                    } else {
+                        session_for_task.append_assistant(assistant_text.clone());
+                    }
                     final_assistant_text = assistant_text;
                     break;
                 }
@@ -1713,9 +1750,11 @@ pub async fn agent_query(
             }
 
             if round + 1 == max_rounds {
-                // Cap reached — emit a gentle note into the stream so the
+                // Cap reached \u2014 emit a gentle note into the stream so the
                 // user sees we stopped iterating on purpose, with a hint
-                // toward the knob they can turn.
+                // toward the knob they can turn. The synthetic assistant
+                // message that records this in history is appended below,
+                // after the loop exits, so #/save round-trips cleanly.
                 let _ = app_handle.emit(
                     &token_event,
                     format!(
@@ -1724,6 +1763,30 @@ pub async fn agent_query(
                     ),
                 );
             }
+        }
+
+        // Post-loop integrity sweep. The Completed branch always records
+        // an assistant message (real content or sentinel). The Cancelled
+        // branch records whatever was streamed before the cancel. The
+        // ONLY way to exit the loop without recording an assistant turn
+        // is to hit max_rounds while every round returned ToolCalls. In
+        // that case the user message in history has no matching
+        // assistant message, /save would write a malformed v1 chat, and
+        // /load on the resulting file would seed a tab whose first
+        // round-trip back to the model trips OpenAI's \"unbalanced
+        // turn\" rejection.
+        //
+        // Append a synthetic assistant turn that mirrors the cap-reached
+        // token already streamed to the terminal. The user sees the
+        // same message twice (once live, once on /load replay) but
+        // history is well-formed and round-trippable.
+        if !final_cancelled && !completed_branch_fired {
+            let synthetic = format!(
+                "[tool loop limit reached after {} rounds \u{2014} raise `agent.max_tool_rounds` in config.toml or pass max_tool_rounds on this call]",
+                max_rounds,
+            );
+            session_for_task.append_assistant(synthetic.clone());
+            final_assistant_text = synthetic;
         }
 
         let payload = if final_cancelled {
