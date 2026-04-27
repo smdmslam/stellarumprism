@@ -6,6 +6,8 @@
 export interface AppSettings {
   /** Map of model slug -> enabled status */
   enabledModels: Record<string, boolean>;
+  /** Map of skill path -> enabled status */
+  enabledSkills: Record<string, boolean>;
   /** UI theme preference */
   theme: "dark" | "light" | "system";
   /** Sidebar default visibility for new tabs */
@@ -16,6 +18,7 @@ const STORAGE_KEY = "prism-settings-v1";
 
 const DEFAULT_SETTINGS: AppSettings = {
   enabledModels: {}, // empty means all are enabled by default (legacy behavior)
+  enabledSkills: {},
   theme: "dark",
   sidebarDefaultVisible: true,
 };
@@ -70,6 +73,26 @@ export class SettingsManager {
 
   toggleModel(slug: string): void {
     this.setModelEnabled(slug, !this.isModelEnabled(slug));
+  }
+
+  // -- Skill Library ---------------------------------------------------------
+
+  isSkillEnabled(path: string): boolean {
+    return !!this.current.enabledSkills[path];
+  }
+
+  setSkillEnabled(path: string, enabled: boolean): void {
+    this.current.enabledSkills[path] = enabled;
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  setFamilyEnabled(paths: string[], enabled: boolean): void {
+    for (const p of paths) {
+      this.current.enabledSkills[p] = enabled;
+    }
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
   }
 
   // -- General Get/Set -------------------------------------------------------

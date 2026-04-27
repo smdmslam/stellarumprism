@@ -7,6 +7,40 @@ import { MODEL_LIBRARY } from "./models";
 import { invoke } from "@tauri-apps/api/core";
 import { Workspace } from "./workspace";
 
+type SkillFileEntry = {
+  name: string;
+  path: string;
+};
+
+const SKILLS_SEARCH_DEBOUNCE_MS = 250;
+
+function filterSkillFamilies(
+  families: Record<string, SkillFileEntry[]>,
+  rawQuery: string,
+): Array<{ familyName: string; files: SkillFileEntry[] }> {
+  const query = rawQuery.trim().toLowerCase();
+  if (!query) {
+    return Object.entries(families).map(([familyName, files]) => ({ familyName, files }));
+  }
+
+  const isExactMode = query.length >= 2 && query.startsWith('"') && query.endsWith('"');
+  const normalizedQuery = isExactMode ? query.slice(1, -1).trim() : query;
+  const words = normalizedQuery.split(/\s+/).filter(Boolean);
+  const useAllWords = words.length > 1;
+
+  return Object.entries(families)
+    .map(([familyName, files]) => {
+      const filteredFiles = files.filter((file) => {
+        const haystack = `${file.name} ${familyName}`.toLowerCase();
+        if (isExactMode) return haystack.includes(normalizedQuery);
+        if (useAllWords) return words.every((word) => haystack.includes(word));
+        return normalizedQuery.length > 0 && haystack.includes(normalizedQuery);
+      });
+      return { familyName, files: filteredFiles };
+    })
+    .filter((group) => group.files.length > 0);
+}
+
 export class SettingsUI {
   private readonly overlay: HTMLElement;
   private readonly content: HTMLElement;
@@ -168,39 +202,158 @@ export class SettingsUI {
     });
   }
 
-  private renderSkills(): void {
+  private async renderSkills(): Promise<void> {
+    if (!this.activeWorkspace) {
+      this.content.innerHTML = `
+        <h2 class="settings-section-title">Prism Skills</h2>
+        <div class="empty-state">
+          <p>Open a tab first to browse conversation skills for its workspace.</p>
+        </div>
+      `;
+      return;
+    }
+
+    const cwd = this.activeWorkspace.getCwd();
+    if (!cwd) {
+      this.content.innerHTML = `
+        <h2 class="settings-section-title">Prism Skills</h2>
+        <div class="empty-state">
+          <p>Workspace unknown. Start a shell to browse skills.</p>
+        </div>
+      `;
+      return;
+    }
+
     this.content.innerHTML = `
-      <h2 class="settings-section-title">Prism Skills</h2>
-      <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 24px;">
-        Specialized agent protocols designed for high-rigor development tasks. These skills use the substrate for grounded correctness.
+      <div class="settings-header-row">
+        <h2 class="settings-section-title">Prism Skill Library</h2>
+        <button id="skills-refresh" class="settings-refresh-btn" title="Refresh library">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+        </button>
+      </div>
+      <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 20px;">
+        Skills are persistent behavioral guides loaded from <code>.prism/skills/</code>. Enabled skills are injected into the agent's context.
       </p>
-      <div class="skills-grid">
-        <div class="skill-card">
-          <div class="skill-icon analytic"></div>
-          <div class="skill-name">Analytic Audit</div>
-          <div class="skill-desc">Deep diagnostic grounding using compiler-first evidence to catch subtle regressions.</div>
-          <div class="skill-tag">mode: audit</div>
-        </div>
-        <div class="skill-card">
-          <div class="skill-icon precision"></div>
-          <div class="skill-name">Precision Refactor</div>
-          <div class="skill-desc">Safe project-wide renames verified by semantic AST analysis.</div>
-          <div class="skill-tag">mode: refactor</div>
-        </div>
-        <div class="skill-card">
-          <div class="skill-icon infra"></div>
-          <div class="skill-name">Infrastructure Scaffold</div>
-          <div class="skill-desc">Generate clean, runnable project skeletons from natural language descriptions.</div>
-          <div class="skill-tag">mode: new</div>
-        </div>
-        <div class="skill-card">
-          <div class="skill-icon test"></div>
-          <div class="skill-name">Automated Test Gen</div>
-          <div class="skill-desc">Create style-aware unit and integration tests for existing codebases.</div>
-          <div class="skill-tag">mode: test-gen</div>
-        </div>
+      
+      <div class="skills-search-container">
+        <input type="text" id="skills-search" placeholder="Search skills or families..." class="prism-search-input">
+      </div>
+
+      <div id="skills-list" class="skills-list">
+        <div class="loading-state">Scanning skill library...</div>
       </div>
     `;
+
+    const skillsListEl = document.getElementById("skills-list")!;
+    const searchInput = document.getElementById("skills-search") as HTMLInputElement;
+    const refreshBtn = document.getElementById("skills-refresh")!;
+
+    refreshBtn.addEventListener("click", () => this.renderSkills());
+
+    try {
+      const skillsPath = `${cwd}/.prism/skills`;
+      const result = await invoke<any>("list_dir_entries", { cwd: skillsPath, partial: "" });
+      const skillFiles = (result.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
+
+      if (skillFiles.length === 0) {
+        skillsListEl.innerHTML = `<div class="empty-state">No skills found in .prism/skills/</div>`;
+        return;
+      }
+
+      // Grouping logic
+      const families: Record<string, SkillFileEntry[]> = {};
+      for (const file of skillFiles) {
+        const parts = file.name.split("-");
+        let familyName = "Other";
+        if (parts.length > 1) {
+          familyName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+        }
+        if (!families[familyName]) families[familyName] = [];
+        // Construct full path for persistence
+        const fullPath = `${skillsPath}/${file.name}`;
+        families[familyName].push({ name: file.name, path: fullPath });
+      }
+
+      const renderList = (filter = "") => {
+        const filteredFamilies = filterSkillFamilies(families, filter);
+        let html = "";
+
+        for (const { familyName, files } of filteredFamilies) {
+          const allPaths = files.map(f => f.path);
+          const allEnabled = files.every(f => settings.isSkillEnabled(f.path));
+          
+          html += `
+            <div class="skill-family">
+              <div class="skill-family-header">
+                <span class="skill-family-name">${familyName}</span>
+                <div class="skill-family-actions">
+                  <span class="skill-count">${files.length} skills</span>
+                  <label class="prism-toggle mini">
+                    <input type="checkbox" class="family-toggle" data-paths='${JSON.stringify(allPaths)}' ${allEnabled ? "checked" : ""}>
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="skill-family-content">
+                ${files.map(f => `
+                  <div class="skill-item">
+                    <div class="skill-item-info">
+                      <div class="skill-item-name">${f.name}</div>
+                    </div>
+                    <label class="prism-toggle mini">
+                      <input type="checkbox" class="skill-toggle" data-path="${f.path}" ${settings.isSkillEnabled(f.path) ? "checked" : ""}>
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          `;
+        }
+
+        skillsListEl.innerHTML = html || `<div class="empty-state">No skills matching "${filter}"</div>`;
+
+        // Wire toggles
+        skillsListEl.querySelectorAll<HTMLInputElement>(".skill-toggle").forEach(input => {
+          input.addEventListener("change", () => {
+            settings.setSkillEnabled(input.dataset.path!, input.checked);
+          });
+        });
+
+        skillsListEl.querySelectorAll<HTMLInputElement>(".family-toggle").forEach(input => {
+          input.addEventListener("change", () => {
+            const paths = JSON.parse(input.dataset.paths!);
+            settings.setFamilyEnabled(paths, input.checked);
+            renderList(searchInput.value); // Refresh state
+          });
+        });
+      };
+
+      renderList();
+
+      let searchDebounce: number | null = null;
+      searchInput.addEventListener("input", (e) => {
+        const nextValue = (e.target as HTMLInputElement).value;
+        if (searchDebounce !== null) {
+          window.clearTimeout(searchDebounce);
+        }
+        searchDebounce = window.setTimeout(() => {
+          renderList(nextValue);
+        }, SKILLS_SEARCH_DEBOUNCE_MS);
+      });
+
+      searchInput.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        if (searchDebounce !== null) {
+          window.clearTimeout(searchDebounce);
+          searchDebounce = null;
+        }
+        renderList(searchInput.value);
+      });
+
+    } catch (err) {
+      skillsListEl.innerHTML = `<div class="error-state">Failed to access .prism/skills/ directory.</div>`;
+    }
   }
 
   private async renderHistory(): Promise<void> {
@@ -239,10 +392,10 @@ export class SettingsUI {
 
     try {
       // List entries in .prism/ directory
-      const path = `${cwd}/.prism`;
-      const entries = await invoke<any[]>("list_dir_entries", { path });
+      const prismPath = `${cwd}/.prism`;
+      const result = await invoke<any>("list_dir_entries", { cwd: prismPath, partial: "" });
       
-      const chats = entries.filter(e => e.kind === "file" && e.name.endsWith(".md"));
+      const chats = (result.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
       
       if (chats.length === 0) {
         historyEl.innerHTML = `<div class="empty-state">No saved chats found in .prism/</div>`;
@@ -252,15 +405,18 @@ export class SettingsUI {
       // Sort by name (which usually includes timestamp) descending
       chats.sort((a, b) => b.name.localeCompare(a.name));
 
-      historyEl.innerHTML = chats.map(c => `
-        <div class="history-item">
-          <div class="history-info">
-            <div class="history-name">${c.name}</div>
-            <div class="history-meta">${this.formatBytes(c.size)} \u00b7 ${c.path}</div>
+      historyEl.innerHTML = chats.map(c => {
+        const fullPath = `${prismPath}/${c.name}`;
+        return `
+          <div class="history-item">
+            <div class="history-info">
+              <div class="history-name">${c.name}</div>
+              <div class="history-meta">${fullPath}</div>
+            </div>
+            <button class="history-load-btn" data-path="${fullPath}">Load</button>
           </div>
-          <button class="history-load-btn" data-path="${c.path}">Load</button>
-        </div>
-      `).join("");
+        `;
+      }).join("");
 
       // Wire load buttons
       historyEl.querySelectorAll(".history-load-btn").forEach(btn => {
