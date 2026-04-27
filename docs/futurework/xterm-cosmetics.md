@@ -30,3 +30,71 @@ What we need:
 5. **Keyboard parity.** `Cmd+Opt+[` / `Cmd+Opt+]` nudge the focused divider in 16px steps so resize is reachable without a mouse.
 
 Implementation note: do this in vanilla JS pointer-event handlers on the dividers, not a library. We already have a workspace-scoped `ResizeObserver` driving `fitTerminalWithGutter()` — the new dividers just write `--sidebar-width` / `--preview-height` CSS custom properties on the workspace root, and the existing observer picks up the size change. Persistence piggybacks on the workspace-state plumbing landing in the "persisted workspace state" ticket, so no new IPC.
+
+---
+
+## Rounded code-block cards (deferred — needs HTML overlay)
+
+In modern AI-tool UIs (Cursor, Claude desktop, Antigravity), assistant
+prose has two stylistic moves we don't yet match in xterm:
+
+1. **Inline code** (file paths, identifiers, ` `foo.ts` `) is rendered in
+   a contrasting color, monospace inside otherwise-proportional prose.
+2. **Fenced code blocks** are wrapped in rounded containers with a soft
+   tinted background.
+
+**#1 — Inline code coloring** is feasible inside xterm via ANSI
+escape codes. Implemented in `agent.ts`'s `onToken` streaming layer
+with a small backtick state-machine (handles tokens that split across
+chunks, distinguishes single from triple backticks). Cyan-on-default
+gives the right visual weight without competing with the prose color.
+
+**#2 — Rounded containers** are NOT feasible in pure xterm. xterm
+renders character cells; it cannot draw rounded rectangles or
+background tints that span partial cells. Two paths exist:
+
+  - **ANSI-only fake**: emit Unicode box-drawing characters (`╭─╮│ │╰─╯`)
+    around fenced code. Looks decent in mono terminals but no real
+    rounded corners, no background tint, doesn't match modern UIs.
+
+  - **HTML overlay** (proper way): when a fenced code block streams in,
+    intercept the tokens, suppress them from xterm, and render a
+    `<div class="code-card">` overlay above the terminal with real CSS
+    `border-radius` + bg tint. This is what HTML-based AI tools
+    (Cursor, Claude desktop) do because they're not terminal-based.
+    For Prism it is a **bigger architectural shift** — code blocks
+    become DOM nodes outside xterm's text grid, which means:
+      - layout has to flow around them (the terminal grid stops
+        being the only renderer)
+      - selection, copy/paste, search inside the card need their own
+        DOM-level handlers
+      - vertical scroll has to be coordinated across xterm + cards
+
+**Recommended deferral**: pick this up alongside **Phase 2 of the IDE
+shell** (the tabbed CodeMirror editor pane). At that point the
+renderer for assistant prose moves from xterm to a CodeMirror-based
+component anyway, and rounded code-block cards come essentially free
+from the existing CodeMirror styling. Doing it earlier would mean
+building a one-off card renderer that we'd throw away at IDE Phase 2.
+
+Until then, Prism users see fenced code blocks as raw monospace text
+inside xterm, which is fine for terminal-native workflows but doesn't
+match the modern AI-tool feel for prose-heavy assistant responses.
+
+Short answer: after the test campaign + first beta cohort, before public launch.
+
+Why not now
+•  Daily-driver UX still has rough edges (chat readability, save/load, modal flow). Stabilize the terminal-native experience first.
+•  Phase 2 is ~3–6 weeks of work. Adds layout coordination (xterm + DOM editor), file open/save flow, dirty-buffer tracking, undo/redo, syntax highlighting, save-via-approval. None of that helps you finish the eval campaign.
+•  The wedge is verification, not editing. Every week you ship Phase 2 instead of audit polish is a week competitors aren't worried about you.
+
+Why not later than launch
+•  Once Prism brands as "the verification layer," users will ask "can I edit here?" within minutes of trying it. Without an editor pane the tool feels half-finished for a serious workflow.
+•  Code-block rendering polish (the deferred #2) compounds well with Phase 2; doing it before is wasted work.
+
+The trigger
+•  Test campaign across 4–6 LLMs is complete and you've shipped fixes from those findings.
+•  5+ external beta testers have used Prism daily for ≥1 week and the chat/audit/load surface is genuinely smooth.
+•  Then start Phase 2 — and ship code-block cards with it.
+
+Concretely: probably 2–4 weeks from now, not tonight, not next month.

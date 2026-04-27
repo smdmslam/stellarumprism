@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { BlockManager } from "./blocks";
 import { route as routeModel, parseAutoSlug, PRESETS } from "./router";
 import { modelSupportsToolUse } from "./models";
+import { InlineCodeFormatter } from "./inline-code-format";
 import type { RuntimeProbe, SubstrateRun } from "./findings";
 
 /**
@@ -225,6 +226,17 @@ export class AgentController {
    * exactly once per tool-loop \u2192 prose transition.
    */
   private expectingAnswerRule = false;
+  /**
+   * Streaming-safe inline-code colorizer. Each backtick-delimited span
+   * in assistant prose is wrapped in ANSI cyan as it streams in, so
+   * file paths and identifiers visually pop against the surrounding
+   * text. Triple-backtick fenced blocks pass through untouched (those
+   * are deferred to IDE Phase 2's HTML renderer; see
+   * `docs/futurework/xterm-cosmetics.md`). State is per-turn: reset on
+   * every new `query()`, flushed on every `onDone()` / `onError()` so
+   * an unbalanced inline span can't leak color into the next prompt.
+   */
+  private readonly inlineCodeFormatter = new InlineCodeFormatter();
 
   constructor(opts: AgentControllerOptions) {
     this.opts = opts;
@@ -422,6 +434,7 @@ export class AgentController {
     this.responseBuffer = "";
     this.currentRuntimeProbes = [];
     this.currentSubstrateRuns = [];
+    this.inlineCodeFormatter.reset();
     this.clearActionBar();
 
     // Enter busy state now. Anything that short-circuits below must call
@@ -593,9 +606,15 @@ export class AgentController {
         `\r\n\r\n\x1b[2m\u2500\u2500\u2500 answer \u2500\u2500\u2500\x1b[0m\r\n\r\n`,
       );
     }
+    // Inline-code colorization: wrap every backtick-delimited span in
+    // ANSI cyan as it streams in. The formatter is stateful across
+    // chunks so a backtick split between two tokens still detects
+    // single vs triple correctly. Trailing backticks are buffered
+    // until the next chunk's first non-backtick char.
+    const colored = this.inlineCodeFormatter.process(piece);
     // xterm expects CRLF for newlines. Bare \n moves the cursor down without
     // returning to column 0, so lines stair-step. Normalize on write.
-    const normalized = piece.replace(/\r?\n/g, "\r\n");
+    const normalized = colored.replace(/\r?\n/g, "\r\n");
     this.opts.term.write(normalized);
   }
 
@@ -741,6 +760,13 @@ export class AgentController {
   }
 
   private onDone(): void {
+    // Flush any inline-code backticks held back at end-of-stream and
+    // close any unbalanced cyan span so it can't bleed into the next
+    // prompt's `you \u203a` line.
+    const tail = this.inlineCodeFormatter.flush();
+    if (tail.length > 0) {
+      this.opts.term.write(tail.replace(/\r?\n/g, "\r\n"));
+    }
     this.opts.term.write("\r\n");
     this.inflightId = null;
     this.setBusy(false);
@@ -793,6 +819,13 @@ export class AgentController {
   }
 
   private onError(msg: string): void {
+    // Flush colorizer first so any open inline-code ANSI is reset
+    // before the [agent error] line is written; otherwise the error
+    // text could pick up the cyan from a half-closed span.
+    const tail = this.inlineCodeFormatter.flush();
+    if (tail.length > 0) {
+      this.opts.term.write(tail.replace(/\r?\n/g, "\r\n"));
+    }
     this.writeLineToTerm(`${PREFIX_OPEN}[agent error]${RESET} ${msg}`);
     this.inflightId = null;
     this.setBusy(false);
