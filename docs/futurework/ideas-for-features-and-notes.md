@@ -1,5 +1,12 @@
 ## featrures ideas and notes
 
+- click cmd and model name to call toggle and call up options.. for models...
+
+- MAKE DIAGNOSTIC REVIEW TYPE foreslach functions
+
+- BUG foreslash from file edit viewer passes to prompt line fix.
+
+
 - bring the prism colored horizontal divider above the tabs
 - create an obvious task list. with check marks when completed. ?
 --- 
@@ -22,6 +29,17 @@ You asked for a new Python program, not for details from an existing repository 
 
 see image
 
+- fix this
+
 ---
 give a bit more contrast to the bg for the code rounded boxes...
 
+--- add a "is this a new convesation? start a new chat
+
+--- HIGHLIGHT is too lite
+
+--- recent paths ...? in prompt area?
+
+-- right click add file or folder to the file explorer?
+
+--- the path in the file viewer needs a copy to clipboard method. 
