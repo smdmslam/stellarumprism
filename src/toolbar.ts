@@ -22,6 +22,7 @@ export class ToolbarManager {
 
     const sidebarBtn = document.getElementById("lb-sidebar");
     const consoleBtn = document.getElementById("lb-console");
+    const agentBtn = document.getElementById("lb-agent");
     const problemsBtn = document.getElementById("lb-problems");
 
     searchBtn?.addEventListener("click", () => {
@@ -50,6 +51,14 @@ export class ToolbarManager {
       }
     });
 
+    agentBtn?.addEventListener("click", () => {
+      const activeWs = this.tabs.getActiveWorkspace();
+      if (activeWs) {
+        activeWs.toggleAgent();
+        this.updateLayoutButtons();
+      }
+    });
+
     problemsBtn?.addEventListener("click", () => {
       const activeWs = this.tabs.getActiveWorkspace();
       if (activeWs) {
@@ -71,10 +80,12 @@ export class ToolbarManager {
     
     const sidebarBtn = document.getElementById("lb-sidebar");
     const consoleBtn = document.getElementById("lb-console");
+    const agentBtn = document.getElementById("lb-agent");
     const problemsBtn = document.getElementById("lb-problems");
 
     sidebarBtn?.classList.toggle("active", state.sidebar);
     consoleBtn?.classList.toggle("active", state.console);
+    agentBtn?.classList.toggle("active", state.agent);
     problemsBtn?.classList.toggle("active", state.problems);
   }
 }

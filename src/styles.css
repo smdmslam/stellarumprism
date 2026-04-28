@@ -984,6 +984,11 @@ input:checked + .toggle-slider:before {
   overflow: hidden;
 }
 
+.workspace.agent-hidden .agent-pane,
+.workspace.agent-hidden .layout-divider-pane {
+  display: none !important;
+}
+
 /* ---------- agent prose panel ----------
  *
  * DOM-based rendering surface for agent dialogue. Wraps via standard
@@ -1263,7 +1268,7 @@ input:checked + .toggle-slider:before {
    * agent surface migration \u2014 sized for occasional `pnpm tauri dev`,
    * `git status`, etc., not as the dominant surface. The user can
    * grow it via the `.layout-divider-preview` handle above. */
-  flex: 0 0 220px;
+  flex: 1 1 auto;
   min-height: 80px;
   background-color: #0d0f14;
   border-top: 1px solid #1f2937;
@@ -2617,7 +2622,7 @@ input:checked + .toggle-slider:before {
  * full editor (`.file-preview-header` + `.file-preview-body` populated
  * by `openFileInEditor`) when a file is loaded. */
 .file-preview {
-  flex: 1 1 auto;
+  flex: 0 0 var(--preview-height);
   min-height: 80px;
   display: flex;
   flex-direction: column;

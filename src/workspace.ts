@@ -255,6 +255,7 @@ export class Workspace {
   private showHiddenFiles = false;
   private sidebarVisible = true;
   private consoleVisible = true;
+  private agentVisible = true;
   private readonly cb: WorkspaceCallbacks;
 
   private term!: Terminal;
@@ -392,11 +393,12 @@ export class Workspace {
     this.input.focus();
   }
 
-  public getLayoutState(): { sidebar: boolean; console: boolean; problems: boolean } {
+  public getLayoutState(): { sidebar: boolean; console: boolean; problems: boolean; agent: boolean } {
     return {
       sidebar: this.sidebarVisible,
       console: this.consoleVisible,
       problems: this.problemsVisible,
+      agent: this.agentVisible,
     };
   }
 
@@ -409,6 +411,12 @@ export class Workspace {
   public toggleConsole(): void {
     this.consoleVisible = !this.consoleVisible;
     this.root.classList.toggle("console-hidden", !this.consoleVisible);
+    this.fitTerminal();
+  }
+
+  public toggleAgent(): void {
+    this.agentVisible = !this.agentVisible;
+    this.root.classList.toggle("agent-hidden", !this.agentVisible);
     this.fitTerminal();
   }
 
@@ -3245,7 +3253,7 @@ interface LayoutPrefs {
 const DEFAULT_LAYOUT: LayoutPrefs = {
   sidebar_width: 240,
   problems_width: 360,
-  preview_height: 360,
+  preview_height: 340,
   // The agent dialogue is the primary surface; the file viewer / xterm
   // strip in the center pane reads more like a workshop drawer that
   // opens when you need it. Default the agent pane to something
