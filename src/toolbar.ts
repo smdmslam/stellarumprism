@@ -21,6 +21,7 @@ export class ToolbarManager {
     const settingsBtn = document.getElementById("tb-settings");
 
     const sidebarBtn = document.getElementById("lb-sidebar");
+    const terminalBtn = document.getElementById("lb-terminal");
     const consoleBtn = document.getElementById("lb-console");
     const agentBtn = document.getElementById("lb-agent");
     const problemsBtn = document.getElementById("lb-problems");
@@ -39,6 +40,14 @@ export class ToolbarManager {
       const activeWs = this.tabs.getActiveWorkspace();
       if (activeWs) {
         activeWs.toggleSidebar();
+        this.updateLayoutButtons();
+      }
+    });
+
+    terminalBtn?.addEventListener("click", () => {
+      const activeWs = this.tabs.getActiveWorkspace();
+      if (activeWs) {
+        activeWs.toggleTerminal();
         this.updateLayoutButtons();
       }
     });
@@ -79,11 +88,13 @@ export class ToolbarManager {
     const state = activeWs.getLayoutState();
     
     const sidebarBtn = document.getElementById("lb-sidebar");
+    const terminalBtn = document.getElementById("lb-terminal");
     const consoleBtn = document.getElementById("lb-console");
     const agentBtn = document.getElementById("lb-agent");
     const problemsBtn = document.getElementById("lb-problems");
 
     sidebarBtn?.classList.toggle("active", state.sidebar);
+    terminalBtn?.classList.toggle("active", state.terminal);
     consoleBtn?.classList.toggle("active", state.console);
     agentBtn?.classList.toggle("active", state.agent);
     problemsBtn?.classList.toggle("active", state.problems);

@@ -389,6 +389,11 @@ body {
   display: none !important;
 }
 
+.workspace.terminal-hidden .terminal-host,
+.workspace.terminal-hidden .layout-divider-preview {
+  display: none !important;
+}
+
 .workspace.console-hidden .input-bar,
 .workspace.console-hidden .content::after {
   /* .content::after is the divider above input-bar if any */
