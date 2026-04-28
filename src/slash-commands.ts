@@ -4,6 +4,7 @@
 
 import { MODEL_LIBRARY } from "./models";
 import { MODES } from "./modes";
+import { RECIPES } from "./recipes";
 import { settings } from "./settings";
 
 export interface SlashCommand {
@@ -139,6 +140,26 @@ export function renderHelpAnsi(): string {
   out.push(`  ${DIM}\u2022 Trailing ${CYAN}?${RESET}${DIM} on a sentence also triggers agent mode${RESET}\r\n`);
   out.push(`  ${DIM}\u2022 Ctrl+K toggles sticky agent mode for the whole tab${RESET}\r\n`);
   return out.join("");
+}
+
+/**
+ * Recipe ids surfaced when the user types `/protocol <space>`. Each
+ * entry's label is the recipe id (typed verbatim by the user); the
+ * detail line shows the human label + category, and `info` carries
+ * the blurb so the second-line description renders Discord-style.
+ * Mirrors `modelCompletions()` so the editor can use the same source
+ * pattern for both.
+ */
+export function recipeCompletions(): {
+  label: string;
+  detail: string;
+  info: string;
+}[] {
+  return RECIPES.map((r) => ({
+    label: r.id,
+    detail: `${r.label} \u00b7 ${r.category}`,
+    info: r.blurb,
+  }));
 }
 
 /** Aliases for /model, flattened into the list shown when user types `/model `. */

@@ -22,7 +22,11 @@ import {
   type CompletionResult,
 } from "@codemirror/autocomplete";
 import { detectIntent, type Intent, type IntentResult } from "./intent";
-import { SLASH_COMMANDS, modelCompletions } from "./slash-commands";
+import {
+  SLASH_COMMANDS,
+  modelCompletions,
+  recipeCompletions,
+} from "./slash-commands";
 import { invoke } from "@tauri-apps/api/core";
 
 // Lookup: completion label -> long description. Populated at module load from
@@ -34,6 +38,9 @@ for (const c of SLASH_COMMANDS) {
 }
 for (const m of modelCompletions()) {
   DESC_BY_LABEL.set(m.label, m.info);
+}
+for (const r of recipeCompletions()) {
+  DESC_BY_LABEL.set(r.label, r.info);
 }
 
 export interface PrismInputOptions {
@@ -433,6 +440,23 @@ function slashCompletions(
         label: m.label,
         detail: m.detail,
         type: "variable",
+      })),
+    };
+  }
+
+  // Sub-completer: after `/protocol <space>`, suggest recipe ids. Same
+  // pattern as the model sub-completer above so the popup feels
+  // consistent across slash commands that take a known-set argument.
+  const protocolMatch = /^\s*\/protocol\s+(\S*)$/.exec(before);
+  if (protocolMatch) {
+    const from = context.pos - protocolMatch[1].length;
+    return {
+      from,
+      filter: true,
+      options: recipeCompletions().map((r) => ({
+        label: r.label,
+        detail: r.detail,
+        type: "keyword",
       })),
     };
   }

@@ -64,7 +64,24 @@ pub fn run_pnpm_script(
     if cwd.trim().is_empty() || !cwd_path.is_dir() {
         return Err(format!("cwd {:?} is not a directory", cwd));
     }
-    let argv = vec!["pnpm".to_string(), trimmed.to_string()];
+    // Spawning a Tauri app from Finder / Launchpad on macOS gets a
+    // bare PATH (no Homebrew, no nvm, no pnpm). Going through a login
+    // shell sources the user's profile and produces the PATH the user
+    // sees in their terminal, so `pnpm` resolves the same way it does
+    // there. The `script_name` is validated above (no whitespace, no
+    // leading dash), so embedding it in the shell `-c` string is safe;
+    // there's no metacharacter that could escape.
+    //
+    // On Windows we fall back to direct spawn \u2014 GUI apps there
+    // typically inherit the registry PATH including npm shims.
+    #[cfg(unix)]
+    let argv: Vec<String> = vec![
+        "/bin/sh".to_string(),
+        "-lc".to_string(),
+        format!("pnpm {}", trimmed),
+    ];
+    #[cfg(not(unix))]
+    let argv: Vec<String> = vec!["pnpm".to_string(), trimmed.to_string()];
     let timeout = Duration::from_secs(timeout_secs.unwrap_or(300));
     let started = std::time::Instant::now();
     let (output, timed_out) = run_with_timeout_public(&argv, &cwd_path, timeout)?;
