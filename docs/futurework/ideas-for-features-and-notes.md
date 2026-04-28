@@ -1,5 +1,12 @@
 ## featrures ideas and notes
 
+- expand to full screen within the app button.
+- html or markdown viewer. 
+
+- default terminal font 11. 
+
+i asked the agent to delete a file and there was no approval box. 
+
 - click cmd and model name to call toggle and call up options.. for models...
 
 - MAKE DIAGNOSTIC REVIEW TYPE foreslach functions
