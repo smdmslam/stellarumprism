@@ -122,6 +122,26 @@ export const MODES: Mode[] = [
     preferredModel: "anthropic/claude-haiku-4.5",
   },
   {
+    name: "review",
+    aliases: ["/review"],
+    description: "Cohesion review of recent commits (read-only)",
+    info:
+      "Read-only cohesion review focused on three bug classes that " +
+      "grep-only audits routinely miss: (1) refactor cohesion \u2014 when a " +
+      "recent commit deprecates an OLD pattern, flag remaining " +
+      "occurrences across the whole repo; (2) helper-body inspection \u2014 " +
+      "open the body of every helper called by recent code and flag " +
+      "stubs / no-ops; (3) frontend\u2194backend schema round-trip \u2014 " +
+      "verify persisted frontend fields have a matching server / Rust " +
+      "struct field. Outputs a structured FINDINGS list (same format " +
+      "as /audit) \u2014 no edits. Scope: '/review' alone reviews the last " +
+      "20 commits. Pass a number ('/review 30') to review the last N, a " +
+      "ref ('/review HEAD~3'), a range ('/review HEAD~5..HEAD'), or a " +
+      "path ('/review @src/pages'). Pass --max-rounds=N for big reviews. " +
+      "Uses grok-4-fast (2M context) by default.",
+    preferredModel: "x-ai/grok-4-fast",
+  },
+  {
     name: "audit",
     aliases: ["/audit", "/second-pass"],
     description: "Verify code via the diagnostic substrate (read-only)",

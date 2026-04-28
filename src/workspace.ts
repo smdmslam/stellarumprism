@@ -948,6 +948,39 @@ export class Workspace {
       return;
     }
 
+    // /review [scope] [--max-rounds=N] — Cohesion Review mode. Scope
+    // (optional) accepts the same shapes as /audit plus a bare integer
+    // 'last N commits' form; default scope is the last 20 commits.
+    const reviewMatch = /^\s*\/review(?:\s+(.*))?$/i.exec(text);
+    if (reviewMatch) {
+      const rawArgs = (reviewMatch[1] ?? "").trim();
+      const mode = findMode("/review");
+      if (!mode) {
+        this.term.write(
+          `\r\n\x1b[1;31m[review]\x1b[0m mode registry misconfigured\r\n`,
+        );
+        return;
+      }
+      const { scope, maxToolRounds, error } = parseReviewArgs(rawArgs);
+      if (error) {
+        this.term.write(
+          `\r\n\x1b[1;31m[review]\x1b[0m ${sanitize(error)}\r\n`,
+        );
+        return;
+      }
+      const reviewPrompt = buildReviewPrompt(scope);
+      this.setTitleFromText(`review ${scope || "(last 20 commits)"}`);
+      this.term.write(
+        `\r\n\x1b[2m[review] cohesion review of \x1b[36m${sanitize(scope || "last 20 commits")}\x1b[0m\r\n`,
+      );
+      void this.dispatchAgentQuery(reviewPrompt, {
+        mode: mode.name,
+        modelOverride: mode.preferredModel,
+        maxToolRounds,
+      });
+      return;
+    }
+
     // /audit [scope] [--max-rounds=N] — Second Pass mode. Scope (optional)
     // is appended to the user message as context the auditor can use to
     // narrow focus, e.g. '/audit HEAD~3' → 'Audit the diff HEAD~3..HEAD.'
@@ -3593,6 +3626,53 @@ function cryptoRandomId(): string {
   } catch {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   }
+}
+
+/**
+ * Turn an optional scope string (from `/review <scope>`) into a user-role
+ * prompt the Cohesion Review system prompt can work with. Scope can be:
+ *   - empty         → review the last 20 commits
+ *   - a positive integer → review the last N commits
+ *   - a single ref  → review that commit against its parent (e.g. HEAD~3)
+ *   - a range       → review the explicit range (e.g. HEAD~3..HEAD)
+ *   - a @-path      → review scoped to a particular file or directory
+ * Mirrors `buildAuditPrompt` deliberately — the two modes share an output
+ * contract so a future report-parser can route both through one path.
+ */
+function buildReviewPrompt(scope: string): string {
+  const checks =
+    "Apply the three cohesion checks (refactor cohesion, helper-body " +
+    "inspection, frontend\u2194backend schema round-trip) and output only " +
+    "the FINDINGS list.";
+  if (!scope) {
+    return `Review the last 20 commits for cohesion. Use git_log + git_diff + grep + read_file to investigate. ${checks}`;
+  }
+  if (scope.startsWith("@")) {
+    return `Review ${scope} for cohesion. Use grep + read_file to investigate. ${checks}`;
+  }
+  if (scope.includes("..")) {
+    return `Review the git range ${scope} for cohesion. Use git_diff + grep + read_file to investigate. ${checks}`;
+  }
+  // Bare integer: "last N commits".
+  const n = Number(scope);
+  if (Number.isFinite(n) && Number.isInteger(n) && n >= 1) {
+    return `Review the last ${n} commits for cohesion. Use git_log + git_diff + grep + read_file to investigate. ${checks}`;
+  }
+  // Single ref — treat as "this commit vs its parent."
+  return `Review commit ${scope} (diff against ${scope}~1) for cohesion. Use git_diff + grep + read_file to investigate. ${checks}`;
+}
+
+/**
+ * Parse the argument tail of `/review ...`. Same shape as `parseAuditArgs`:
+ * an optional `--max-rounds=N` (or `--max-rounds N`) flag, plus everything
+ * else treated as the review scope.
+ */
+function parseReviewArgs(raw: string): {
+  scope: string;
+  maxToolRounds?: number;
+  error?: string;
+} {
+  return parseAuditArgs(raw);
 }
 
 /**

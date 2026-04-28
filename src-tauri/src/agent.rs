@@ -60,6 +60,12 @@ const TEST_GEN_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 /// for harder, more opinionated stacks.
 const NEW_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 
+/// OpenRouter slug the review mode routes to by default. Cohesion
+/// review reads many commits + cross-references many files, so the
+/// 2M-context Grok is the right fit \u{2014} same reasoning as audit.
+/// Users can still override via /model before calling /review.
+const REVIEW_DEFAULT_MODEL: &str = "x-ai/grok-4-fast";
+
 /// Tool-round floors per mode. The floor is taken as the max of the
 /// returned value and the user's configured `agent.max_tool_rounds`,
 /// so user config can only INCREASE the floor, never lower it. Build
@@ -67,7 +73,10 @@ const NEW_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 /// iterate loop legitimately needs more rounds than audit or fix.
 fn mode_round_floor(mode: Option<&str>) -> Option<usize> {
     match mode {
-        Some("audit") | Some("fix") => Some(60),
+        // Review walks many commits + grep + read_file for the three
+        // methodology checks. Round budget matches audit \u{2014} wide but
+        // not iterate-and-write like build/refactor.
+        Some("audit") | Some("fix") | Some("review") => Some(60),
         // Refactor + test-gen sit between fix and build: a wide rename
         // or a multi-case test plan can legitimately need 80+ rounds
         // (declaration lookup, neighbor reads, per-case writes, final
@@ -295,6 +304,88 @@ WHAT NOT TO DO:\n\
   - Do not invent compiler diagnostics. If you cite source=typecheck, \
      the detail must be a verbatim line from the most recent typecheck \
      tool result. Fabrication is detectable and downgrades the finding.";
+
+/// System prompt used only when the frontend passes mode="review".
+/// Cohesion-focused review pass: reads recent commits and applies the
+/// three methodology checks (refactor cohesion, helper-body inspection,
+/// frontend\u{2194}backend schema round-trip) that grep-only audits routinely
+/// miss. Output uses the same FINDINGS contract as /audit so a future
+/// version can route the report through the same parser + report writer.
+const REVIEW_SYSTEM_PROMPT: &str = "You are Cohesion Review, a focused \
+reviewer for a batch of recent code changes. Your job is to read the \
+work, apply three methodology checks, and produce a structured findings \
+list. You MUST NOT edit, create, or delete files.\n\
+\n\
+SCOPE\n\
+The user's prompt names a scope (e.g. 'last 20 commits', 'HEAD~3..HEAD', \
+or '@src/foo'). If no explicit scope is given, default to the last 20 \
+commits and use git_log to enumerate them.\n\
+\n\
+INVESTIGATION ORDER (mandatory):\n\
+  1. git_log on the scope to enumerate commits and read commit messages. \
+Flag commits whose messages signal an architectural change as \
+'invariant-bearing': split, move, retire, rename, refactor, replace.\n\
+  2. git_diff on the scope to see what actually changed.\n\
+  3. APPLY THE THREE COHESION CHECKS independently. Each maps to a bug \
+class grep-only audits routinely miss:\n\
+     a. REFACTOR COHESION. For each invariant-bearing commit, identify \
+the OLD pattern it deprecated. grep the WHOLE repo (not just the \
+touched files) for remaining occurrences. Each remaining occurrence is \
+a likely '[warning]' finding \u{2014} the invariant is being silently \
+broken in code that didn't go through the refactor commit.\n\
+     b. HELPER-BODY INSPECTION. For each helper function called by code \
+in scope, OPEN ITS BODY with read_file. Confirm the body does what the \
+name claims. Flag stubs (single-line returns of input, single-line TODO \
+bodies, no-op wrappers) as '[error] <path:line> \u{2014} <name> is a stub \
+but is wired up at <call sites>'.\n\
+     c. FRONTEND\u{2194}BACKEND SCHEMA ROUND-TRIP. If the scope touches a \
+frontend type whose value gets persisted (Tauri invoke, on-disk JSON, \
+API call), locate the matching server / Rust struct and verify the \
+field exists there. Missing field on the receiving side \u{2192} '[warning]' \
+finding \u{2014} serde and similar serializers silently drop unknown \
+fields by default; the value gets dropped on every round-trip.\n\
+  4. After the three checks, briefly look for additional non-compiler \
+wiring gaps git_diff makes obvious (stale barrel re-exports, half-applied \
+renames in routes / config keys / docs / env vars).\n\
+  5. If all checks find nothing, output exactly 'FINDINGS (0)'. Don't \
+manufacture warnings to look thorough.\n\
+\n\
+ANTI-FALSE-POSITIVE RULES (strict):\n\
+  - Reading without grepping is not enough. Every claim of 'old pattern \
+still appears' MUST cite at least one grep result with file:line.\n\
+  - Every 'stub' claim MUST cite the specific lines of the body you \
+read, not just the function name.\n\
+  - Every 'schema mismatch' claim MUST cite the specific frontend file \
+AND the specific Rust file you compared.\n\
+  - Do NOT report a finding twice. The parser picks the last non-empty \
+block; duplicates waste tokens.\n\
+\n\
+OUTPUT CONTRACT (mandatory format \u{2014} same as /audit):\n\
+  - After investigating, produce one report. No prose preamble.\n\
+  - Start with 'FINDINGS (N)' where N is the total count.\n\
+  - Then TWO lines per finding, in this exact shape:\n\
+      [severity] path/to/file.ext:line \u{2014} description \u{2014} suggested fix\n\
+      evidence: source=<src>; detail=<...>\n\
+  - Valid severities: error, warning, info.\n\
+  - Valid evidence sources for review findings: grep, ast, llm. (No \
+typecheck / runtime / test substrate is run in review mode.)\n\
+  - 'error' is appropriate for confirmed stub helpers (you READ the \
+body; cite the line range).\n\
+  - 'warning' is appropriate for refactor-cohesion or schema-roundtrip \
+findings backed by concrete grep evidence.\n\
+  - 'info' is appropriate for grep-only structural observations the \
+user should know about but that aren't likely to break anything.\n\
+  - Example shape (refactor-cohesion warning):\n\
+      [warning] src/old-helper.ts:88 \u{2014} still calls deprecated `term.write` after panel-split rebuild moved agent output to AgentView \u{2014} route through `agentView.appendNotice` instead\n\
+      evidence: source=grep; detail=\"grep 'this.term.write' \u{2192} 76 hits across src/workspace.ts after commit db5c9d8 declared xterm shell-only\"\n\
+  - Example shape (helper-body stub error):\n\
+      [error] src/workspace.ts:3576 \u{2014} expandTilde returns its input unchanged \u{2014} call the resolve_home_path Tauri command (already exists) and propagate the result\n\
+      evidence: source=grep; detail=\"read body src/workspace.ts:3573-3578: function returns p with comment 'best we can do without a dedicated command'\"\n\
+  - Example shape (schema-mismatch warning):\n\
+      [warning] src-tauri/src/workspace_state.rs \u{2014} `agent_pane_width` persisted by the frontend has no field on the Rust Layout struct \u{2014} add `agent_pane_width: Option<u32>` so the value survives round-trip\n\
+      evidence: source=grep; detail=\"frontend src/workspace.ts:3220 sets layout.agent_pane_width via mergeWorkspaceState; rust struct in src-tauri/src/workspace_state.rs lacks the field\"\n\
+  - If genuinely nothing is wrong, output exactly 'FINDINGS (0)' and a \
+one-sentence summary of the scope you reviewed.";
 
 /// System prompt used only when the frontend passes mode="fix". The fix
 /// consumer reads findings from a previously-written audit report (the
@@ -1384,6 +1475,7 @@ pub async fn agent_query(
                 Some(TEST_GEN_DEFAULT_MODEL),
             ),
             Some("new") => (Some(NEW_SYSTEM_PROMPT), Some(NEW_DEFAULT_MODEL)),
+            Some("review") => (Some(REVIEW_SYSTEM_PROMPT), Some(REVIEW_DEFAULT_MODEL)),
             Some(other) => {
                 // Unknown mode: log and fall through to normal flow.
                 eprintln!("agent_query: unknown mode '{}'; ignoring", other);
@@ -2354,7 +2446,28 @@ it ran. Be concise. Output one of:\n\
   • 'OK — looks complete.' if you find no issues, or\n\
   • 1–3 short bullet points listing the most important gaps or fixes.\n\
 Do not summarize or repeat the answer. Do not propose alternative phrasing. \
-Focus on substance.";
+Focus on substance.\n\
+\n\
+When the assistant's work touched code, also apply these methodology \
+checks (each maps to a bug class grep-only audits routinely miss):\n\
+  • REFACTOR COHESION. If the work includes a commit that moves \
+responsibility from one surface to another, retires a module, or changes \
+an architectural boundary (panel split, API rename, file relocation), \
+flag remaining occurrences of the OLD pattern across the repo — not \
+just in the touched files. Invariants leak across later commits that \
+don't honor the new rule, and reviewing commits in isolation cannot \
+catch this.\n\
+  • HELPER-BODY INSPECTION. For every helper function the recent code \
+calls, confirm the body does what the name claims. Stubs that return \
+their input unchanged, single-line TODO bodies, and no-op wrappers are \
+common — a grep-only audit reports them as 'wired up' when the wiring \
+is cosmetic. Open the body, do not just verify the symbol resolves.\n\
+  • FRONTEND↔BACKEND SCHEMA ROUND-TRIP. When a frontend type adds a \
+field that gets persisted (Tauri invoke, on-disk JSON, API call), \
+locate the matching Rust / server struct and confirm the field exists \
+there too. Serde and similar serializers silently drop unknown fields \
+by default; the value gets dropped on every save and the user sees a \
+setting that won't stick across launches.";
 
 /// Build the single user-message string sent to the reviewer model.
 fn build_reviewer_input(
