@@ -131,12 +131,21 @@ export async function runRecipe(
       ctx.notifyError(
         `[protocol] step ${i + 1} failed${errSuffix} \u2014 ${onFailure === "abort" ? "aborting" : "continuing"}`,
       );
-      // Surface a short tail of stderr too when the shell step produced
-      // any \u2014 'failed to spawn pnpm: No such file or directory' is
-      // exactly the kind of one-liner that solves the problem on sight.
-      if (result.errorOutput && result.errorOutput.trim().length > 0) {
-        const tail = lastLines(result.errorOutput, 6);
-        ctx.notify(`[protocol] stderr (last 6 lines):\n${tail}`);
+      // Surface a short tail of stderr (or stdout if stderr is empty)
+      // so spawn-time AND program-level errors are visible inline. pnpm,
+      // for example, prints `ERR_PNPM_NO_SCRIPT  Missing script: "X"`
+      // to stdout for missing scripts \u2014 stderr-only would miss that.
+      const errText = (result.errorOutput || "").trim();
+      const outText = (result.output || "").trim();
+      const tailSource =
+        errText.length > 0
+          ? { label: "stderr", text: result.errorOutput }
+          : outText.length > 0
+            ? { label: "stdout", text: result.output }
+            : null;
+      if (tailSource) {
+        const tail = lastLines(tailSource.text, 6);
+        ctx.notify(`[protocol] ${tailSource.label} (last 6 lines):\n${tail}`);
       }
       if (onFailure === "abort") aborted = true;
     } else {
@@ -261,6 +270,10 @@ async function runShellStep(
     };
   }
   const ok = !result.timed_out && (result.exit_code ?? -1) === 0;
+  // Only set `error` for substrate-level problems (timeouts) so the
+  // runner notice doesn't end up with both an `exit N` from `error`
+  // AND from the exitCode field. A plain non-zero exit is conveyed
+  // through `exitCode` alone; the failure line composes both.
   return {
     state: ok ? "ok" : "failed",
     durationMs: result.duration_ms,
@@ -269,10 +282,8 @@ async function runShellStep(
     exitCode: result.exit_code,
     timedOut: result.timed_out,
     error: result.timed_out
-      ? `timed out after ${(def.timeoutSecs ?? 300)}s`
-      : ok
-        ? undefined
-        : `exit ${result.exit_code ?? "?"}`,
+      ? `timed out after ${def.timeoutSecs ?? 300}s`
+      : undefined,
   };
 }
 
