@@ -143,6 +143,7 @@ export class SettingsUI {
     this.content.innerHTML = `
       <h2 class="settings-section-title">General Settings</h2>
       
+      <!-- 
       <div class="settings-group">
         <label class="settings-group-title">Appearance & Theme</label>
         <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
@@ -155,6 +156,7 @@ export class SettingsUI {
           <button class="theme-btn ${currentTheme === "system" ? "active" : ""}" data-theme="system">System</button>
         </div>
       </div>
+      -->
 
       <div class="settings-group">
         <label class="settings-group-title">Editor Configuration</label>
