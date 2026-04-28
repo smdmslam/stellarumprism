@@ -89,6 +89,7 @@ body {
   align-items: stretch;
   height: 36px;
   width: 100%;
+  position: relative;
 }
 
 .titlebar-bottom {
@@ -102,12 +103,12 @@ body {
  * visible spectrum). First thing anyone sees in a screenshot or App
  * Switcher thumbnail. Sits on top of the titlebar's 1px border so it
  * reads as a deliberate accent rather than a misaligned divider. */
-.titlebar::after {
+.titlebar-top::after {
   content: "";
   position: absolute;
   left: 0;
   right: 0;
-  bottom: -1px;
+  bottom: 0px;
   height: 2px;
   background: linear-gradient(
     90deg,
