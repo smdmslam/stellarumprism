@@ -152,6 +152,8 @@ export class Workspace {
   readonly root: HTMLElement;
 
   private title = "New Tab";
+  /** True if we have already auto-titled this tab based on user input. */
+  private autoTitleDone = false;
   private cwd = ""; // populated by OSC 7 from the shell integration
 
   public getId(): string { return this.id; }
@@ -292,6 +294,11 @@ export class Workspace {
     this.cb = cb;
     if (restore.title && restore.title.trim().length > 0) {
       this.title = restore.title;
+      // If we have a real title from a restored session, don't auto-title
+      // over it unless it's just the generic "New Tab".
+      if (this.title !== "New Tab") {
+        this.autoTitleDone = true;
+      }
     }
 
     // Build DOM subtree for this workspace.
@@ -800,7 +807,12 @@ export class Workspace {
     }
     if (/^\s*\/(new|clear)\s*$/i.test(text)) {
       void this.agent.newSession().then(() => {
-        this.term.write("\r\n\x1b[2m[agent] new session \u2014 history cleared\x1b[0m\r\n");
+        this.title = "New Tab";
+        this.autoTitleDone = false;
+        this.cb.onTitleChange(this.id, this.title);
+        this.term.write(
+          "\r\n\x1b[2m[agent] new session \u2014 history cleared and title reset\x1b[0m\r\n",
+        );
       });
       return;
     }
@@ -2093,10 +2105,11 @@ export class Workspace {
   }
 
   private setTitleFromText(text: string): void {
-    if (this.title !== "New Tab") return; // only auto-title once
+    if (this.autoTitleDone) return;
     const trimmed = text.trim().replace(/\s+/g, " ");
     if (trimmed.length === 0) return;
     this.title = trimmed.length > 36 ? trimmed.slice(0, 33) + "\u2026" : trimmed;
+    this.autoTitleDone = true;
     this.cb.onTitleChange(this.id, this.title);
   }
 
@@ -3294,6 +3307,7 @@ export class Workspace {
       this.title = result.title.length > 36
         ? result.title.slice(0, 33) + "\u2026"
         : result.title;
+      this.autoTitleDone = true;
       this.cb.onTitleChange(this.id, this.title);
     }
     await this.agent.refreshSession();
