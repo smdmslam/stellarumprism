@@ -169,7 +169,7 @@ export class SettingsUI {
       <div class="settings-group">
         <label class="settings-group-title">Typography & Scale</label>
         <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 16px;">
-          Adjust the reading size of various working areas independently.
+          Adjust the font size of various working areas independently.
         </p>
         
         <div class="font-size-control" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
