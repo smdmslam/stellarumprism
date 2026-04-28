@@ -304,6 +304,12 @@ export class Workspace {
           <button class="sidebar-tab active" data-tab="files" role="tab" aria-selected="true">Files</button>
           <button class="sidebar-tab" data-tab="blocks" role="tab" aria-selected="false">Blocks <span class="sidebar-tab-count blocks-count">0</span></button>
           <span class="sidebar-tabs-spacer"></span>
+          <button class="sidebar-tab-action" data-action="new-file" type="button" title="New file (in cwd root)" aria-label="New file">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 12v6"/><path d="M9 15h6"/></svg>
+          </button>
+          <button class="sidebar-tab-action" data-action="new-folder" type="button" title="New folder (in cwd root)" aria-label="New folder">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>
+          </button>
           <button class="sidebar-tab-action" data-action="refresh-files" type="button" title="Refresh file tree" aria-label="Refresh files">\u21bb</button>
           <button class="sidebar-tab-action" data-action="toggle-hidden" type="button" title="Show hidden files (.git, .env, \u2026)" aria-label="Show hidden files" aria-pressed="false">\u25cb</button>
         </div>
@@ -2171,6 +2177,10 @@ export class Workspace {
           this.toggleShowHiddenFiles();
         } else if (a === "refresh-files") {
           this.refreshFileTreeFull();
+        } else if (a === "new-file") {
+          void this.createNewFile(null);
+        } else if (a === "new-folder") {
+          void this.createNewFolder(null);
         }
         return;
       }
@@ -2431,6 +2441,19 @@ export class Workspace {
       });
     }
 
+    // -- Create siblings / children ----------------------------------------
+    // For a directory, new items are created INSIDE it. For a file,
+    // they're created in its parent directory (sibling).
+    const parentForCreate =
+      kind === "dir" ? path : (path.includes("/") ? path.replace(/\/[^/]*$/, "") : "");
+    addSep();
+    addItem("New File", "+", () => {
+      void this.createNewFile(parentForCreate);
+    });
+    addItem("New Folder", "\u229E", () => {
+      void this.createNewFolder(parentForCreate);
+    });
+
     // -- File operations ----------------------------------------------------
     addSep();
     addItem("Rename", "✏", () => {
@@ -2474,13 +2497,81 @@ export class Workspace {
     const dir = parts.slice(0, -1).join("/");
     const newPath = dir ? `${dir}/${newName}` : newName;
     try {
-      await invoke("move_file", { cwd: this.cwd, src: path, dst: newPath });
+      // Rust `move_file` signature is `(cwd, from, to)` \u2014 the older
+      // call here used `src` / `dst` which serde silently dropped,
+      // making rename a no-op. Use the canonical names.
+      await invoke("move_file", { cwd: this.cwd, from: path, to: newPath });
       // If the renamed file was open in the editor, close it so the
       // stale path reference doesn't linger.
       if (this.openFilePath === path) this.closeFileEditor();
       void this.refreshFileTreeRoot();
     } catch (err) {
-      this.term.writeln(`\r\n\x1b[1;31m[rename error]\x1b[0m ${String(err)}`);
+      window.alert(`Rename failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Prompt the user for a filename and create an empty file. `parent`
+   * is either an absolute / cwd-relative directory path that the file
+   * will live in, or `""` / `null` for the cwd root. Refreshes the
+   * file tree on success and opens the new file in the editor so the
+   * user can start typing immediately.
+   */
+  private async createNewFile(parent: string | null): Promise<void> {
+    if (!this.cwd) {
+      window.alert("cwd unknown \u2014 wait for the shell prompt");
+      return;
+    }
+    const name = window.prompt("New file name:", "untitled.txt");
+    if (!name || name.trim().length === 0) return;
+    const trimmed = name.trim();
+    const target = parent && parent.length > 0 ? `${parent}/${trimmed}` : trimmed;
+    try {
+      await invoke("write_file_text", {
+        cwd: this.cwd,
+        path: target,
+        content: "",
+        expectedMtimeSecs: null,
+      });
+      this.fileTreeRootLoaded = false;
+      this.treeState = {
+        ...this.treeState,
+        childrenByPath: new Map(),
+        loadStateByPath: new Map(),
+      };
+      await this.refreshFileTreeRoot();
+      void this.openFileInEditor(target);
+    } catch (err) {
+      window.alert(`Could not create file: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Prompt the user for a folder name and create the directory.
+   * `parent` is the same shape as `createNewFile`. Uses `create_dir`
+   * which is recursive (mkdir -p), so nested paths like
+   * `"a/b/c"` create the chain in one call.
+   */
+  private async createNewFolder(parent: string | null): Promise<void> {
+    if (!this.cwd) {
+      window.alert("cwd unknown \u2014 wait for the shell prompt");
+      return;
+    }
+    const name = window.prompt("New folder name:", "new-folder");
+    if (!name || name.trim().length === 0) return;
+    const trimmed = name.trim();
+    const target = parent && parent.length > 0 ? `${parent}/${trimmed}` : trimmed;
+    try {
+      await invoke("create_dir", { cwd: this.cwd, path: target });
+      this.fileTreeRootLoaded = false;
+      this.treeState = {
+        ...this.treeState,
+        childrenByPath: new Map(),
+        loadStateByPath: new Map(),
+      };
+      await this.refreshFileTreeRoot();
+    } catch (err) {
+      window.alert(`Could not create folder: ${String(err)}`);
     }
   }
 
