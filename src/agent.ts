@@ -199,6 +199,12 @@ export class AgentController {
   /** Stall-detection timer id (window.setTimeout return value). */
   private stallTimer: number | null = null;
   /**
+   * One-shot listeners fired on every busy-state transition. Used by
+   * `awaitTurnComplete` to resolve when the agent goes busy=true →
+   * busy=false. Listeners self-unregister on resolve.
+   */
+  private turnCompleteListeners: Array<() => void> = [];
+  /**
    * Mode name for the in-flight request (e.g. "audit"), if any. Set at
    * query start, cleared on any terminal state. Used by onDone() to
    * decide whether to fire onAuditComplete.
@@ -394,6 +400,62 @@ export class AgentController {
    */
   async refreshSession(): Promise<void> {
     return this.refreshSessionInfo();
+  }
+
+  /**
+   * Resolve on the next observed busy=true → busy=false cycle. Used by
+   * the recipe runner so it can await one slash-command turn at a time.
+   *
+   * Subscribe BEFORE dispatching the slash command. The promise tracks
+   * whether a busy=true transition was observed; if it never was, the
+   * promise hangs (the runner is responsible for not awaiting on slash
+   * commands that don't dispatch an agent turn). This is intentional:
+   * v1 recipe writers only put agent-dispatching commands (/audit,
+   * /review, /build, /fix) in `slash` step kinds.
+   */
+  awaitTurnComplete(): Promise<{
+    assistantText: string;
+    mode: string | null;
+    cancelled: boolean;
+  }> {
+    return new Promise((resolve) => {
+      let observedBusy = this.busy;
+      const tick = () => {
+        const wasBusy = observedBusy;
+        observedBusy = this.busy;
+        if (wasBusy && !observedBusy) {
+          const idx = this.turnCompleteListeners.indexOf(tick);
+          if (idx >= 0) this.turnCompleteListeners.splice(idx, 1);
+          resolve({
+            assistantText: this.responseBuffer,
+            mode: this.currentMode,
+            cancelled: false,
+          });
+        }
+      };
+      this.turnCompleteListeners.push(tick);
+    });
+  }
+
+  /**
+   * Read-only access to the most recent assistant response. Used by the
+   * recipe runner after `awaitTurnComplete` resolves — the buffer is not
+   * reset until the next `query()` so the value survives across
+   * `onDone()`.
+   */
+  getResponseBuffer(): string {
+    return this.responseBuffer;
+  }
+
+  /**
+   * Read the mode of the most recent in-flight (or just-completed) turn.
+   * Read this from inside an `awaitTurnComplete` resolution — the field
+   * is cleared at the end of `onDone()` AFTER the busy=false setBusy
+   * call that fires the listener, so a synchronous read in the resolver
+   * sees the right value.
+   */
+  getCurrentMode(): string | null {
+    return this.currentMode;
   }
 
   /** Cancel the in-flight query, if any. */
@@ -960,6 +1022,19 @@ export class AgentController {
       this.opts.onBusyChange?.(busy);
     } catch (e) {
       console.error("onBusyChange threw", e);
+    }
+    // Fire turn-complete listeners (recipe runner) AFTER the public
+    // onBusyChange callback so any state the workspace updates in
+    // response to busy=false has already been applied. Iterate over a
+    // snapshot so listeners that self-unregister don't perturb the loop.
+    if (this.turnCompleteListeners.length > 0) {
+      for (const tick of this.turnCompleteListeners.slice()) {
+        try {
+          tick();
+        } catch (e) {
+          console.error("turnCompleteListener threw", e);
+        }
+      }
     }
   }
 

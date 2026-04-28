@@ -25,6 +25,8 @@ import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { settings } from "./settings";
 import { findMode, type Mode } from "./modes";
+import { RECIPES } from "./recipes";
+import { runRecipe } from "./recipes/runner";
 import {
   buildVerifiedSystemPrefix,
   detectVerifiedTrigger,
@@ -935,6 +937,19 @@ export class Workspace {
         return;
       }
       void this.handleFixCommand(rawArgs, mode);
+      return;
+    }
+
+    // /protocol <id> — hidden test harness for the Phase B recipe runner.
+    // Runs an ordered recipe (slash + shell steps), notifies progress
+    // through the agent panel, and persists a consolidated markdown
+    // report under ~/Documents/Prism/Reports/. Bare /protocol with no
+    // id lists the available recipes. The toolbar UI (Phase D) will
+    // surface these without requiring users to know the slash command.
+    const protocolMatch = /^\s*\/protocol(?:\s+(\S+))?\s*$/i.exec(text);
+    if (protocolMatch) {
+      const id = (protocolMatch[1] ?? "").trim();
+      void this.handleProtocolCommand(id);
       return;
     }
 
@@ -2110,6 +2125,68 @@ export class Workspace {
   /** Append an error line (red, with left bar) to the agent panel. */
   private notifyError(message: string): void {
     this.agentView?.appendError(message);
+  }
+
+  /**
+   * Driver for the hidden `/protocol <id>` slash command. Lists
+   * available recipes when called bare; otherwise dispatches the
+   * named recipe through the runner. Phase B test harness for the
+   * orchestrator before the toolbar UI lands.
+   */
+  private async handleProtocolCommand(id: string): Promise<void> {
+    if (id.length === 0) {
+      const lines = ["[protocol] available recipes:"];
+      for (const r of RECIPES) {
+        lines.push(`  \u2022 ${r.id}  \u2014 ${r.label} (${r.category})`);
+        lines.push(`     ${r.blurb}`);
+      }
+      lines.push("");
+      lines.push("Usage: /protocol <id>");
+      this.notify(lines.join("\n"));
+      return;
+    }
+    try {
+      await runRecipe(id, {
+        getCwd: () => this.cwd,
+        notify: (m) => this.notify(m),
+        notifyError: (m) => this.notifyError(m),
+        runSlashCommand: (cmd) => this.runAgentSlashCommand(cmd),
+      });
+    } catch (err) {
+      this.notifyError(`[protocol] ${String(err)}`);
+    }
+  }
+
+  /**
+   * Dispatch a slash command on behalf of the recipe runner and resolve
+   * when the resulting agent turn completes. The runner's `slash` step
+   * kind only lists agent-dispatching commands (/audit, /review, etc.);
+   * if a non-dispatching command is passed (e.g. /help) the agent
+   * never goes busy and this promise hangs by design \u2014 v1 leans on
+   * recipe-author discipline rather than runtime detection.
+   *
+   * Subscribes to the agent's `awaitTurnComplete` BEFORE dispatching so
+   * the busy=true \u2192 busy=false cycle can't race past the listener.
+   */
+  private async runAgentSlashCommand(
+    text: string,
+  ): Promise<{ assistantText: string; cancelled: boolean }> {
+    if (this.agent.isBusy()) {
+      throw new Error(
+        "agent is busy with another turn; cannot dispatch slash command",
+      );
+    }
+    const wait = this.agent.awaitTurnComplete();
+    // Replicate `handleSubmit` for command-intent dispatch. Wrapping it
+    // here means the runner doesn't need a separate dispatch path; any
+    // future slash command added to handleSubmit is automatically
+    // recipe-runnable.
+    this.handleSubmit(text, { intent: "command", explicit: true, payload: text });
+    const outcome = await wait;
+    return {
+      assistantText: outcome.assistantText,
+      cancelled: outcome.cancelled,
+    };
   }
 
   private setTitleFromText(text: string): void {

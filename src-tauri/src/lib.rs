@@ -18,6 +18,7 @@ pub mod lsp;
 mod pty;
 mod load_chat;
 mod save_chat;
+mod recipes;
 pub mod run_shell;
 pub mod schema;
 mod second_pass;
@@ -37,6 +38,7 @@ use file_ref::{
 };
 use load_chat::load_chat_markdown;
 use save_chat::save_chat_markdown;
+use recipes::{run_pnpm_script, write_recipe_report};
 use second_pass::{read_latest_audit_report, write_audit_report};
 use session::{read_session_state, write_session_state};
 use workspace_state::{
@@ -99,6 +101,8 @@ pub fn run() {
             resolve_home_path,
             read_session_state,
             write_session_state,
+            run_pnpm_script,
+            write_recipe_report,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
