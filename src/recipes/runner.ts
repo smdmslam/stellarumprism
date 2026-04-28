@@ -118,9 +118,26 @@ export async function runRecipe(
 
     if (result.state === "failed") {
       const onFailure = def.onFailure ?? "continue";
-      ctx.notify(
-        `[protocol] step ${i + 1} failed \u2014 ${onFailure === "abort" ? "aborting" : "continuing"}`,
+      // Include the error string and exit code in the notice so the user
+      // (and any future code review) sees the actual cause inline rather
+      // than having to open the on-disk report. The full report still
+      // captures stderr / stdout for postmortem.
+      const errParts: string[] = [];
+      if (result.error) errParts.push(result.error);
+      if (result.exitCode !== null && result.exitCode !== undefined) {
+        errParts.push(`exit ${result.exitCode}`);
+      }
+      const errSuffix = errParts.length > 0 ? ` \u2014 ${errParts.join("; ")}` : "";
+      ctx.notifyError(
+        `[protocol] step ${i + 1} failed${errSuffix} \u2014 ${onFailure === "abort" ? "aborting" : "continuing"}`,
       );
+      // Surface a short tail of stderr too when the shell step produced
+      // any \u2014 'failed to spawn pnpm: No such file or directory' is
+      // exactly the kind of one-liner that solves the problem on sight.
+      if (result.errorOutput && result.errorOutput.trim().length > 0) {
+        const tail = lastLines(result.errorOutput, 6);
+        ctx.notify(`[protocol] stderr (last 6 lines):\n${tail}`);
+      }
       if (onFailure === "abort") aborted = true;
     } else {
       ctx.notify(
@@ -369,6 +386,16 @@ function truncateForReport(text: string): string {
   const MAX = 16 * 1024; // 16 KB per stream per step
   if (text.length <= MAX) return text;
   return text.slice(0, MAX) + `\n\n[\u2026 truncated, ${text.length - MAX} more bytes]`;
+}
+
+/**
+ * Take the last N non-empty lines of a multi-line string. Used to
+ * surface a short stderr tail in the failure notice without dumping
+ * thousands of bytes into AgentView.
+ */
+function lastLines(text: string, n: number): string {
+  const all = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  return all.slice(-n).join("\n");
 }
 
 function formatDuration(ms: number): string {
