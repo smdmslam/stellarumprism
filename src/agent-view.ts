@@ -121,6 +121,7 @@ export class AgentView implements AgentViewApi {
   }
 
   beginTurn(userPrompt: string): void {
+    const pinned = this.isPinnedToBottom();
     const turn = document.createElement("article");
     turn.className = "agent-turn";
 
@@ -138,11 +139,15 @@ export class AgentView implements AgentViewApi {
     this.currentToolLog = null;
     this.currentReview = null;
     this.currentReviewMarkdown = "";
-    this.scrollToBottom();
+    if (pinned || userPrompt.trim().length > 0) {
+      // Force pinning to bottom on a new user turn
+      this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
+    }
   }
 
   appendProse(piece: string): void {
     if (piece.length === 0) return;
+    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     if (!this.currentProseSection) {
       const section = document.createElement("section");
@@ -153,10 +158,11 @@ export class AgentView implements AgentViewApi {
     this.currentProseMarkdown += piece;
     const frag = markdownToFragment(this.currentProseMarkdown);
     this.currentProseSection.replaceChildren(frag);
-    this.scrollToBottom();
+    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
   }
 
   appendToolCall(info: ToolCallInfo): void {
+    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     if (!this.currentToolLog) {
       const log = document.createElement("section");
@@ -207,11 +213,12 @@ export class AgentView implements AgentViewApi {
     this.currentProseSection = null;
     this.currentProseMarkdown = "";
 
-    this.scrollToBottom();
+    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
   }
 
   appendReview(piece: string): void {
     if (piece.length === 0) return;
+    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     if (!this.currentReview) {
       const review = document.createElement("section");
@@ -229,25 +236,27 @@ export class AgentView implements AgentViewApi {
     this.currentReviewMarkdown += piece;
     const frag = markdownToFragment(this.currentReviewMarkdown);
     this.currentReview.replaceChildren(frag);
-    this.scrollToBottom();
+    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
   }
 
   appendNotice(kind: NoticeKind, body: string): void {
+    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     const el = document.createElement("div");
     el.className = `agent-notice agent-notice-${kind}`;
     el.textContent = stripAnsi(body);
     this.currentTurn!.appendChild(el);
-    this.scrollToBottom();
+    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
   }
 
   appendError(message: string): void {
+    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     const el = document.createElement("div");
     el.className = "agent-error";
     el.textContent = stripAnsi(message);
     this.currentTurn!.appendChild(el);
-    this.scrollToBottom();
+    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
   }
 
   endTurn(): void {
@@ -264,16 +273,9 @@ export class AgentView implements AgentViewApi {
     this.endTurn();
   }
 
-  // -- scroll bookkeeping ---------------------------------------------------
-
   private isPinnedToBottom(): boolean {
     const { scrollTop, scrollHeight, clientHeight } = this.scrollHost;
-    return scrollHeight - (scrollTop + clientHeight) < 24;
-  }
-
-  private scrollToBottom(): void {
-    if (this.isPinnedToBottom()) {
-      this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
-    }
+    // Extremely forgiving margin to account for padding & rounding
+    return scrollHeight - (scrollTop + clientHeight) < 48;
   }
 }

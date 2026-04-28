@@ -254,6 +254,7 @@ export class Workspace {
    */
   private showHiddenFiles = false;
   private sidebarVisible = true;
+  private previewVisible = true;
   private terminalVisible = true;
   private consoleVisible = true;
   private agentVisible = true;
@@ -394,9 +395,10 @@ export class Workspace {
     this.input.focus();
   }
 
-  public getLayoutState(): { sidebar: boolean; terminal: boolean; console: boolean; problems: boolean; agent: boolean } {
+  public getLayoutState(): { sidebar: boolean; preview: boolean; terminal: boolean; console: boolean; problems: boolean; agent: boolean } {
     return {
       sidebar: this.sidebarVisible,
+      preview: this.previewVisible,
       terminal: this.terminalVisible,
       console: this.consoleVisible,
       problems: this.problemsVisible,
@@ -408,6 +410,12 @@ export class Workspace {
     this.sidebarVisible = !this.sidebarVisible;
     this.root.classList.toggle("sidebar-hidden", !this.sidebarVisible);
     this.fitTerminal();
+  }
+
+  public togglePreview(): void {
+    this.previewVisible = !this.previewVisible;
+    this.root.classList.toggle("preview-hidden", !this.previewVisible);
+    if (this.terminalVisible) this.fitTerminal();
   }
 
   public toggleTerminal(): void {

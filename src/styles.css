@@ -395,6 +395,11 @@ body {
   display: none !important;
 }
 
+.workspace.preview-hidden .file-preview,
+.workspace.preview-hidden .layout-divider-preview {
+  display: none !important;
+}
+
 .workspace.console-hidden .input-bar,
 .workspace.console-hidden .content::after {
   /* .content::after is the divider above input-bar if any */
