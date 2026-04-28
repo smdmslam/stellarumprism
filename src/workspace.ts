@@ -241,7 +241,7 @@ export class Workspace {
    * Which sidebar pane is visible. "blocks" matches the legacy view;
    * "files" shows the lazy-loaded file tree.
    */
-  private activeSidebarTab: "blocks" | "files" = "blocks";
+  private activeSidebarTab: "blocks" | "files" = "files";
   /** True iff `refreshFileTreeRoot` has been called for this cwd. */
   private fileTreeRootLoaded = false;
   /** Last cwd we built the tree for, so we can detect cwd changes. */
@@ -295,16 +295,16 @@ export class Workspace {
     this.root.innerHTML = `
       <aside class="blocks-sidebar">
         <div class="sidebar-tabs" role="tablist" aria-label="Sidebar">
-          <button class="sidebar-tab active" data-tab="blocks" role="tab" aria-selected="true">Blocks <span class="sidebar-tab-count blocks-count">0</span></button>
-          <button class="sidebar-tab" data-tab="files" role="tab" aria-selected="false">Files</button>
+          <button class="sidebar-tab active" data-tab="files" role="tab" aria-selected="true">Files</button>
+          <button class="sidebar-tab" data-tab="blocks" role="tab" aria-selected="false">Blocks <span class="sidebar-tab-count blocks-count">0</span></button>
           <span class="sidebar-tabs-spacer"></span>
-          <button class="sidebar-tab-action" data-action="toggle-hidden" type="button" title="Show hidden files (.git, .env, \u2026)" aria-label="Show hidden files" aria-pressed="false" hidden>\u25cb</button>
+          <button class="sidebar-tab-action" data-action="toggle-hidden" type="button" title="Show hidden files (.git, .env, \u2026)" aria-label="Show hidden files" aria-pressed="false">\u25cb</button>
         </div>
-        <div class="sidebar-pane sidebar-pane-blocks" data-tab="blocks">
-          <ul class="blocks-list"></ul>
-        </div>
-        <div class="sidebar-pane sidebar-pane-files" data-tab="files" hidden>
+        <div class="sidebar-pane sidebar-pane-files" data-tab="files">
           <div class="file-tree" tabindex="0" role="tree" aria-label="Project files"></div>
+        </div>
+        <div class="sidebar-pane sidebar-pane-blocks" data-tab="blocks" hidden>
+          <ul class="blocks-list"></ul>
         </div>
       </aside>
       <div class="layout-divider layout-divider-sidebar" data-divider="sidebar" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize sidebar"></div>
