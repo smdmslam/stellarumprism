@@ -75,13 +75,25 @@ body {
 .titlebar {
   flex: 0 0 auto;
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
   background-color: #0b0d12;
   border-bottom: 1px solid #1f2937;
   user-select: none;
   -webkit-app-region: drag;
-  height: 36px;
   position: relative;
+}
+
+.titlebar-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  height: 36px;
+  width: 100%;
+}
+
+.titlebar-bottom {
+  display: flex;
+  width: 100%;
 }
 
 /* Spectrum signature stripe \u2014 the brand mark.
@@ -1404,6 +1416,7 @@ input:checked + .toggle-slider:before {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding-top: 6px;
   /* Hairline divider above the meta row so the editor visually "closes"
