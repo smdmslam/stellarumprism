@@ -419,14 +419,18 @@ export class Workspace {
 
   public togglePreview(): void {
     this.previewVisible = !this.previewVisible;
+    this.layout.preview_visible = this.previewVisible;
     this.root.classList.toggle("preview-hidden", !this.previewVisible);
     if (this.terminalVisible) this.fitTerminal();
+    void this.persistLayout();
   }
 
   public toggleTerminal(): void {
     this.terminalVisible = !this.terminalVisible;
+    this.layout.terminal_visible = this.terminalVisible;
     this.root.classList.toggle("terminal-hidden", !this.terminalVisible);
     if (this.terminalVisible) this.fitTerminal();
+    void this.persistLayout();
   }
 
   public toggleConsole(): void {
@@ -436,8 +440,10 @@ export class Workspace {
 
   public toggleAgent(): void {
     this.agentVisible = !this.agentVisible;
+    this.layout.agent_visible = this.agentVisible;
     this.root.classList.toggle("agent-hidden", !this.agentVisible);
     this.fitTerminal();
+    void this.persistLayout();
   }
 
   public toggleProblems(): void {
@@ -1804,8 +1810,24 @@ export class Workspace {
         preview_height: state.layout.preview_height ?? this.layout.preview_height,
         agent_pane_width:
           state.layout.agent_pane_width ?? this.layout.agent_pane_width,
+        preview_visible:
+          state.layout.preview_visible ?? this.layout.preview_visible,
+        terminal_visible:
+          state.layout.terminal_visible ?? this.layout.terminal_visible,
+        agent_visible:
+          state.layout.agent_visible ?? this.layout.agent_visible,
       });
       this.applyLayoutToDOM();
+      // Sync the runtime visibility fields from the hydrated layout
+      // and apply the corresponding `*-hidden` classes so a tab
+      // restored with a hidden agent pane / terminal / preview shows
+      // up that way on launch instead of snapping back to all-visible.
+      this.previewVisible = this.layout.preview_visible;
+      this.terminalVisible = this.layout.terminal_visible;
+      this.agentVisible = this.layout.agent_visible;
+      this.root.classList.toggle("preview-hidden", !this.previewVisible);
+      this.root.classList.toggle("terminal-hidden", !this.terminalVisible);
+      this.root.classList.toggle("agent-hidden", !this.agentVisible);
     }
   }
 
@@ -3329,6 +3351,9 @@ interface PersistedWorkspaceState {
     problems_width?: number;
     preview_height?: number;
     agent_pane_width?: number;
+    preview_visible?: boolean;
+    terminal_visible?: boolean;
+    agent_visible?: boolean;
   };
 }
 
@@ -3353,6 +3378,12 @@ interface LayoutPrefs {
    *  center pane (file viewer + xterm) gets the remaining horizontal
    *  space. Resized via the vertical `.layout-divider-pane`. */
   agent_pane_width: number;
+  /** Visibility of the file-preview area in the center pane. */
+  preview_visible: boolean;
+  /** Visibility of the xterm strip in the center pane. */
+  terminal_visible: boolean;
+  /** Visibility of the right-hand agent pane. */
+  agent_visible: boolean;
 }
 
 /** Defaults used when state.json carries no layout. */
@@ -3365,6 +3396,9 @@ const DEFAULT_LAYOUT: LayoutPrefs = {
   // opens when you need it. Default the agent pane to something
   // generous so prose has breathing room out of the box.
   agent_pane_width: 640,
+  preview_visible: true,
+  terminal_visible: true,
+  agent_visible: true,
 };
 
 /** Step size for Cmd+Opt+[/] keyboard nudges. */
@@ -3405,6 +3439,9 @@ function clampLayout(p: LayoutPrefs): LayoutPrefs {
     problems_width: clampProblems(p.problems_width),
     preview_height: clampPreview(p.preview_height),
     agent_pane_width: clampAgentPane(p.agent_pane_width),
+    preview_visible: !!p.preview_visible,
+    terminal_visible: !!p.terminal_visible,
+    agent_visible: !!p.agent_visible,
   };
 }
 

@@ -85,6 +85,16 @@ pub struct Layout {
     /// Width of the right-hand agent pane in CSS pixels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_pane_width: Option<u32>,
+    /// Whether the file-preview area in the center pane is shown.
+    /// Toggled via the toolbar; defaults to true on a fresh workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preview_visible: Option<bool>,
+    /// Whether the xterm strip in the center pane is shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub terminal_visible: Option<bool>,
+    /// Whether the right-hand agent pane (HTML chat) is shown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_visible: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
