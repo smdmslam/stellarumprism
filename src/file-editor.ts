@@ -232,7 +232,7 @@ export class FileEditor {
       {
         "&": {
           height: "100%",
-          fontSize: "12px",
+          fontSize: "var(--editor-font-size, 12px)",
           backgroundColor: "transparent",
         },
         ".cm-content": {

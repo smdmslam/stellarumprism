@@ -83,7 +83,7 @@ export class PrismInput {
         "&": {
           backgroundColor: "transparent",
           color: "#e6e6e6",
-          fontSize: "13px",
+          fontSize: "var(--editor-font-size, 13px)",
         },
         ".cm-content": {
           caretColor: "#7dd3fc",

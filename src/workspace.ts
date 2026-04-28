@@ -23,6 +23,7 @@ import { AgentView } from "./agent-view";
 import { resolveModel, renderModelListAnsi, modelSupportsVision } from "./models";
 import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
+import { settings } from "./settings";
 import { findMode, type Mode } from "./modes";
 import {
   buildVerifiedSystemPrefix,
@@ -471,7 +472,7 @@ export class Workspace {
     this.term = new Terminal({
       fontFamily:
         '"JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace',
-      fontSize: 9,
+      fontSize: settings.getTerminalFontSize(),
       lineHeight: 1.2,
       cursorBlink: true,
       theme: TERM_THEME,
@@ -624,6 +625,17 @@ export class Workspace {
     this.setupLayoutDividers();
     this.setupFileEditorKeybindings();
     this.updateModelBadge();
+
+    const handleSettingsChange = () => {
+      if (this.term) {
+        if (this.term.options.fontSize !== settings.getTerminalFontSize()) {
+          this.term.options.fontSize = settings.getTerminalFontSize();
+          requestAnimationFrame(() => this.fitTerminal());
+        }
+      }
+    };
+    window.addEventListener("prism-settings-changed", handleSettingsChange);
+    this.disposers.push(() => window.removeEventListener("prism-settings-changed", handleSettingsChange));
   }
 
   /**

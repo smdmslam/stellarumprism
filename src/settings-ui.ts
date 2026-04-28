@@ -162,7 +162,29 @@ export class SettingsUI {
           Controls for the CodeMirror editor core.
         </p>
         <div style="color: #4b5563; font-size: 12px; font-style: italic;">
-          More controls coming soon (Font size, Tab behavior, Indent guides).
+          More controls coming soon (Tab behavior, Indent guides).
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <label class="settings-group-title">Typography & Scale</label>
+        <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 16px;">
+          Adjust the reading size of various working areas independently.
+        </p>
+        
+        <div class="font-size-control" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <label style="font-size: 12px; color: #d1d5db;">Terminal</label>
+          <input type="number" id="setting-fontSize-terminal" value="${settings.getTerminalFontSize()}" min="6" max="24" style="width: 60px; background: #111827; border: 1px solid #374151; color: #e5e7eb; border-radius: 4px; padding: 4px 8px; font-size: 12px; outline: none;">
+        </div>
+        
+        <div class="font-size-control" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+          <label style="font-size: 12px; color: #d1d5db;">Editor</label>
+          <input type="number" id="setting-fontSize-editor" value="${settings.getEditorFontSize()}" min="8" max="32" style="width: 60px; background: #111827; border: 1px solid #374151; color: #e5e7eb; border-radius: 4px; padding: 4px 8px; font-size: 12px; outline: none;">
+        </div>
+
+        <div class="font-size-control" style="display: flex; align-items: center; justify-content: space-between;">
+          <label style="font-size: 12px; color: #d1d5db;">Chat & Prose</label>
+          <input type="number" id="setting-fontSize-chat" value="${settings.getChatFontSize()}" min="9" max="32" style="width: 60px; background: #111827; border: 1px solid #374151; color: #e5e7eb; border-radius: 4px; padding: 4px 8px; font-size: 12px; outline: none;">
         </div>
       </div>
     `;
@@ -175,6 +197,22 @@ export class SettingsUI {
         this.render(); // Redraw to update active class
       });
     });
+
+    // Wire font size inputs
+    const termInput = document.getElementById("setting-fontSize-terminal") as HTMLInputElement;
+    const editorInput = document.getElementById("setting-fontSize-editor") as HTMLInputElement;
+    const chatInput = document.getElementById("setting-fontSize-chat") as HTMLInputElement;
+
+    const handleNumberChange = (input: HTMLInputElement, setter: (val: number) => void) => {
+      input.addEventListener("change", () => {
+        const val = parseInt(input.value, 10);
+        if (!isNaN(val)) setter(val);
+      });
+    };
+
+    if (termInput) handleNumberChange(termInput, v => settings.setTerminalFontSize(v));
+    if (editorInput) handleNumberChange(editorInput, v => settings.setEditorFontSize(v));
+    if (chatInput) handleNumberChange(chatInput, v => settings.setChatFontSize(v));
   }
 
   private renderModels(): void {

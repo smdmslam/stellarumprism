@@ -42,6 +42,12 @@ export interface AppSettings {
   theme: "dark" | "light" | "system";
   /** Sidebar default visibility for new tabs */
   sidebarDefaultVisible: boolean;
+  /** Terminal font size */
+  terminalFontSize: number;
+  /** Editor font size */
+  editorFontSize: number;
+  /** Agent / Chat font size */
+  chatFontSize: number;
 }
 
 const STORAGE_KEY = "prism-settings-v1";
@@ -52,6 +58,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   savedSearchGroups: [],
   theme: "dark",
   sidebarDefaultVisible: true,
+  terminalFontSize: 9,
+  editorFontSize: 12,
+  chatFontSize: 13,
 };
 
 export class SettingsManager {
@@ -59,6 +68,7 @@ export class SettingsManager {
 
   constructor() {
     this.current = this.load();
+    this.applyCssVariables();
   }
 
   private load(): AppSettings {
@@ -73,6 +83,13 @@ export class SettingsManager {
 
   private save(): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(this.current));
+    this.applyCssVariables();
+  }
+
+  private applyCssVariables(): void {
+    const root = document.documentElement;
+    root.style.setProperty("--editor-font-size", `${this.getEditorFontSize()}px`);
+    root.style.setProperty("--chat-font-size", `${this.getChatFontSize()}px`);
   }
 
   // -- Model Curation --------------------------------------------------------
@@ -197,6 +214,36 @@ export class SettingsManager {
 
   setTheme(theme: "dark" | "light" | "system"): void {
     this.current.theme = theme;
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  getTerminalFontSize(): number {
+    return this.current.terminalFontSize ?? 9;
+  }
+
+  setTerminalFontSize(size: number): void {
+    this.current.terminalFontSize = size;
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  getEditorFontSize(): number {
+    return this.current.editorFontSize ?? 12;
+  }
+
+  setEditorFontSize(size: number): void {
+    this.current.editorFontSize = size;
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  getChatFontSize(): number {
+    return this.current.chatFontSize ?? 13;
+  }
+
+  setChatFontSize(size: number): void {
+    this.current.chatFontSize = size;
     this.save();
     window.dispatchEvent(new CustomEvent("prism-settings-changed"));
   }
