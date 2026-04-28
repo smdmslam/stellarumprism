@@ -16,8 +16,9 @@ export class ToolbarManager {
   }
 
   private wireButtons(): void {
-    const searchBtn = document.getElementById("tb-search");
-    const filesBtn = document.getElementById("tb-files");
+    // Search + Files toolbar buttons were redundant with the input-bar
+    // \"/\" autocomplete and the sidebar's Files tab respectively;
+    // removed from index.html. Layout-toggle buttons remain.
     const settingsBtn = document.getElementById("tb-settings");
 
     const sidebarBtn = document.getElementById("lb-sidebar");
@@ -26,16 +27,6 @@ export class ToolbarManager {
     const consoleBtn = document.getElementById("lb-console");
     const agentBtn = document.getElementById("lb-agent");
     const problemsBtn = document.getElementById("lb-problems");
-
-    searchBtn?.addEventListener("click", () => {
-      const activeWs = this.tabs.getActiveWorkspace();
-      if (activeWs) activeWs.focusInput("/");
-    });
-
-    filesBtn?.addEventListener("click", () => {
-      const activeWs = this.tabs.getActiveWorkspace();
-      if (activeWs) activeWs.setSidebarTab("files");
-    });
 
     sidebarBtn?.addEventListener("click", () => {
       const activeWs = this.tabs.getActiveWorkspace();
