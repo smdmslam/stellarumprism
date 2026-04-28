@@ -838,7 +838,7 @@ input:checked + .toggle-slider:before {
 /* ---------- blocks sidebar ---------- */
 
 .blocks-sidebar {
-  flex: 0 1 var(--sidebar-width);
+  flex: 0 0 var(--sidebar-width);
   min-width: 180px;
   display: flex;
   flex-direction: column;
