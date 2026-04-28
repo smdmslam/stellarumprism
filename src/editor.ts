@@ -83,7 +83,10 @@ export class PrismInput {
         "&": {
           backgroundColor: "transparent",
           color: "#e6e6e6",
-          fontSize: "var(--editor-font-size, 13px)",
+          // Fallback matches `DEFAULT_SETTINGS.editorFontSize` in
+          // `settings.ts` and `file-editor.ts`. The CSS var is set
+          // by `SettingsManager.applyCssVariables()` at startup.
+          fontSize: "var(--editor-font-size, 12px)",
         },
         ".cm-content": {
           caretColor: "#7dd3fc",

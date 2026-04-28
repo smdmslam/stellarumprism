@@ -276,44 +276,36 @@ export class TabManager {
     const ws = this.workspaces.find((w) => w.id === id);
     if (!ws) return;
 
-    // Build and show a lightweight native-feeling popup menu
+    // Lightweight native-feeling popup. Visual styling lives in
+    // styles.css under `.tab-context-menu` so the markup stays clean
+    // and CSS-tweakable; only positioning is set inline because it
+    // depends on the click coordinates.
     const menu = document.createElement("div");
     menu.className = "tab-context-menu";
-    menu.style.position = "fixed";
-    menu.style.left = `${e.clientX}px`;
-    menu.style.top = `${e.clientY}px`;
-    menu.style.background = "#1f2937";
-    menu.style.border = "1px solid #374151";
-    menu.style.borderRadius = "6px";
-    menu.style.padding = "4px 0";
-    menu.style.zIndex = "10000";
-    menu.style.boxShadow = "0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5)";
-    menu.style.minWidth = "160px";
-    menu.style.fontSize = "12px";
-    menu.style.color = "#d1d5db";
 
     const addTarget = (label: string, icon: string, onClick: () => void) => {
       const item = document.createElement("div");
-      item.style.padding = "6px 16px";
-      item.style.cursor = "pointer";
-      item.style.display = "flex";
-      item.style.alignItems = "center";
-      item.style.gap = "8px";
-      item.innerHTML = `<span style="opacity: 0.7;">${icon}</span> <span>${label}</span>`;
-      item.onmouseover = () => (item.style.background = "#374151");
-      item.onmouseout = () => (item.style.background = "transparent");
-      item.onclick = () => {
+      item.className = "tab-context-menu-item";
+      const iconEl = document.createElement("span");
+      iconEl.className = "tab-context-menu-icon";
+      iconEl.textContent = icon;
+      const labelEl = document.createElement("span");
+      labelEl.className = "tab-context-menu-label";
+      labelEl.textContent = label;
+      item.appendChild(iconEl);
+      item.appendChild(labelEl);
+      item.addEventListener("click", () => {
         close();
         onClick();
-      };
+      });
       menu.appendChild(item);
     };
 
-    addTarget("Duplicate Path / New Chat", "↳", () => {
+    addTarget("Duplicate Path / New Chat", "\u21b3", () => {
       this.newTab({ cwd: ws.getCwd() });
     });
 
-    addTarget("Duplicate Full Session", "⧉", () => {
+    addTarget("Duplicate Full Session", "\u29c9", () => {
       ws.duplicateSession().then((newRestoreOpts) => {
         if (newRestoreOpts) {
           this.newTab(newRestoreOpts);
@@ -321,24 +313,46 @@ export class TabManager {
       });
     });
 
-    // Close area
+    // Backdrop catches outside clicks + the next right-click anywhere
+    // off the menu. zIndex sits below the menu so the menu remains
+    // clickable.
     const backdrop = document.createElement("div");
-    backdrop.style.position = "fixed";
-    backdrop.style.inset = "0";
-    backdrop.style.zIndex = "9999";
+    backdrop.className = "tab-context-menu-backdrop";
 
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        close();
+      }
+    };
     const close = () => {
       menu.remove();
       backdrop.remove();
+      document.removeEventListener("keydown", onKey, true);
     };
     backdrop.addEventListener("click", close);
-    backdrop.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
+    backdrop.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
       close();
     });
+    document.addEventListener("keydown", onKey, true);
 
+    // Mount, then clamp into the viewport. The menu must be in the DOM
+    // first so we can measure offsetWidth / offsetHeight; positioning
+    // happens in the same frame so there's no visible jump.
     document.body.appendChild(backdrop);
     document.body.appendChild(menu);
+    const margin = 4;
+    const maxLeft = Math.max(
+      margin,
+      window.innerWidth - menu.offsetWidth - margin,
+    );
+    const maxTop = Math.max(
+      margin,
+      window.innerHeight - menu.offsetHeight - margin,
+    );
+    menu.style.left = `${Math.min(e.clientX, maxLeft)}px`;
+    menu.style.top = `${Math.min(e.clientY, maxTop)}px`;
   }
 }
 

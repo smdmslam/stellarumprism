@@ -138,25 +138,12 @@ export class SettingsUI {
   }
 
   private renderGeneral(): void {
-    const currentTheme = settings.getTheme();
-    
+    // Appearance / Theme selector is intentionally hidden until light
+    // mode is supported. The `theme` field on AppSettings (and its
+    // getter/setter in settings.ts) is preserved so localStorage
+    // entries from older versions still parse cleanly.
     this.content.innerHTML = `
       <h2 class="settings-section-title">General Settings</h2>
-      
-      <!-- 
-      <div class="settings-group">
-        <label class="settings-group-title">Appearance & Theme</label>
-        <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
-          Select your preferred interface aesthetic.
-        </p>
-        
-        <div class="theme-selector">
-          <button class="theme-btn ${currentTheme === "dark" ? "active" : ""}" data-theme="dark">Dark</button>
-          <button class="theme-btn ${currentTheme === "light" ? "active" : ""}" data-theme="light">Light</button>
-          <button class="theme-btn ${currentTheme === "system" ? "active" : ""}" data-theme="system">System</button>
-        </div>
-      </div>
-      -->
 
       <div class="settings-group">
         <label class="settings-group-title">Editor Configuration</label>
@@ -190,15 +177,6 @@ export class SettingsUI {
         </div>
       </div>
     `;
-
-    // Wire theme buttons
-    this.content.querySelectorAll(".theme-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const theme = (btn as HTMLElement).dataset.theme as any;
-        settings.setTheme(theme);
-        this.render(); // Redraw to update active class
-      });
-    });
 
     // Wire font size inputs
     const termInput = document.getElementById("setting-fontSize-terminal") as HTMLInputElement;
