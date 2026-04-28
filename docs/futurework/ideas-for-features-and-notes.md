@@ -1,5 +1,7 @@
 ## featrures ideas and notes
 
+- files explorer should have a settings icon. and let choose to show date and or file size
+
 - expand to full screen within the app button.
 - html or markdown viewer. 
 

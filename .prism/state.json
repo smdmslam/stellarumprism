@@ -1,8 +1,8 @@
 {
   "version": 1,
   "last_audit": {
-    "path": ".prism/second-pass/audit-2026-04-28T12-02-28.json",
-    "generated_at": "2026-04-28T12:02:28.565Z",
+    "path": ".prism/second-pass/audit-2026-04-28T22-40-58.json",
+    "generated_at": "2026-04-28T22:40:58.546Z",
     "scope": null,
     "counts": {
       "error": 0,
@@ -15,8 +15,8 @@
   },
   "recent_files": [],
   "layout": {
-    "sidebar_width": 341,
-    "problems_width": 360,
+    "sidebar_width": 218,
+    "problems_width": 280,
     "preview_height": 465,
     "agent_pane_width": 640,
     "preview_visible": true,
