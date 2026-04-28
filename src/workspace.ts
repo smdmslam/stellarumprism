@@ -142,6 +142,9 @@ export interface WorkspaceRestoreOptions {
   /** Display title to seed the tab strip with at zero latency,
    *  before any cwd-derived auto-title catches up. */
   title?: string;
+  /** Transient internal hint to load a specific MD file on boot. Used
+   *  by Duplicate Session to rehydrate the copied history. */
+  loadChatPath?: string;
 }
 
 export class Workspace {
@@ -3093,6 +3096,13 @@ export class Workspace {
     }
     if (!target) return; // user cancelled
 
+    await this.exportChat(target, full);
+  }
+
+  /**
+   * Used for both user /save commands and silent background duplication.
+   */
+  private async exportChat(target: string, full: boolean = false): Promise<void> {
     try {
       const result = await invoke<{
         path: string;
@@ -3108,10 +3118,35 @@ export class Workspace {
       });
       const modeTag = result.format === "prism-chat-v2" ? " \x1b[2m(full)\x1b[0m" : "";
       this.term.write(
-        `\r\n\x1b[1;32m[save]\x1b[0m wrote ${result.message_count} messages \u2192 \x1b[36m${sanitize(result.path)}\x1b[0m${modeTag}\r\n`,
+        `\r\n\x1b[32m[save]\x1b[0m ${result.message_count} messages \u2192 \x1b[36m${target}\x1b[0m${modeTag}\r\n`,
       );
     } catch (e) {
-      this.term.write(`\r\n\x1b[1;31m[save error]\x1b[0m ${String(e)}\r\n`);
+      this.term.write(`\r\n\x1b[1;31m[save]\x1b[0m failed: ${String(e)}\r\n`);
+    }
+  }
+
+  /**
+   * Silently serializes current history to a temp file, returning
+   * restore options so TabManager can spawn a clone.
+   */
+  async duplicateSession(): Promise<WorkspaceRestoreOptions | null> {
+    const tempTarget = expandTilde(`~/Documents/Prism/Chats/temp-dup-${crypto.randomUUID().slice(0, 8)}.full.md`);
+    try {
+      await invoke("save_chat_markdown", {
+        chatId: this.id,
+        path: tempTarget,
+        model: this.agent.getModel(),
+        title: this.title,
+        full: true,
+      });
+      return {
+        cwd: this.cwd,
+        title: this.title,
+        loadChatPath: tempTarget
+      };
+    } catch (e) {
+      this.term.write(`\r\n\x1b[1;31m[duplicate]\x1b[0m failed: ${String(e)}\r\n`);
+      return null;
     }
   }
 }

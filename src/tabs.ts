@@ -264,6 +264,81 @@ export class TabManager {
           );
         })
         .join("") + `<button class="new-tab-btn" title="New tab (\u2318T)">+</button>`;
+
+    // Wire up context menus natively after render since innerHTML strips them
+    strip.querySelectorAll(".tab").forEach((tabEl) => {
+      tabEl.addEventListener("contextmenu", (e) => this.onTabContextMenu(e as MouseEvent, (tabEl as HTMLElement).dataset.id!));
+    });
+  }
+
+  private onTabContextMenu(e: MouseEvent, id: string): void {
+    e.preventDefault();
+    const ws = this.workspaces.find((w) => w.id === id);
+    if (!ws) return;
+
+    // Build and show a lightweight native-feeling popup menu
+    const menu = document.createElement("div");
+    menu.className = "tab-context-menu";
+    menu.style.position = "fixed";
+    menu.style.left = `${e.clientX}px`;
+    menu.style.top = `${e.clientY}px`;
+    menu.style.background = "#1f2937";
+    menu.style.border = "1px solid #374151";
+    menu.style.borderRadius = "6px";
+    menu.style.padding = "4px 0";
+    menu.style.zIndex = "10000";
+    menu.style.boxShadow = "0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -4px rgba(0, 0, 0, 0.5)";
+    menu.style.minWidth = "160px";
+    menu.style.fontSize = "12px";
+    menu.style.color = "#d1d5db";
+
+    const addTarget = (label: string, icon: string, onClick: () => void) => {
+      const item = document.createElement("div");
+      item.style.padding = "6px 16px";
+      item.style.cursor = "pointer";
+      item.style.display = "flex";
+      item.style.alignItems = "center";
+      item.style.gap = "8px";
+      item.innerHTML = `<span style="opacity: 0.7;">${icon}</span> <span>${label}</span>`;
+      item.onmouseover = () => (item.style.background = "#374151");
+      item.onmouseout = () => (item.style.background = "transparent");
+      item.onclick = () => {
+        close();
+        onClick();
+      };
+      menu.appendChild(item);
+    };
+
+    addTarget("Duplicate Path / New Chat", "↳", () => {
+      this.newTab({ cwd: ws.getCwd() });
+    });
+
+    addTarget("Duplicate Full Session", "⧉", () => {
+      ws.duplicateSession().then((newRestoreOpts) => {
+        if (newRestoreOpts) {
+          this.newTab(newRestoreOpts);
+        }
+      });
+    });
+
+    // Close area
+    const backdrop = document.createElement("div");
+    backdrop.style.position = "fixed";
+    backdrop.style.inset = "0";
+    backdrop.style.zIndex = "9999";
+
+    const close = () => {
+      menu.remove();
+      backdrop.remove();
+    };
+    backdrop.addEventListener("click", close);
+    backdrop.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      close();
+    });
+
+    document.body.appendChild(backdrop);
+    document.body.appendChild(menu);
   }
 }
 
