@@ -458,6 +458,19 @@ body {
   display: none !important;
 }
 
+/* When BOTH the file preview AND the terminal are hidden, the center
+ * pane has no useful children left. Hide the center pane itself (and
+ * the vertical divider between center and agent) so the agent pane
+ * absorbs the freed horizontal space \u2014 mirrors how toggling the agent
+ * pane off lets the center pane expand to fill. */
+.workspace.preview-hidden.terminal-hidden .center-pane,
+.workspace.preview-hidden.terminal-hidden .layout-divider-pane {
+  display: none !important;
+}
+.workspace.preview-hidden.terminal-hidden .agent-pane {
+  flex: 1 1 auto;
+}
+
 .workspace.console-hidden .input-bar,
 .workspace.console-hidden .content::after {
   /* .content::after is the divider above input-bar if any */
