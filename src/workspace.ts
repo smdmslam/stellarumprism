@@ -1360,12 +1360,20 @@ export class Workspace {
     );
   }
 
-  /** True if the active element is inside this workspace's CodeMirror view. */
+  /**
+   * True if the active element is inside any editable surface in this
+   * workspace — the prompt CodeMirror (.editor-host) OR the file-editor
+   * CodeMirror (.file-preview-body). This prevents the slash-focus hijack
+   * from stealing `/` while the user is typing inside an open file.
+   */
   private isEditorFocused(): boolean {
     const active = document.activeElement;
     if (!active) return false;
-    const host = this.root.querySelector(".editor-host");
-    return !!host && host.contains(active);
+    const promptHost = this.root.querySelector(".editor-host");
+    if (promptHost && promptHost.contains(active)) return true;
+    const fileEditorHost = this.root.querySelector(".file-preview-body");
+    if (fileEditorHost && fileEditorHost.contains(active)) return true;
+    return false;
   }
 
   // -- busy pill (agent running indicator + cancel) ----------------------
