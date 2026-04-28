@@ -838,7 +838,7 @@ input:checked + .toggle-slider:before {
 /* ---------- blocks sidebar ---------- */
 
 .blocks-sidebar {
-  flex: 0 0 var(--sidebar-width);
+  flex: 0 1 var(--sidebar-width);
   min-width: 180px;
   display: flex;
   flex-direction: column;
@@ -992,7 +992,7 @@ input:checked + .toggle-slider:before {
    * `--agent-pane-width` CSS var that the workspace writes from its
    * persisted layout. The vertical `.layout-divider-pane` to its left
    * lets the user drag this width. */
-  flex: 0 0 var(--agent-pane-width);
+  flex: 0 1 var(--agent-pane-width);
   min-width: 320px;
   display: flex;
   flex-direction: column;
