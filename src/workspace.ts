@@ -304,6 +304,7 @@ export class Workspace {
           <button class="sidebar-tab active" data-tab="files" role="tab" aria-selected="true">Files</button>
           <button class="sidebar-tab" data-tab="blocks" role="tab" aria-selected="false">Blocks <span class="sidebar-tab-count blocks-count">0</span></button>
           <span class="sidebar-tabs-spacer"></span>
+          <button class="sidebar-tab-action" data-action="refresh-files" type="button" title="Refresh file tree" aria-label="Refresh files">\u21bb</button>
           <button class="sidebar-tab-action" data-action="toggle-hidden" type="button" title="Show hidden files (.git, .env, \u2026)" aria-label="Show hidden files" aria-pressed="false">\u25cb</button>
         </div>
         <div class="sidebar-pane sidebar-pane-files" data-tab="files">
@@ -2124,6 +2125,8 @@ export class Workspace {
         const a = action.dataset.action;
         if (a === "toggle-hidden") {
           this.toggleShowHiddenFiles();
+        } else if (a === "refresh-files") {
+          this.refreshFileTreeFull();
         }
         return;
       }
@@ -2153,6 +2156,21 @@ export class Workspace {
       loadStateByPath: new Map(),
     };
     this.updateHiddenToggleVisualState();
+    void this.refreshFileTreeRoot();
+  }
+
+  /**
+   * Manual refresh of the file tree. Drops cached subtrees to force
+   * re-fetching from disk, preserving the expanded set so the user
+   * can re-expand and see new files.
+   */
+  private refreshFileTreeFull(): void {
+    this.fileTreeRootLoaded = false;
+    this.treeState = {
+      ...this.treeState,
+      childrenByPath: new Map(),
+      loadStateByPath: new Map(),
+    };
     void this.refreshFileTreeRoot();
   }
 
