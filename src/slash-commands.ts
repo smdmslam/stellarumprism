@@ -94,6 +94,18 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     detail: "Show last audit + last build",
     info: "Print a compact summary of the workspace's persisted state.json: the most recent /audit and the most recent build/new/refactor/test-gen completion, with paths to their full reports under .prism/.",
   },
+  {
+    label: "/protocol",
+    detail: "Run a named protocol (recipe orchestrator)",
+    info:
+      "Run an ordered recipe of slash + shell steps and persist a " +
+      "consolidated Markdown report to ~/Documents/Prism/Reports/. Bare " +
+      "/protocol lists the available recipes; pass an id to run one. " +
+      "Built-in recipes: refactor-cohesion-review, harden, pre-ship-check, " +
+      "wiring-gap-audit. The toolbar UI (Phase D) will surface these " +
+      "without requiring users to know the slash command.",
+    takesArg: true,
+  },
 
   // -- Modes (persona-switched agent turns) -------------------------------
   // Each mode contributes its primary alias as a slash command. Additional
