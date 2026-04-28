@@ -1263,7 +1263,7 @@ input:checked + .toggle-slider:before {
    * agent surface migration \u2014 sized for occasional `pnpm tauri dev`,
    * `git status`, etc., not as the dominant surface. The user can
    * grow it via the `.layout-divider-preview` handle above. */
-  flex: 0 0 200px;
+  flex: 0 0 220px;
   min-height: 80px;
   background-color: #0d0f14;
   border-top: 1px solid #1f2937;

@@ -448,7 +448,7 @@ export class Workspace {
     this.term = new Terminal({
       fontFamily:
         '"JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace',
-      fontSize: 13,
+      fontSize: 9,
       lineHeight: 1.2,
       cursorBlink: true,
       theme: TERM_THEME,
