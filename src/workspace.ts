@@ -640,6 +640,28 @@ export class Workspace {
     };
     window.addEventListener("prism-settings-changed", handleSettingsChange);
     this.disposers.push(() => window.removeEventListener("prism-settings-changed", handleSettingsChange));
+
+    // Duplicate Full Session: when a tab is opened with a `loadChatPath`
+    // restore hint, the prior tab serialized its history to a temp
+    // markdown file and is asking us to seed this new tab with it.
+    // Suppress the \"render loaded transcript?\" modal \u2014 the user
+    // already chose to duplicate, a second confirmation is noise. Best-
+    // effort delete the temp file after, regardless of load success;
+    // leaving the temp behind has no value once we've taken our shot.
+    if (this.restore.loadChatPath) {
+      const tempPath = this.restore.loadChatPath;
+      this.renderLoadedChatPref = "never";
+      try {
+        await this.loadSavedChat(tempPath);
+        this.agentView?.appendNotice(
+          "router",
+          "Duplicated session from prior tab",
+        );
+      } catch (e) {
+        console.warn("[duplicate] load failed", e);
+      }
+      void invoke("remove_file", { cwd: "", path: tempPath }).catch(() => {});
+    }
   }
 
   /**
