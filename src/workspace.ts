@@ -247,17 +247,6 @@ export class Workspace {
   /** Last cwd we built the tree for, so we can detect cwd changes. */
   private fileTreeLastCwd = "";
   /**
-   * PTY chunks captured while the agent was busy, replayed (dimmed)
-   * after the agent goes idle. Without this, an idle shell that
-   * re-prints its prompt mid-agent-turn (or a long-running shell
-   * command still streaming output from before the user kicked off the
-   * agent) interleaves with the agent's tokens / tool log and shreds
-   * the visual flow. Buffering during busy + dim-replay on idle keeps
-   * the agent transcript readable AND preserves any shell output the
-   * user actually wanted to see. Empty during normal idle operation.
-   */
-  private suspendedPtyBuffer: string[] = [];
-  /**
    * Whether the file tree includes hidden dotfiles (`.git`,
    * `.gitignore`, etc.). Default false; toggled by the eye-icon
    * button next to the Files tab. `.prism/` is always shown
@@ -319,25 +308,32 @@ export class Workspace {
       </aside>
       <div class="layout-divider layout-divider-sidebar" data-divider="sidebar" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize sidebar"></div>
       <div class="content">
-        <div class="file-preview" data-visible="false" aria-hidden="true"></div>
-        <div class="layout-divider layout-divider-preview" data-divider="preview" data-visible="false" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize file preview"></div>
-        <div class="agent-stage" aria-label="Agent dialogue"></div>
-        <div class="terminal-host">
-          <div class="terminal-stage"></div>
-        </div>
-        <div class="agent-actions"></div>
-        <div class="attachments"></div>
-        <div class="input-bar">
-          <div class="input-row">
-            <div class="editor-host"></div>
+        <div class="center-pane">
+          <div class="file-preview" data-visible="true" aria-hidden="false">
+            <div class="file-preview-empty">No file open</div>
           </div>
-          <div class="input-meta">
-            <span class="input-prefix" data-intent="command">\u276f</span>
-            <span class="cwd-badge" title="Current working directory"></span>
-            <span class="input-meta-spacer"></span>
-            <span class="model-badge" title="Agent model">\u2026</span>
-            <button class="busy-pill" type="button" title="Cancel agent request" aria-label="cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
-            <span class="intent-badge" data-intent="command">CMD</span>
+          <div class="layout-divider layout-divider-preview" data-divider="preview" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize terminal"></div>
+          <div class="terminal-host">
+            <div class="terminal-stage"></div>
+          </div>
+        </div>
+        <div class="layout-divider layout-divider-pane" data-divider="pane" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize agent pane"></div>
+        <div class="agent-pane">
+          <div class="agent-stage" aria-label="Agent dialogue"></div>
+          <div class="agent-actions"></div>
+          <div class="attachments"></div>
+          <div class="input-bar">
+            <div class="input-row">
+              <div class="editor-host"></div>
+            </div>
+            <div class="input-meta">
+              <span class="input-prefix" data-intent="command">\u276f</span>
+              <span class="cwd-badge" title="Current working directory"></span>
+              <span class="input-meta-spacer"></span>
+              <span class="model-badge" title="Agent model">\u2026</span>
+              <button class="busy-pill" type="button" title="Cancel agent request" aria-label="cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
+              <span class="intent-badge" data-intent="command">CMD</span>
+            </div>
           </div>
         </div>
       </div>
@@ -549,17 +545,9 @@ export class Workspace {
 
     this.disposers.push(
       await listen<string>(`pty-output-${this.id}`, (e) => {
-        // While the agent is mid-turn, buffer PTY output instead of
-        // writing it straight through. Shell prompt re-renders, OSC 7
-        // updates from a backgrounded `cd`, and any lingering output
-        // from a shell command the user kicked off before the agent
-        // started would otherwise interleave with agent tokens / tool
-        // log lines and break the visual flow. Buffered output is
-        // replayed dimmed after onDone (see setBusyState).
-        if (this.agent?.isBusy()) {
-          this.suspendedPtyBuffer.push(e.payload);
-          return;
-        }
+        // After the agent / shell surface split, xterm only ever sees
+        // shell traffic, so PTY output streams straight through with
+        // no interleave-guard buffering.
         this.term.write(e.payload);
       }),
       await listen(`pty-exit-${this.id}`, () => {
@@ -585,14 +573,13 @@ export class Workspace {
     this.resizeObserver.observe(stage);
 
     // Agent + editor.
-    // The DOM-based agent panel renders prose with `overflow-wrap`
-    // so it reflows naturally on resize, sidestepping xterm's
-    // cell-grid wrap. Phase 1: side-by-side with xterm so we can
-    // verify the new surface against the old one.
+    // xterm is now strictly for shell I/O. Agent dialogue (prose,
+    // tool log, headers, footers, errors) renders into the DOM
+    // panel via AgentView, which uses standard CSS for word-aware
+    // wrap and resize-friendly layout.
     const agentStageEl = this.root.querySelector<HTMLElement>(".agent-stage");
     this.agentView = new AgentView(agentStageEl ?? this.root);
     this.agent = new AgentController({
-      term: this.term,
       view: this.agentView,
       blocks: this.blocks,
       sessionId: this.id,
@@ -685,11 +672,10 @@ export class Workspace {
         // the mouse, which doesn't work if the pill stops repainting.
         if ((key === "SIGINT" || key === "EOF") && this.agent?.isBusy()) {
           this.agent.cancel();
-          this.term.write(
-            `\r\n\x1b[1;33m[agent]\x1b[0m \x1b[2mcancelled by ^${
-              key === "SIGINT" ? "C" : "D"
-            }\x1b[0m\r\n`,
+          this.agentView?.appendError(
+            `[agent] cancelled by ^${key === "SIGINT" ? "C" : "D"}`,
           );
+          this.agentView?.endTurn();
           return true;
         }
         if (key === "EOF" && !isShellBusy()) return false;
@@ -1324,8 +1310,9 @@ export class Workspace {
     });
   }
 
-  /** Show/hide the busy pill and refocus the editor when going idle
-   * (so the next prompt is ready to type without clicking). */
+  /** Show/hide the busy pill. Was previously also responsible for
+   * draining a suspended PTY buffer; that buffer is gone now that
+   * agent and shell render to separate surfaces. */
   private setBusyState(busy: boolean): void {
     const pill = this.root.querySelector<HTMLButtonElement>(".busy-pill");
     if (pill) {
@@ -1336,33 +1323,6 @@ export class Workspace {
         pill.classList.remove("visible");
         pill.classList.remove("stalled");
       }
-    }
-    // Idle transition: drain any PTY output that accumulated while the
-    // agent was working. Replayed in dim so the user sees \"these are
-    // shell things that happened during the turn\" without confusing
-    // them with the agent's primary output. Carries OSC 7 sequences
-    // through xterm's parser too, so cwd-tracking still fires (it just
-    // fires on flush instead of in real time).
-    if (!busy && this.suspendedPtyBuffer.length > 0) {
-      const buffered = this.suspendedPtyBuffer.join("");
-      this.suspendedPtyBuffer = [];
-
-      // Suppress shell prompt leakage: filter out the visible text of
-      // the shell prompt that accumulated while the agent was busy.
-      // We look for text between OSC 133;A (prompt start) and
-      // OSC 133;B (prompt end), which is where our shell-integration
-      // places the $PS1.
-      //
-      // We MUST preserve the OSC sequences themselves (\x1b]... \x07)
-      // because xterm's parser needs them to update CWD (OSC 7) and
-      // command blocks (OSC 133;A, B, C, D).
-      const PROMPT_TEXT_RE = /(\x1b\]133;A\x07)([\s\S]*?)(\x1b\]133;B\x07)/g;
-      const suppressed = buffered.replace(PROMPT_TEXT_RE, "$1$3");
-
-      // Wrap the entire replay in dim so the shell-prompt re-render
-      // doesn't compete with the agent's done-footer. Reset at the
-      // end so the next live PTY chunk starts at default brightness.
-      this.term.write(`\x1b[2m${suppressed}\x1b[0m`);
     }
   }
 
@@ -2449,9 +2409,8 @@ export class Workspace {
     }
     this.disposeFileEditor();
 
-    overlay.dataset.visible = "true";
-    overlay.setAttribute("aria-hidden", "false");
-    this.setDividerVisible("preview", true);
+    // The file preview is permanently mounted in the center pane;
+    // opening just swaps the placeholder for the editor surface.
     overlay.innerHTML =
       `<div class="file-preview-header">` +
       `<span class="file-preview-dirty" data-dirty="false" aria-hidden="true">\u25cf</span>` +
@@ -2558,8 +2517,9 @@ export class Workspace {
   }
 
   /**
-   * Close the editor overlay. Confirms before discarding unsaved
-   * changes. Idempotent.
+   * Close the open file. Confirms before discarding unsaved changes.
+   * Idempotent. The preview surface itself stays mounted \u2014 we just
+   * swap back to the empty-state placeholder.
    */
   private closeFileEditor(): void {
     if (this.fileEditor?.isDirty()) {
@@ -2571,10 +2531,7 @@ export class Workspace {
     this.disposeFileEditor();
     const overlay = this.root.querySelector<HTMLElement>(".file-preview");
     if (!overlay) return;
-    overlay.dataset.visible = "false";
-    overlay.setAttribute("aria-hidden", "true");
-    overlay.innerHTML = "";
-    this.setDividerVisible("preview", false);
+    overlay.innerHTML = `<div class="file-preview-empty">No file open</div>`;
   }
 
   private disposeFileEditor(): void {

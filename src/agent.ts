@@ -1,12 +1,9 @@
-import type { Terminal } from "@xterm/xterm";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type { BlockManager } from "./blocks";
 import { route as routeModel, parseAutoSlug, PRESETS } from "./router";
 import { modelSupportsToolUse } from "./models";
-import { InlineCodeFormatter } from "./inline-code-format";
-import { MarkdownLineFormatter } from "./markdown-line-format";
 import type { AgentViewApi } from "./agent-view";
 import { detectRigorViolation } from "./grounded-rigor";
 import {
@@ -107,26 +104,17 @@ interface SessionInfo {
 }
 
 // ---------------------------------------------------------------------------
-// ANSI helpers so agent output reads distinctly from shell output
-// ---------------------------------------------------------------------------
-const PREFIX_OPEN = "\x1b[1;35m";   // bold magenta
-const PREFIX_DIM = "\x1b[2m";       // dim
-const RESET = "\x1b[0m";
-
-// ---------------------------------------------------------------------------
 // AgentController
 // ---------------------------------------------------------------------------
 
 export interface AgentControllerOptions {
-  term: Terminal;
   /**
-   * Optional DOM-based agent prose panel. When provided, prose tokens
-   * (and eventually tool log / headers / footers) are mirrored here so
-   * the agent surface gets word-aware wrap and resize-friendly layout
-   * for free. xterm continues to receive the same writes during the
-   * migration; later phases drop xterm from the agent path entirely.
+   * DOM-based agent panel. Owns every agent-rendered surface: prose,
+   * tool-log cards, review block, router / header / footer notices,
+   * error lines. xterm is no longer in the agent rendering path \u2014 it
+   * is reserved for shell I/O.
    */
-  view?: AgentViewApi;
+  view: AgentViewApi;
   blocks: BlockManager;
   /** PTY session id — used when the agent needs to write to the shell. */
   sessionId: string;
@@ -206,8 +194,6 @@ export class AgentController {
   private messageCount = 0;
   private verifierEnabled = true;
   private verifierModel = "anthropic/claude-haiku-4.5";
-  /** True once the first review token has arrived for the current request. */
-  private reviewHeaderPrinted = false;
   /** Current busy-state broadcast value, so we don't double-fire callbacks. */
   private busy = false;
   /** Stall-detection timer id (window.setTimeout return value). */
@@ -276,27 +262,10 @@ export class AgentController {
    * the agent touched. Reset on every query().
    */
   private currentTurnWrites: WriteEntry[] = [];
-  /**
-   * Streaming-safe inline-code colorizer. Each backtick-delimited span
-   * in assistant prose is wrapped in ANSI cyan as it streams in, so
-   * file paths and identifiers visually pop against the surrounding
-   * text. Triple-backtick fenced blocks pass through untouched (those
-   * are deferred to IDE Phase 2's HTML renderer; see
-   * `docs/futurework/xterm-cosmetics.md`). State is per-turn: reset on
-   * every new `query()`, flushed on every `onDone()` / `onError()` so
-   * an unbalanced inline span can't leak color into the next prompt.
-   */
-  private readonly inlineCodeFormatter = new InlineCodeFormatter();
-  /**
-   * Streaming markdown line-marker formatter. Recognizes `^#{1,3} `
-   * headings and `^- ` / `^\* ` bullets at line starts, replacing the
-   * markers with ANSI styling so structured prose reads with shape
-   * instead of as a wall of dim text. Runs BEFORE `inlineCodeFormatter`
-   * in the onToken pipeline so the inline-code pass still sees raw
-   * backticks; both formatters track fenced-block state independently
-   * but reach the same decision off the same input.
-   */
-  private readonly markdownLineFormatter = new MarkdownLineFormatter();
+  // Markdown formatting moved out of the controller: the AgentView
+  // (`./agent-view.ts`) now renders Markdown via `marked` directly
+  // into the DOM. The previous ANSI-based inline-code / heading
+  // formatters are retired by this migration.
 
   constructor(opts: AgentControllerOptions) {
     this.opts = opts;
@@ -391,9 +360,7 @@ export class AgentController {
       await invoke("set_verifier_enabled", { enabled });
       this.verifierEnabled = enabled;
     } catch (e) {
-      this.writeLineToTerm(
-        `\x1b[1;31m[verify]\x1b[0m failed: ${String(e)}`,
-      );
+      this.opts.view.appendError(`[verify] failed: ${String(e)}`);
     }
   }
 
@@ -402,8 +369,8 @@ export class AgentController {
       await invoke("set_verifier_model", { model });
       this.verifierModel = model;
     } catch (e) {
-      this.writeLineToTerm(
-        `\x1b[1;31m[verify]\x1b[0m failed to set verifier model: ${String(e)}`,
+      this.opts.view.appendError(
+        `[verify] failed to set verifier model: ${String(e)}`,
       );
     }
   }
@@ -415,9 +382,7 @@ export class AgentController {
       this.model = model;
       this.opts.onModelChange?.(model);
     } catch (e) {
-      this.writeLineToTerm(
-        `${PREFIX_OPEN}[agent]${RESET} failed to set model: ${String(e)}`,
-      );
+      this.opts.view.appendError(`[agent] failed to set model: ${String(e)}`);
     }
   }
 
@@ -486,8 +451,8 @@ export class AgentController {
     } = {},
   ): Promise<void> {
     if (!this.hasApiKey) {
-      this.writeLineToTerm(
-        `${PREFIX_OPEN}[agent]${RESET} no API key configured. Add one to ${PREFIX_DIM}${this.configPath ?? "~/.config/prism/config.toml"}${RESET}`,
+      this.opts.view.appendError(
+        `[agent] no API key configured. Add one to ${this.configPath ?? "~/.config/prism/config.toml"}`,
       );
       return;
     }
@@ -500,8 +465,6 @@ export class AgentController {
     this.responseBuffer = "";
     this.currentRuntimeProbes = [];
     this.currentSubstrateRuns = [];
-    this.inlineCodeFormatter.reset();
-    this.markdownLineFormatter.reset();
     this.clearActionBar();
     // Reset the grounded-rigor counters so the previous turn's tool
     // calls or grounded flag don't leak into the new one.
@@ -534,13 +497,9 @@ export class AgentController {
     // shell PTY auto-emits its own prompt line whenever it goes idle,
     // and without this buffer that shell-prompt line and our `you \u203a`
     // collide visually \u2014 they end up adjacent or even on the same row.
-    const echoed = prompt.replace(/\r?\n/g, "\r\n");
-    this.opts.term.write(
-      `\r\n\r\n\x1b[1;36myou\x1b[0m \x1b[2m\u203a\x1b[0m ${echoed}\r\n`,
-    );
-    // Mirror the user prompt into the DOM-based agent panel so the
-    // panel's turn boundary lines up with the terminal echo.
-    this.opts.view?.beginTurn(prompt);
+    // Open a new turn in the agent panel. The user echo is rendered
+    // inside the turn block; xterm no longer carries the prompt.
+    this.opts.view.beginTurn(prompt);
 
     // Decide the actual model. Priority:
     //   1. options.modelOverride (e.g. a mode's preferred model)
@@ -550,8 +509,9 @@ export class AgentController {
     if (options.modelOverride) {
       resolvedModel = options.modelOverride;
       const label = options.mode ?? "override";
-      this.opts.term.write(
-        `${PREFIX_DIM}\u2192 [${label}] ${shortSlug(resolvedModel)}${RESET}`,
+      this.opts.view.appendNotice(
+        "router",
+        `\u2192 [${label}] ${shortSlug(resolvedModel)}`,
       );
     } else {
       const preset = parseAutoSlug(this.model);
@@ -567,8 +527,9 @@ export class AgentController {
           preset,
         );
         resolvedModel = decision.slug;
-        this.opts.term.write(
-          `${PREFIX_DIM}\u2192 [auto/${preset}] ${shortSlug(resolvedModel)} (${decision.reason})${RESET}`,
+        this.opts.view.appendNotice(
+          "router",
+          `\u2192 [auto/${preset}] ${shortSlug(resolvedModel)} (${decision.reason})`,
         );
       }
     }
@@ -581,17 +542,18 @@ export class AgentController {
       const fallback = presetForFallback
         ? PRESETS[presetForFallback].default
         : UNIVERSAL_TOOL_FALLBACK;
-      this.opts.term.write(
-        `\r\n\x1b[1;33m[router]\x1b[0m ${PREFIX_DIM}${shortSlug(resolvedModel)} doesn't support tool use; using ${shortSlug(fallback)} for this turn${RESET}`,
+      this.opts.view.appendNotice(
+        "router",
+        `[router] ${shortSlug(resolvedModel)} doesn't support tool use; using ${shortSlug(fallback)} for this turn`,
       );
       resolvedModel = fallback;
     }
     // Stash the model we're actually using so onAuditComplete can report it.
     this.currentResolvedModel = resolvedModel;
 
-    // Announce in the terminal so the user sees something happening immediately.
-    this.opts.term.write(
-      `\r\n${PREFIX_OPEN}\u2732 agent${RESET} ${PREFIX_DIM}(${resolvedModel})${RESET}\r\n`,
+    this.opts.view.appendNotice(
+      "agent-header",
+      `\u2732 agent (${resolvedModel})`,
     );
 
     const context = await this.gatherContext();
@@ -622,13 +584,13 @@ export class AgentController {
         systemPrefix: options.systemPrefix ?? null,
       });
     } catch (err) {
-      this.writeLineToTerm(`${PREFIX_OPEN}[agent error]${RESET} ${String(err)}`);
+      this.opts.view.appendError(`[agent error] ${String(err)}`);
+      this.opts.view.endTurn();
       this.setBusy(false);
       return;
     }
     this.inflightId = requestId;
 
-    this.reviewHeaderPrinted = false;
     this.unlisteners.push(
       await listen<string>(`agent-token-${requestId}`, (e) => {
         this.onToken(e.payload);
@@ -677,65 +639,30 @@ export class AgentController {
   private onToken(piece: string): void {
     this.responseBuffer += piece;
     this.resetStallTimer();
-    // Phase rule: when the first assistant token arrives after a tool
-    // call, emit a dim `\u2500\u2500\u2500 answer \u2500\u2500\u2500` rule so the user's eye finds
-    // the final prose without scanning the tool log. Skipped when the
-    // turn has had no tool calls (chat turns get straight prose).
+    // Phase rule: a tool call earlier in the turn flips
+    // `expectingAnswerRule` so the next prose chunk knows it's the
+    // start of a new answer phase. The view already opens a fresh
+    // prose section underneath the latest tool card on its own; we
+    // just clear the flag so it doesn't reapply on every chunk.
     if (this.expectingAnswerRule && piece.length > 0) {
       this.expectingAnswerRule = false;
-      // Two blank lines on each side of the rule so the assistant's
-      // prose gets its own visual zone, distinct from the dim tool log
-      // above. Without the extra whitespace the prose collides with
-      // `\u2713 summary` and reads as one continuous block of text.
-      this.opts.term.write(
-        `\r\n\r\n\x1b[2m\u2500\u2500\u2500 answer \u2500\u2500\u2500\x1b[0m\r\n\r\n`,
-      );
     }
-    // Two-pass formatting on each streaming chunk:
-    //
-    //   1. MarkdownLineFormatter detects ^#{1,3} space / ^- space /
-    //      ^\* space at line starts and rewrites them into ANSI-styled
-    //      heading / bullet markers. Headings keep a bold-cyan scope
-    //      open until the next \n closes it.
-    //
-    //   2. InlineCodeFormatter wraps every remaining `backtick`-delimited
-    //      span in cyan so identifiers and paths pop against prose.
-    //
-    // Order matters: markdown runs first so the inline-code pass still
-    // sees the raw text (it cares about backticks, which markdown
-    // doesn't strip). Both formatters are stateful across chunks so
-    // markers split between two tokens still detect correctly.
-    const structured = this.markdownLineFormatter.process(piece);
-    const colored = this.inlineCodeFormatter.process(structured);
-    // xterm expects CRLF for newlines. Bare \n moves the cursor down without
-    // returning to column 0, so lines stair-step. Normalize on write.
-    const normalized = colored.replace(/\r?\n/g, "\r\n");
-    this.opts.term.write(normalized);
-    // Mirror the raw streaming piece into the DOM panel. ANSI is
-    // stripped inside the view so the panel doesn't fight the
-    // terminal's styling decisions \u2014 phase 2 ports the formatters
-    // into proper DOM elements.
-    this.opts.view?.appendProse(piece);
+    // Stream the raw Markdown into the panel; the AgentView re-renders
+    // through `marked` so headings, fenced code, lists, and inline
+    // code all land as proper DOM nodes.
+    this.opts.view.appendProse(piece);
   }
 
   private onReviewToken(piece: string): void {
     this.resetStallTimer();
-    if (!this.reviewHeaderPrinted) {
-      this.reviewHeaderPrinted = true;
-      this.opts.term.write(
-        `\r\n\x1b[1;33m\u27d1 review\x1b[0m \x1b[2m(${this.verifierModel})\x1b[0m\r\n`,
-      );
-    }
-    const normalized = piece.replace(/\r?\n/g, "\r\n");
-    this.opts.term.write(`\x1b[33m${normalized}\x1b[0m`);
+    this.opts.view.appendReview(piece);
   }
 
   private onReviewDone(): void {
-    if (this.reviewHeaderPrinted) {
-      // Cap the review block with a newline so the next prompt isn't crammed.
-      this.opts.term.write("\r\n");
-    }
-    this.reviewHeaderPrinted = false;
+    // The view's review section is sealed when the turn ends; nothing
+    // to do here for now beyond hooking the event so the stall timer
+    // sees activity.
+    this.resetStallTimer();
   }
 
   /**
@@ -798,9 +725,7 @@ export class AgentController {
         callId: info.call_id,
         decision,
       }).catch((err) => {
-        this.writeLineToTerm(
-          `\x1b[1;31m[approval]\x1b[0m ${String(err)}`,
-        );
+        this.opts.view.appendError(`[approval] ${String(err)}`);
       });
       this.clearActionBar();
     };
@@ -861,51 +786,29 @@ export class AgentController {
     // and is consumed by whichever token arrives first after the loop
     // settles back into prose.
     this.expectingAnswerRule = true;
-    // Whole-line dim so the tool log recedes visually and the final
-    // answer (default brightness) pops. Tool name kept dim-cyan (no
-    // bold) so it's still scannable but doesn't compete with the
-    // assistant's prose for the eye.
-    const DIM = "\x1b[2m";
-    const CYAN = "\x1b[36m";
-    const GREEN = "\x1b[32m";
-    const RED = "\x1b[31m";
-    const RESET = "\x1b[0m";
     const prettyArgs = prettyToolArgs(info.name, info.args);
-    const argSegment = prettyArgs ? ` ${DIM}${prettyArgs}${RESET}` : "";
-    const statusGlyph = info.ok ? `${GREEN}\u2713${RESET}` : `${RED}\u2717${RESET}`;
     // For path-touching tools, the Rust-side summary repeats the path
-    // we've already shown on the args line. cleanToolSummary trims that
-    // duplication \u2014 \"read /Users/.../foo.ts (1.2 KB)\" becomes
-    // \"read 1.2 KB\". Other tools pass through unchanged so we don't
-    // accidentally drop information for non-file tools.
+    // we've already shown on the args line. cleanToolSummary trims
+    // that duplication so \"read /Users/.../foo.ts (1.2 KB)\" becomes
+    // \"read 1.2 KB\".
     const clean = cleanToolSummary(info.name, info.summary);
-    let statusLine = "";
+    let summary = "";
     if (info.ok) {
       const verb = clean.verb || "ok";
       const pill = clean.pill ? ` (${clean.pill})` : "";
-      statusLine = `${statusGlyph} ${DIM}${verb}${pill}${RESET}`;
+      summary = `${verb}${pill}`;
     } else {
-      statusLine = `${statusGlyph} ${DIM}${info.summary}${RESET}`;
+      summary = info.summary;
     }
-
-    this.opts.term.write(
-      `\r\n${DIM}\u2192${RESET} ${DIM}${CYAN}${info.name}${RESET}${argSegment}` +
-        `\r\n  ${statusLine}\r\n`,
-    );
+    this.opts.view.appendToolCall({
+      name: info.name,
+      argsPretty: prettyArgs,
+      status: info.ok ? "ok" : "fail",
+      summary,
+    });
   }
 
   private onDone(): void {
-    // Flush both formatters in pipeline order: markdown first (which
-    // may emit a held heading-close ANSI on the way out), then
-    // inline-code (which closes any unbalanced backtick span). Without
-    // the markdown flush, an open heading scope could leak bold-cyan
-    // ANSI into the next prompt's `you \u203a` line.
-    const mdTail = this.markdownLineFormatter.flush();
-    const tail = this.inlineCodeFormatter.flush();
-    if (mdTail.length > 0 || tail.length > 0) {
-      this.opts.term.write((mdTail + tail).replace(/\r?\n/g, "\r\n"));
-    }
-    this.opts.term.write("\r\n");
     this.inflightId = null;
     this.setBusy(false);
 
@@ -930,11 +833,9 @@ export class AgentController {
       response: this.responseBuffer,
     });
     if (violation) {
-      // Yellow on the label so it reads as a CAUTION rather than an
-      // ERROR (the response itself isn't broken \u2014 it's just unverified).
-      // Dim body so the explanation recedes once read.
-      this.opts.term.write(
-        `\r\n\x1b[1;33m[grounded-chat]\x1b[0m \x1b[2mthe response carries ${violation.summary} but no tool calls fired this turn \u2014 those claims are NOT actually verified. Treat as ? Unverified.\x1b[0m\r\n`,
+      this.opts.view.appendNotice(
+        "grounded-warning",
+        `[grounded-chat] the response carries ${violation.summary} but no tool calls fired this turn \u2014 those claims are NOT actually verified. Treat as ? Unverified.`,
       );
     }
 
@@ -947,14 +848,7 @@ export class AgentController {
     // rather than thinking nothing was attempted.
     if (this.currentTurnWrites.length > 0) {
       const footer = formatFilesModifiedFooter(this.currentTurnWrites);
-      // Cyan heading + dim body so the heading anchors the eye.
-      const [heading, ...rows] = footer;
-      this.opts.term.write(
-        `\r\n\x1b[36m${heading}\x1b[0m\r\n`,
-      );
-      for (const row of rows) {
-        this.opts.term.write(`\x1b[2m${row}\x1b[0m\r\n`);
-      }
+      this.opts.view.appendNotice("files-modified", footer.join("\n"));
     }
 
     // \"Done in Ns \u00b7 N tools \u00b7 model\" turn footer. Renders unconditionally
@@ -969,13 +863,11 @@ export class AgentController {
         toolCount: this.currentTurnToolCount,
         model: shortSlug(this.currentResolvedModel ?? this.model),
       });
-      this.opts.term.write(
-        `\r\n\x1b[2m${summaryLine}\x1b[0m\r\n`,
-      );
+      this.opts.view.appendNotice("turn-footer", summaryLine);
     }
 
     this.renderActionBar(extractCodeBlocks(this.responseBuffer));
-    this.opts.view?.endTurn();
+    this.opts.view.endTurn();
     this.clearListeners();
     // Fire mode-specific completion hook for audit + build-family
     // turns. Capture mode/model/response BEFORE clearing currentMode so
@@ -1031,18 +923,8 @@ export class AgentController {
   }
 
   private onError(msg: string): void {
-    // Flush both formatters first so any open ANSI scopes (heading
-    // bold-cyan, inline-code cyan) are reset before the
-    // [agent error] line is written; otherwise the error text could
-    // inherit color/weight from a half-closed span.
-    const mdTail = this.markdownLineFormatter.flush();
-    const tail = this.inlineCodeFormatter.flush();
-    if (mdTail.length > 0 || tail.length > 0) {
-      this.opts.term.write((mdTail + tail).replace(/\r?\n/g, "\r\n"));
-    }
-    this.writeLineToTerm(`${PREFIX_OPEN}[agent error]${RESET} ${msg}`);
-    this.opts.view?.appendProse(`\n[agent error] ${msg}\n`);
-    this.opts.view?.endTurn();
+    this.opts.view.appendError(`[agent error] ${msg}`);
+    this.opts.view.endTurn();
     this.inflightId = null;
     this.setBusy(false);
     this.clearListeners();
@@ -1086,8 +968,9 @@ export class AgentController {
     this.stallTimer = window.setTimeout(() => {
       // Don't kill the stream — just surface that it looks stuck so the
       // user can choose to cancel or keep waiting.
-      this.opts.term.write(
-        `\r\n\x1b[1;33m[agent]\x1b[0m ${PREFIX_DIM}stream silent for ${Math.round(STALL_TIMEOUT_MS / 1000)}s \u2014 click cancel or wait${RESET}\r\n`,
+      this.opts.view.appendNotice(
+        "stall",
+        `[agent] stream silent for ${Math.round(STALL_TIMEOUT_MS / 1000)}s \u2014 click cancel or wait`,
       );
       try {
         this.opts.onStall?.();
@@ -1114,10 +997,6 @@ export class AgentController {
   private clearListeners(): void {
     for (const off of this.unlisteners) off();
     this.unlisteners = [];
-  }
-
-  private writeLineToTerm(line: string): void {
-    this.opts.term.write(`\r\n${line}\r\n`);
   }
 
   private async gatherContext(): Promise<AgentContext> {
