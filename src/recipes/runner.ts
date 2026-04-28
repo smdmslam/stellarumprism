@@ -27,6 +27,28 @@ import type {
   StepState,
 } from "./types";
 
+/**
+ * Discriminated progress event the runner emits at lifecycle transitions.
+ * The workspace's handleProtocolCommand subscribes via `opts.onProgress`
+ * and drives the ProtocolReportCard from these. When `onProgress` is
+ * absent, the runner falls back to per-step `ctx.notify()` calls so a
+ * future non-card caller still sees something.
+ */
+export type RunProgress =
+  | { kind: "planning" }
+  | { kind: "step:active"; index: number }
+  | { kind: "step:result"; index: number; result: StepResult }
+  | { kind: "done"; report: RecipeReport; aborted: boolean };
+
+export interface RunRecipeOptions {
+  /** Cancels the recipe at the next step boundary. In-flight slash /
+   *  shell commands are allowed to finish (best-effort). */
+  signal?: AbortSignal;
+  /** Subscribe to lifecycle events. When set, the runner suppresses
+   *  the per-step `ctx.notify()` chatter \u2014 the card is the renderer. */
+  onProgress?: (ev: RunProgress) => void;
+}
+
 /** Minimal surface the runner needs from the workspace. */
 export interface RecipeRunnerCtx {
   /** Shell cwd for shell steps. */
@@ -72,6 +94,7 @@ interface ReportWriteResult {
 export async function runRecipe(
   id: string,
   ctx: RecipeRunnerCtx,
+  opts: RunRecipeOptions = {},
 ): Promise<RecipeReport> {
   const recipe = findRecipe(id);
   if (!recipe) {
@@ -80,11 +103,25 @@ export async function runRecipe(
     );
   }
 
+  // When onProgress is wired (the card path), suppress the per-step
+  // notify() chatter \u2014 the card replaces it. We still emit the
+  // recipe-level start / finish summaries so the chat scrollback shows
+  // what happened, even on a tab the user has scrolled past the card on.
+  const hasCard = !!opts.onProgress;
+  const emit = (ev: RunProgress) => {
+    try {
+      opts.onProgress?.(ev);
+    } catch (e) {
+      console.error("recipe onProgress threw", e);
+    }
+  };
+
   const startedAt = new Date();
   const startedAtIso = startedAt.toISOString();
   ctx.notify(
     `[protocol] starting "${recipe.label}" \u2014 ${recipe.steps.length} steps`,
   );
+  emit({ kind: "planning" });
 
   // Pre-flight: read package.json once and check that every shell
   // step's required scripts exist. Recipe-level abort if any step
@@ -108,7 +145,7 @@ export async function runRecipe(
     const skippedSteps = recipe.steps.map<{ def: StepDef; result: StepResult }>(
       (def) => ({ def, result: skippedResult("recipe pre-flight aborted") }),
     );
-    return await finalizeReport({
+    const report = await finalizeReport({
       recipe,
       ctx,
       startedAt,
@@ -119,6 +156,8 @@ export async function runRecipe(
         .join(", "),
       preflightScriptsAvailable: preflight.scriptsAvailable,
     });
+    emit({ kind: "done", report, aborted: true });
+    return report;
   }
 
   const stepResults: Array<{ def: StepDef; result: StepResult }> = [];
@@ -129,25 +168,39 @@ export async function runRecipe(
       stepResults.push({ def, result: skippedResult() });
       continue;
     }
+    // Honor cancellation between steps. In-flight slash / shell calls
+    // are allowed to finish; cancellation only prevents the *next*
+    // step from starting.
+    if (opts.signal?.aborted) {
+      const skipResult = skippedResult("cancelled by user");
+      stepResults.push({ def, result: skipResult });
+      emit({ kind: "step:result", index: i, result: skipResult });
+      aborted = true;
+      continue;
+    }
     // Per-step skip if pre-flight flagged this step's scripts missing
     // and its onMissing was "skip". Surfaces a clear note so the user
     // sees why the step didn't run; remaining steps still execute.
     const skipEntry = preflight.perStepSkip.find((s) => s.index === i);
     if (skipEntry) {
-      ctx.notify(
-        `[protocol] step ${i + 1}/${recipe.steps.length} skipped \u2014 ${def.label} (missing scripts: ${skipEntry.missing.join(", ")})`,
+      if (!hasCard) {
+        ctx.notify(
+          `[protocol] step ${i + 1}/${recipe.steps.length} skipped \u2014 ${def.label} (missing scripts: ${skipEntry.missing.join(", ")})`,
+        );
+      }
+      const skipResult = skippedResult(
+        `missing package.json scripts: ${skipEntry.missing.join(", ")}`,
       );
-      stepResults.push({
-        def,
-        result: skippedResult(
-          `missing package.json scripts: ${skipEntry.missing.join(", ")}`,
-        ),
-      });
+      stepResults.push({ def, result: skipResult });
+      emit({ kind: "step:result", index: i, result: skipResult });
       continue;
     }
-    ctx.notify(
-      `[protocol] step ${i + 1}/${recipe.steps.length} \u2014 ${def.label}`,
-    );
+    if (!hasCard) {
+      ctx.notify(
+        `[protocol] step ${i + 1}/${recipe.steps.length} \u2014 ${def.label}`,
+      );
+    }
+    emit({ kind: "step:active", index: i });
     let result: StepResult;
     try {
       if (def.kind === "slash") {
@@ -166,13 +219,13 @@ export async function runRecipe(
       };
     }
     stepResults.push({ def, result });
+    emit({ kind: "step:result", index: i, result });
 
     if (result.state === "failed") {
       const onFailure = def.onFailure ?? "continue";
-      // Include the error string and exit code in the notice so the user
-      // (and any future code review) sees the actual cause inline rather
-      // than having to open the on-disk report. The full report still
-      // captures stderr / stdout for postmortem.
+      // Failure detail still flows through ctx.notifyError + stderr tail
+      // even when the card is mounted \u2014 the error message is too
+      // important to bury in a card section the user might not expand.
       const errParts: string[] = [];
       if (result.error) errParts.push(result.error);
       if (result.exitCode !== null && result.exitCode !== undefined) {
@@ -182,10 +235,6 @@ export async function runRecipe(
       ctx.notifyError(
         `[protocol] step ${i + 1} failed${errSuffix} \u2014 ${onFailure === "abort" ? "aborting" : "continuing"}`,
       );
-      // Surface a short tail of stderr (or stdout if stderr is empty)
-      // so spawn-time AND program-level errors are visible inline. pnpm,
-      // for example, prints `ERR_PNPM_NO_SCRIPT  Missing script: "X"`
-      // to stdout for missing scripts \u2014 stderr-only would miss that.
       const errText = (result.errorOutput || "").trim();
       const outText = (result.output || "").trim();
       const tailSource =
@@ -199,14 +248,14 @@ export async function runRecipe(
         ctx.notify(`[protocol] ${tailSource.label} (last 6 lines):\n${tail}`);
       }
       if (onFailure === "abort") aborted = true;
-    } else {
+    } else if (!hasCard) {
       ctx.notify(
         `[protocol] step ${i + 1} ok (${formatDuration(result.durationMs)})`,
       );
     }
   }
 
-  return await finalizeReport({
+  const report = await finalizeReport({
     recipe,
     ctx,
     startedAt,
@@ -214,6 +263,8 @@ export async function runRecipe(
     stepResults,
     preflightScriptsAvailable: preflight.scriptsAvailable,
   });
+  emit({ kind: "done", report, aborted: !!opts.signal?.aborted });
+  return report;
 }
 
 /**

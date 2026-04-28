@@ -25,8 +25,13 @@ import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { settings } from "./settings";
 import { findMode, type Mode } from "./modes";
-import { RECIPES } from "./recipes";
+import { RECIPES, findRecipe } from "./recipes";
 import { runRecipe } from "./recipes/runner";
+import type { StepResult } from "./recipes/types";
+import {
+  ProtocolReportCard,
+  summaryFromSteps,
+} from "./protocol-report-card";
 import {
   buildVerifiedSystemPrefix,
   detectVerifiedTrigger,
@@ -2185,13 +2190,94 @@ export class Workspace {
       this.agentView?.appendReport(md.join("\n"));
       return;
     }
+
+    // Card path: mount a ProtocolReportCard inline in the agent panel
+    // and let the runner drive its lifecycle via onProgress. The card
+    // replaces the per-step notify() chatter from Phase B with one
+    // self-mutating element (planning \u2192 running \u2192 done) modeled on
+    // the Approval card pattern.
+    const recipe = findRecipe(id);
+    if (!recipe) {
+      this.notifyError(
+        `[protocol] unknown recipe "${sanitize(id)}". Try /protocol bare to list.`,
+      );
+      return;
+    }
+    const controller = new AbortController();
+    const card = new ProtocolReportCard(recipe, {
+      onCancel: () => {
+        controller.abort();
+        this.notify(`[protocol] "${recipe.label}" cancelled by user`);
+      },
+      onRerun: () => {
+        // Fire-and-forget re-run; the new card mounts in a fresh slot
+        // below the current one. Existing card stays visible so the
+        // user can compare runs.
+        void this.handleProtocolCommand(id);
+      },
+      onOpenReport: (path) => {
+        // v1: copy path to clipboard. Phase D / a future opener-plugin
+        // hookup can replace this with a real reveal-in-Finder action.
+        void navigator.clipboard.writeText(path).catch(() => {});
+        this.notify(`[protocol] report path copied to clipboard: ${path}`);
+      },
+    });
+    this.agentView?.appendCard(card.el);
     try {
-      await runRecipe(id, {
-        getCwd: () => this.cwd,
-        notify: (m) => this.notify(m),
-        notifyError: (m) => this.notifyError(m),
-        runSlashCommand: (cmd) => this.runAgentSlashCommand(cmd),
-      });
+      await runRecipe(
+        id,
+        {
+          getCwd: () => this.cwd,
+          notify: (m) => this.notify(m),
+          notifyError: (m) => this.notifyError(m),
+          runSlashCommand: (cmd) => this.runAgentSlashCommand(cmd),
+        },
+        {
+          signal: controller.signal,
+          onProgress: (ev) => {
+            switch (ev.kind) {
+              case "planning":
+                // Card already in planning state from constructor;
+                // event is informational here but useful for future
+                // listeners (e.g. analytics).
+                break;
+              case "step:active":
+                card.setStepActive(ev.index);
+                break;
+              case "step:result": {
+                const detail =
+                  ev.result.state === "failed"
+                    ? composeStepFailureDetail(ev.result)
+                    : ev.result.state === "skipped"
+                      ? ev.result.error
+                      : undefined;
+                card.setStepResult(
+                  ev.index,
+                  ev.result.state === "ok"
+                    ? "ok"
+                    : ev.result.state === "failed"
+                      ? "failed"
+                      : "skipped",
+                  ev.result.durationMs,
+                  detail,
+                );
+                break;
+              }
+              case "done": {
+                if (ev.aborted) card.cascadeSkipRemaining("cancelled");
+                const counts = summaryFromSteps(ev.report.steps);
+                card.setDone({
+                  ...counts,
+                  durationMs: ev.report.durationMs,
+                  reportPath: ev.report.reportPath,
+                  aborted: ev.aborted,
+                });
+                break;
+              }
+            }
+          },
+        },
+      );
     } catch (err) {
       this.notifyError(`[protocol] ${String(err)}`);
     }
@@ -3882,6 +3968,21 @@ function parseAuditArgs(raw: string): {
 function shortModelName(model: string): string {
   const slash = model.indexOf("/");
   return slash >= 0 ? model.slice(slash + 1) : model;
+}
+
+/**
+ * Compose a short failure detail for the ProtocolReportCard's step
+ * row. Combines the runner-provided `error` (e.g. "timed out after
+ * 300s") with the exit code when present, so the card surfaces enough
+ * to diagnose without requiring the user to open the full report.
+ */
+function composeStepFailureDetail(result: StepResult): string {
+  const parts: string[] = [];
+  if (result.error) parts.push(result.error);
+  if (result.exitCode !== null && result.exitCode !== undefined) {
+    parts.push(`exit ${result.exitCode}`);
+  }
+  return parts.join(" \u00b7 ");
 }
 
 /**

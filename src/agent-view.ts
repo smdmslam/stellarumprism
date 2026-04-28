@@ -98,6 +98,8 @@ export interface AgentViewApi {
    * properly via the existing `.markdown-body` styling.
    */
   appendReport(markdown: string): void;
+  /** Mount an arbitrary DOM element (e.g. ProtocolReportCard) inline. */
+  appendCard(card: HTMLElement): void;
   /** Render an error line at the end of the turn. */
   appendError(message: string): void;
   /** Close the current turn (no more content will be appended). */
@@ -269,6 +271,22 @@ export class AgentView implements AgentViewApi {
     // After a one-shot report, reset the streaming-prose pointer so a
     // subsequent agent turn (which DOES use appendProse) opens a fresh
     // section underneath instead of appending into our DOM block.
+    this.currentProseSection = null;
+    this.currentProseMarkdown = "";
+    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
+  }
+
+  /**
+   * Mount an arbitrary DOM element into the current turn. Used by the
+   * recipe-runner ProtocolReportCard so the card can self-manage its
+   * lifecycle (planning → running → done) without AgentView needing to
+   * know about it. Resets the streaming-prose pointer for the same
+   * reason `appendReport` does.
+   */
+  appendCard(card: HTMLElement): void {
+    const pinned = this.isPinnedToBottom();
+    if (!this.currentTurn) this.beginTurn("");
+    this.currentTurn!.appendChild(card);
     this.currentProseSection = null;
     this.currentProseMarkdown = "";
     if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
