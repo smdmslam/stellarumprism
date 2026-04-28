@@ -37,7 +37,16 @@ window.addEventListener("DOMContentLoaded", () => {
       return;
     }
     for (const t of session.tabs) {
-      tabs.newTab({ id: t.id, cwd: t.cwd, title: t.title });
+      tabs.newTab({
+        id: t.id,
+        cwd: t.cwd,
+        title: t.title,
+        sidebarVisible: t.sidebar_visible,
+        previewVisible: t.preview_visible,
+        terminalVisible: t.terminal_visible,
+        consoleVisible: t.console_visible,
+        agentVisible: t.agent_visible,
+      });
     }
   })();
 });

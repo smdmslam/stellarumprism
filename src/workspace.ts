@@ -129,6 +129,11 @@ export interface WorkspaceCallbacks {
    * restore file. No back-pressure; callbacks must be cheap.
    */
   onCwdChange?: (id: string, cwd: string) => void;
+  /**
+   * Fired whenever a layout toggle (sidebar, terminal, etc.) changes.
+   * TabManager subscribes to trigger a debounced session write.
+   */
+  onLayoutChange?: (id: string) => void;
 }
 
 /** Optional restore hints passed to the Workspace constructor when
@@ -147,6 +152,11 @@ export interface WorkspaceRestoreOptions {
   /** Transient internal hint to load a specific MD file on boot. Used
    *  by Duplicate Session to rehydrate the copied history. */
   loadChatPath?: string;
+  sidebarVisible?: boolean;
+  previewVisible?: boolean;
+  terminalVisible?: boolean;
+  consoleVisible?: boolean;
+  agentVisible?: boolean;
 }
 
 export class Workspace {
@@ -266,6 +276,8 @@ export class Workspace {
   private terminalVisible = true;
   private consoleVisible = true;
   private agentVisible = true;
+  /** True if visibility was explicitly set by restore options (session.json). */
+  private visibilityRestored = false;
   private readonly cb: WorkspaceCallbacks;
 
   private term!: Terminal;
@@ -303,10 +315,22 @@ export class Workspace {
       }
     }
 
+    if (restore.sidebarVisible !== undefined) { this.sidebarVisible = restore.sidebarVisible; this.visibilityRestored = true; }
+    if (restore.previewVisible !== undefined) { this.previewVisible = restore.previewVisible; this.visibilityRestored = true; }
+    if (restore.terminalVisible !== undefined) { this.terminalVisible = restore.terminalVisible; this.visibilityRestored = true; }
+    if (restore.consoleVisible !== undefined) { this.consoleVisible = restore.consoleVisible; this.visibilityRestored = true; }
+    if (restore.agentVisible !== undefined) { this.agentVisible = restore.agentVisible; this.visibilityRestored = true; }
+
     // Build DOM subtree for this workspace.
     this.root = document.createElement("div");
     this.root.className = "workspace";
     this.root.dataset.id = this.id;
+    this.root.classList.toggle("sidebar-hidden", !this.sidebarVisible);
+    this.root.classList.toggle("preview-hidden", !this.previewVisible);
+    this.root.classList.toggle("terminal-hidden", !this.terminalVisible);
+    this.root.classList.toggle("console-hidden", !this.consoleVisible);
+    this.root.classList.toggle("agent-hidden", !this.agentVisible);
+
     this.root.innerHTML = `
       <aside class="blocks-sidebar">
         <div class="sidebar-tabs" role="tablist" aria-label="Sidebar">
@@ -430,35 +454,40 @@ export class Workspace {
     this.sidebarVisible = !this.sidebarVisible;
     this.root.classList.toggle("sidebar-hidden", !this.sidebarVisible);
     this.fitTerminal();
+    this.cb.onLayoutChange?.(this.id);
   }
 
   public togglePreview(): void {
     this.previewVisible = !this.previewVisible;
-    this.layout.preview_visible = this.previewVisible;
+    if (this.layout) this.layout.preview_visible = this.previewVisible;
     this.root.classList.toggle("preview-hidden", !this.previewVisible);
     if (this.terminalVisible) this.fitTerminal();
     void this.persistLayout();
+    this.cb.onLayoutChange?.(this.id);
   }
 
   public toggleTerminal(): void {
     this.terminalVisible = !this.terminalVisible;
-    this.layout.terminal_visible = this.terminalVisible;
+    if (this.layout) this.layout.terminal_visible = this.terminalVisible;
     this.root.classList.toggle("terminal-hidden", !this.terminalVisible);
     if (this.terminalVisible) this.fitTerminal();
     void this.persistLayout();
+    this.cb.onLayoutChange?.(this.id);
   }
 
   public toggleConsole(): void {
     this.consoleVisible = !this.consoleVisible;
     this.root.classList.toggle("console-hidden", !this.consoleVisible);
+    this.cb.onLayoutChange?.(this.id);
   }
 
   public toggleAgent(): void {
     this.agentVisible = !this.agentVisible;
-    this.layout.agent_visible = this.agentVisible;
+    if (this.layout) this.layout.agent_visible = this.agentVisible;
     this.root.classList.toggle("agent-hidden", !this.agentVisible);
     this.fitTerminal();
     void this.persistLayout();
+    this.cb.onLayoutChange?.(this.id);
   }
 
   public toggleProblems(): void {
@@ -1837,12 +1866,15 @@ export class Workspace {
         preview_height: state.layout.preview_height ?? this.layout.preview_height,
         agent_pane_width:
           state.layout.agent_pane_width ?? this.layout.agent_pane_width,
-        preview_visible:
-          state.layout.preview_visible ?? this.layout.preview_visible,
-        terminal_visible:
-          state.layout.terminal_visible ?? this.layout.terminal_visible,
-        agent_visible:
-          state.layout.agent_visible ?? this.layout.agent_visible,
+        preview_visible: this.visibilityRestored
+          ? this.previewVisible
+          : state.layout.preview_visible ?? this.previewVisible,
+        terminal_visible: this.visibilityRestored
+          ? this.terminalVisible
+          : state.layout.terminal_visible ?? this.terminalVisible,
+        agent_visible: this.visibilityRestored
+          ? this.agentVisible
+          : state.layout.agent_visible ?? this.agentVisible,
       });
       this.applyLayoutToDOM();
       // Sync the runtime visibility fields from the hydrated layout
@@ -3695,7 +3727,12 @@ export class Workspace {
       return {
         cwd: this.cwd,
         title: this.title,
-        loadChatPath: tempTarget
+        loadChatPath: tempTarget,
+        sidebarVisible: this.sidebarVisible,
+        previewVisible: this.previewVisible,
+        terminalVisible: this.terminalVisible,
+        consoleVisible: this.consoleVisible,
+        agentVisible: this.agentVisible,
       };
     } catch (e) {
       this.notifyError(`[duplicate] failed: ${String(e)}`);

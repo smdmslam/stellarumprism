@@ -13,6 +13,11 @@ export interface PersistedTab {
   cwd: string;
   /** Auto-derived display title for the tab strip. */
   title: string;
+  sidebar_visible: boolean;
+  preview_visible: boolean;
+  terminal_visible: boolean;
+  console_visible: boolean;
+  agent_visible: boolean;
 }
 
 /** Wire-shape returned by `read_session_state`. */

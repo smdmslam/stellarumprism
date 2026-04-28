@@ -45,6 +45,20 @@ pub struct PersistedTab {
     /// instant the window paints, before any background work runs.
     #[serde(default)]
     pub title: String,
+    #[serde(default = "default_visible")]
+    pub sidebar_visible: bool,
+    #[serde(default = "default_visible")]
+    pub preview_visible: bool,
+    #[serde(default = "default_visible")]
+    pub terminal_visible: bool,
+    #[serde(default = "default_visible")]
+    pub console_visible: bool,
+    #[serde(default = "default_visible")]
+    pub agent_visible: bool,
+}
+
+fn default_visible() -> bool {
+    true
 }
 
 /// Wire-shape of `session.json`. A single field today; the wrapper
@@ -150,6 +164,11 @@ mod tests {
         assert_eq!(parsed.tabs[0].id, "abc");
         assert_eq!(parsed.tabs[0].cwd, "");
         assert_eq!(parsed.tabs[0].title, "");
+        assert!(parsed.tabs[0].sidebar_visible);
+        assert!(parsed.tabs[0].preview_visible);
+        assert!(parsed.tabs[0].terminal_visible);
+        assert!(parsed.tabs[0].console_visible);
+        assert!(parsed.tabs[0].agent_visible);
     }
 
     #[test]
@@ -160,11 +179,21 @@ mod tests {
                     id: "tab-1".into(),
                     cwd: "/Users/me/code/prism".into(),
                     title: "prism".into(),
+                    sidebar_visible: true,
+                    preview_visible: true,
+                    terminal_visible: true,
+                    console_visible: true,
+                    agent_visible: true,
                 },
                 PersistedTab {
                     id: "tab-2".into(),
                     cwd: "".into(),
                     title: "New Tab".into(),
+                    sidebar_visible: true,
+                    preview_visible: false,
+                    terminal_visible: true,
+                    console_visible: false,
+                    agent_visible: true,
                 },
             ],
         };
@@ -173,5 +202,7 @@ mod tests {
         assert_eq!(back.tabs.len(), 2);
         assert_eq!(back.tabs[0].cwd, "/Users/me/code/prism");
         assert_eq!(back.tabs[1].title, "New Tab");
+        assert_eq!(back.tabs[1].preview_visible, false);
+        assert_eq!(back.tabs[1].console_visible, false);
     }
 }

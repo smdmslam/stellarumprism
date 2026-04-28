@@ -112,10 +112,11 @@ export class TabManager {
       this.opts.workspacesParent,
       {
         onTitleChange: (id, title) => this.onTitleChange(id, title),
+        onLayoutChange: () => this.scheduleSessionWrite(),
         onRequestClose: (id) => this.closeTab(id),
         onRequestNewTab: () => this.newTab(),
         onRequestSelectIndex: (i) => this.selectByIndex(i),
-        // Cwd updates are the primary trigger for session writeback \u2014
+        // Cwd updates are the primary trigger for session writeback —
         // they're the field a user actually cares about restoring.
         onCwdChange: () => this.scheduleSessionWrite(),
       },
@@ -241,11 +242,19 @@ export class TabManager {
    * scheduler, the tab-close path, and the `beforeunload` hook.
    */
   private async flushSessionWrite(): Promise<void> {
-    const tabs: PersistedTab[] = this.workspaces.map((w) => ({
-      id: w.id,
-      cwd: w.getCwd(),
-      title: w.getTitle(),
-    }));
+    const tabs: PersistedTab[] = this.workspaces.map((w) => {
+      const layout = w.getLayoutState();
+      return {
+        id: w.id,
+        cwd: w.getCwd(),
+        title: w.getTitle(),
+        sidebar_visible: layout.sidebar,
+        preview_visible: layout.preview,
+        terminal_visible: layout.terminal,
+        console_visible: layout.console,
+        agent_visible: layout.agent,
+      };
+    });
     await writeSessionState(tabs);
   }
 
