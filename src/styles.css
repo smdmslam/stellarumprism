@@ -984,8 +984,9 @@ input:checked + .toggle-slider:before {
 }
 
 .center-pane {
-  /* Center pane absorbs whatever the agent pane leaves behind. */
-  flex: 1 1 auto;
+  /* Center pane absorbs whatever the agent pane leaves behind. 
+     A massive flex-shrink forces it to surrender space to the right-hand panel during window resize or dragging, preventing the agent-pane from feeling "stuck" when dragged left. */
+  flex: 1 9999 auto;
   min-width: 240px;
   display: flex;
   flex-direction: column;
