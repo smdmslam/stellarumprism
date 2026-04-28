@@ -2309,6 +2309,20 @@ export class Workspace {
       }
       this.renderFileTree();
     });
+
+    // Right-click context menu on any tree row.
+    treeEl.addEventListener("contextmenu", (e) => {
+      const row = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-path]");
+      if (!row) return;
+      e.preventDefault();
+      const path = row.dataset.path!;
+      const kind = row.dataset.kind ?? "file";
+      // Select the right-clicked item so the user gets visual feedback.
+      this.treeState = setTreeSelected(this.treeState, path);
+      this.renderFileTree();
+      this.showFileTreeContextMenu(e as MouseEvent, path, kind);
+    });
+
     treeEl.addEventListener("keydown", (e) => {
       const rows = flattenVisibleRows(this.treeState);
       if (rows.length === 0) return;
@@ -2360,6 +2374,114 @@ export class Workspace {
         }
       }
     });
+  }
+
+  /**
+   * Show the file-tree right-click context menu anchored at the mouse
+   * position. Items vary slightly between files and directories.
+   */
+  private showFileTreeContextMenu(
+    e: MouseEvent,
+    path: string,
+    kind: string,
+  ): void {
+    const menu = document.createElement("div");
+    menu.className = "tree-context-menu";
+
+    const addItem = (
+      label: string,
+      icon: string,
+      onClick: () => void,
+      danger = false,
+    ) => {
+      const item = document.createElement("div");
+      item.className = "tree-context-menu-item" + (danger ? " danger" : "");
+      item.innerHTML =
+        `<span class="tree-context-menu-icon">${icon}</span>` +
+        `<span class="tree-context-menu-label">${escapeHtml(label)}</span>`;
+      item.addEventListener("click", () => { close(); onClick(); });
+      menu.appendChild(item);
+    };
+
+    const addSep = () => {
+      const sep = document.createElement("div");
+      sep.className = "tree-context-menu-sep";
+      menu.appendChild(sep);
+    };
+
+    // -- Copy actions -------------------------------------------------------
+    addItem("Copy Path", "⎘", () => {
+      void navigator.clipboard.writeText(path);
+    });
+
+    // Relative path = strip cwd prefix (+ trailing slash).
+    const cwd = this.cwd;
+    if (cwd && path.startsWith(cwd)) {
+      const rel = path.slice(cwd.endsWith("/") ? cwd.length : cwd.length + 1);
+      addItem("Copy Relative Path", "◌", () => {
+        void navigator.clipboard.writeText(rel);
+      });
+    }
+
+    // -- Open / edit --------------------------------------------------------
+    if (kind === "file") {
+      addSep();
+      addItem("Open in Editor", "✎", () => {
+        void this.openFileInEditor(path);
+      });
+    }
+
+    // -- File operations ----------------------------------------------------
+    addSep();
+    addItem("Rename", "✏", () => {
+      void this.promptRenameTreeItem(path);
+    });
+
+    // -- Backdrop + positioning + escape ------------------------------------
+    const backdrop = document.createElement("div");
+    backdrop.className = "tree-context-menu-backdrop";
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") { ev.preventDefault(); close(); }
+    };
+    const close = () => {
+      menu.remove();
+      backdrop.remove();
+      document.removeEventListener("keydown", onKey, true);
+    };
+    backdrop.addEventListener("click", close);
+    backdrop.addEventListener("contextmenu", (ev) => { ev.preventDefault(); close(); });
+    document.addEventListener("keydown", onKey, true);
+
+    document.body.appendChild(backdrop);
+    document.body.appendChild(menu);
+    const margin = 4;
+    const maxLeft = Math.max(margin, window.innerWidth - menu.offsetWidth - margin);
+    const maxTop = Math.max(margin, window.innerHeight - menu.offsetHeight - margin);
+    menu.style.left = `${Math.min(e.clientX, maxLeft)}px`;
+    menu.style.top = `${Math.min(e.clientY, maxTop)}px`;
+  }
+
+  /**
+   * Prompt the user to rename a file/dir in-place. Uses a lightweight
+   * window.prompt so there's no extra overlay needed. Falls back
+   * silently on cancel.
+   */
+  private async promptRenameTreeItem(path: string): Promise<void> {
+    const parts = path.split("/");
+    const oldName = parts[parts.length - 1] ?? "";
+    const newName = window.prompt("Rename to:", oldName);
+    if (!newName || newName === oldName) return;
+    const dir = parts.slice(0, -1).join("/");
+    const newPath = dir ? `${dir}/${newName}` : newName;
+    try {
+      await invoke("move_file", { cwd: this.cwd, src: path, dst: newPath });
+      // If the renamed file was open in the editor, close it so the
+      // stale path reference doesn't linger.
+      if (this.openFilePath === path) this.closeFileEditor();
+      void this.refreshFileTreeRoot();
+    } catch (err) {
+      this.term.writeln(`\r\n\x1b[1;31m[rename error]\x1b[0m ${String(err)}`);
+    }
   }
 
   /** Move keyboard focus to the file tree (used by `/files` re-tap). */
@@ -2517,10 +2639,30 @@ export class Workspace {
       `<div class="file-preview-header">` +
       `<span class="file-preview-dirty" data-dirty="false" aria-hidden="true">\u25cf</span>` +
       `<span class="file-preview-path" title="${escapeAttr(path)}">${escapeHtml(path)}</span>` +
+      `<button class="file-preview-copy-path" type="button" aria-label="Copy path to clipboard" title="Copy path to clipboard">` +
+      `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>` +
+      `</button>` +
       `<button class="file-preview-save" type="button" disabled aria-label="Save (\u2318S)" title="Save (\u2318S)">Save</button>` +
       `<button class="file-preview-close" type="button" aria-label="Close (Esc)" title="Close (Esc)">\u00d7</button>` +
       `</div>` +
       `<div class="file-preview-body"><div class="file-tree-loading">loading\u2026</div></div>`;
+
+    // Copy-path button: copies the full absolute path to the clipboard
+    // and briefly flashes a "Copied!" tooltip so the user gets clear
+    // feedback even when the path is truncated in the header.
+    const copyBtn = overlay.querySelector<HTMLButtonElement>(".file-preview-copy-path");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", () => {
+        void navigator.clipboard.writeText(path).then(() => {
+          copyBtn.classList.add("copied");
+          copyBtn.setAttribute("title", "Copied!");
+          setTimeout(() => {
+            copyBtn.classList.remove("copied");
+            copyBtn.setAttribute("title", "Copy path to clipboard");
+          }, 1800);
+        });
+      });
+    }
 
     overlay.querySelector(".file-preview-close")?.addEventListener(
       "click",
