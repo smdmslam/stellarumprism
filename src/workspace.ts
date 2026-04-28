@@ -802,7 +802,7 @@ export class Workspace {
   private handleSubmit(text: string, intent: IntentResult): void {
     // Slash commands (order matters).
     if (/^\s*\/models\s*$/i.test(text)) {
-      this.term.write("\r\n" + renderModelListAnsi(this.agent.getModel()));
+      this.notify(renderModelListAnsi(this.agent.getModel()));
       return;
     }
     if (/^\s*\/(new|clear)\s*$/i.test(text)) {
@@ -810,15 +810,13 @@ export class Workspace {
         this.title = "New Tab";
         this.autoTitleDone = false;
         this.cb.onTitleChange(this.id, this.title);
-        this.term.write(
-          "\r\n\x1b[2m[agent] new session \u2014 history cleared and title reset\x1b[0m\r\n",
-        );
+        this.notify("[agent] new session \u2014 history cleared and title reset");
       });
       return;
     }
     if (/^\s*\/history\s*$/i.test(text)) {
       void this.agent.getHistory().then((msgs) => {
-        this.term.write("\r\n" + renderHistoryAnsi(msgs));
+        this.notify(renderHistoryAnsi(msgs));
       });
       return;
     }
@@ -843,21 +841,19 @@ export class Workspace {
       return;
     }
     if (/^\s*\/help\s*$/i.test(text)) {
-      this.term.write("\r\n" + renderHelpAnsi());
+      this.notify(renderHelpAnsi());
       return;
     }
     // /files \u2014 switch sidebar to the Files tab and focus the tree.
     if (/^\s*\/files\s*$/i.test(text)) {
       this.setSidebarTab("files");
-      this.term.write(
-        `\r\n\x1b[2m[files] sidebar \u2192 Files tab\x1b[0m\r\n`,
-      );
+      this.notify("[files] sidebar \u2192 Files tab");
       return;
     }
     // /last \u2014 print a compact summary of the persisted workspace
     // state (last audit + last build pointers).
     if (/^\s*\/last\s*$/i.test(text)) {
-      this.term.write(this.renderLastAnsi());
+      this.notify(this.renderLastAnsi());
       return;
     }
     // /verify on|off|<model> — control the reviewer pass.
@@ -884,13 +880,13 @@ export class Workspace {
     if (modelArg) {
       const resolved = resolveModel(modelArg[1].trim());
       if (!resolved) {
-        this.term.write(
-          `\r\n\x1b[1;31m[agent]\x1b[0m unknown model "${sanitize(modelArg[1])}". \x1b[2m/models for list.\x1b[0m\r\n`,
+        this.notifyError(
+          `[agent] unknown model "${sanitize(modelArg[1])}". /models for list.`,
         );
         return;
       }
       void this.agent.setModel(resolved);
-      this.term.write(`\r\n\x1b[2m[agent] model set to ${sanitize(resolved)}\x1b[0m\r\n`);
+      this.notify(`[agent] model set to ${sanitize(resolved)}`);
       return;
     }
 
@@ -903,23 +899,19 @@ export class Workspace {
       const rawArgs = (buildMatch[1] ?? "").trim();
       const mode = findMode("/build");
       if (!mode) {
-        this.term.write(
-          `\r\n\x1b[1;31m[build]\x1b[0m mode registry misconfigured\r\n`,
-        );
+        this.notifyError(`[build] mode registry misconfigured`);
         return;
       }
       const parsed = parseBuildArgs(rawArgs);
       if (parsed.error) {
-        this.term.write(
-          `\r\n\x1b[1;31m[build]\x1b[0m ${sanitize(parsed.error)}\r\n`,
-        );
+        this.notifyError(`[build] ${sanitize(parsed.error)}`);
         return;
       }
       const buildPrompt = buildBuildPrompt(parsed.feature);
       this.setTitleFromText(`build: ${parsed.feature}`);
       this.activeBuildFeature = parsed.feature;
-      this.term.write(
-        `\r\n\x1b[2m[build] starting substrate-gated build of \x1b[36m${sanitize(parsed.feature)}\x1b[0m\r\n`,
+      this.notify(
+        `[build] starting substrate-gated build of ${sanitize(parsed.feature)}`,
       );
       void this.dispatchAgentQuery(buildPrompt, {
         mode: mode.name,
@@ -939,9 +931,7 @@ export class Workspace {
       const rawArgs = (fixMatch[1] ?? "").trim();
       const mode = findMode("/fix");
       if (!mode) {
-        this.term.write(
-          `\r\n\x1b[1;31m[fix]\x1b[0m mode registry misconfigured\r\n`,
-        );
+        this.notifyError(`[fix] mode registry misconfigured`);
         return;
       }
       void this.handleFixCommand(rawArgs, mode);
@@ -956,22 +946,18 @@ export class Workspace {
       const rawArgs = (reviewMatch[1] ?? "").trim();
       const mode = findMode("/review");
       if (!mode) {
-        this.term.write(
-          `\r\n\x1b[1;31m[review]\x1b[0m mode registry misconfigured\r\n`,
-        );
+        this.notifyError(`[review] mode registry misconfigured`);
         return;
       }
       const { scope, maxToolRounds, error } = parseReviewArgs(rawArgs);
       if (error) {
-        this.term.write(
-          `\r\n\x1b[1;31m[review]\x1b[0m ${sanitize(error)}\r\n`,
-        );
+        this.notifyError(`[review] ${sanitize(error)}`);
         return;
       }
       const reviewPrompt = buildReviewPrompt(scope);
       this.setTitleFromText(`review ${scope || "(last 20 commits)"}`);
-      this.term.write(
-        `\r\n\x1b[2m[review] cohesion review of \x1b[36m${sanitize(scope || "last 20 commits")}\x1b[0m\r\n`,
+      this.notify(
+        `[review] cohesion review of ${sanitize(scope || "last 20 commits")}`,
       );
       void this.dispatchAgentQuery(reviewPrompt, {
         mode: mode.name,
@@ -992,16 +978,12 @@ export class Workspace {
       const mode = findMode("/audit");
       if (!mode) {
         // Shouldn't happen — audit is in the registry. Defensive fallback.
-        this.term.write(
-          `\r\n\x1b[1;31m[audit]\x1b[0m mode registry misconfigured\r\n`,
-        );
+        this.notifyError(`[audit] mode registry misconfigured`);
         return;
       }
       const { scope, maxToolRounds, error } = parseAuditArgs(rawArgs);
       if (error) {
-        this.term.write(
-          `\r\n\x1b[1;31m[audit]\x1b[0m ${sanitize(error)}\r\n`,
-        );
+        this.notifyError(`[audit] ${sanitize(error)}`);
         return;
       }
       const auditPrompt = buildAuditPrompt(scope);
@@ -1033,16 +1015,12 @@ export class Workspace {
       const rawArgs = newScaffoldMatch[1].trim();
       const mode = findMode("/new");
       if (!mode) {
-        this.term.write(
-          `\r\n\x1b[1;31m[new]\x1b[0m mode registry misconfigured\r\n`,
-        );
+        this.notifyError(`[new] mode registry misconfigured`);
         return;
       }
       const parsed = parseNewArgs(rawArgs);
       if (parsed.error) {
-        this.term.write(
-          `\r\n\x1b[1;31m[new]\x1b[0m ${sanitize(parsed.error)}\r\n`,
-        );
+        this.notifyError(`[new] ${sanitize(parsed.error)}`);
         return;
       }
       const newPrompt = buildNewPrompt({
@@ -1055,8 +1033,8 @@ export class Workspace {
       this.activeBuildFeature = parsed.description
         ? `${parsed.projectName} (${parsed.description})`
         : parsed.projectName;
-      this.term.write(
-        `\r\n\x1b[2m[new] scaffolding \x1b[36m${sanitize(parsed.projectName)}\x1b[0m\x1b[2m into \x1b[36m${sanitize(target)}\x1b[0m${parsed.description ? `\x1b[2m \u2014 \x1b[36m${sanitize(parsed.description)}\x1b[0m` : ""}\x1b[0m\r\n`,
+      this.notify(
+        `[new] scaffolding ${sanitize(parsed.projectName)} into ${sanitize(target)}${parsed.description ? ` \u2014 ${sanitize(parsed.description)}` : ""}`,
       );
       void this.dispatchAgentQuery(newPrompt, {
         mode: mode.name,
@@ -1072,16 +1050,12 @@ export class Workspace {
       const rawArgs = (testGenMatch[1] ?? "").trim();
       const mode = findMode("/test-gen");
       if (!mode) {
-        this.term.write(
-          `\r\n\x1b[1;31m[test-gen]\x1b[0m mode registry misconfigured\r\n`,
-        );
+        this.notifyError(`[test-gen] mode registry misconfigured`);
         return;
       }
       const parsed = parseTestGenArgs(rawArgs);
       if (parsed.error) {
-        this.term.write(
-          `\r\n\x1b[1;31m[test-gen]\x1b[0m ${sanitize(parsed.error)}\r\n`,
-        );
+        this.notifyError(`[test-gen] ${sanitize(parsed.error)}`);
         return;
       }
       const testGenPrompt = buildTestGenPrompt({
@@ -1093,8 +1067,8 @@ export class Workspace {
       this.activeBuildFeature = parsed.framework
         ? `${parsed.symbol} (${parsed.framework})`
         : parsed.symbol;
-      this.term.write(
-        `\r\n\x1b[2m[test-gen] generating tests for \x1b[36m${sanitize(parsed.symbol)}\x1b[0m\x1b[2m${parsed.file ? ` in \x1b[36m${sanitize(parsed.file)}\x1b[0m\x1b[2m` : ""}${parsed.framework ? ` (\x1b[36m${sanitize(parsed.framework)}\x1b[0m\x1b[2m)` : ""}\x1b[0m\r\n`,
+      this.notify(
+        `[test-gen] generating tests for ${sanitize(parsed.symbol)}${parsed.file ? ` in ${sanitize(parsed.file)}` : ""}${parsed.framework ? ` (${sanitize(parsed.framework)})` : ""}`,
       );
       void this.dispatchAgentQuery(testGenPrompt, {
         mode: mode.name,
@@ -1110,16 +1084,12 @@ export class Workspace {
       const rawArgs = (refactorMatch[1] ?? "").trim();
       const mode = findMode("/refactor");
       if (!mode) {
-        this.term.write(
-          `\r\n\x1b[1;31m[refactor]\x1b[0m mode registry misconfigured\r\n`,
-        );
+        this.notifyError(`[refactor] mode registry misconfigured`);
         return;
       }
       const parsed = parseRefactorArgs(rawArgs);
       if (parsed.error) {
-        this.term.write(
-          `\r\n\x1b[1;31m[refactor]\x1b[0m ${sanitize(parsed.error)}\r\n`,
-        );
+        this.notifyError(`[refactor] ${sanitize(parsed.error)}`);
         return;
       }
       const refactorPrompt = buildRefactorPrompt({
@@ -1131,8 +1101,8 @@ export class Workspace {
         `refactor ${parsed.oldName} \u2192 ${parsed.newName}`,
       );
       this.activeBuildFeature = `${parsed.oldName} \u2192 ${parsed.newName}${parsed.scope ? ` in ${parsed.scope}` : ""}`;
-      this.term.write(
-        `\r\n\x1b[2m[refactor] renaming \x1b[36m${sanitize(parsed.oldName)}\x1b[0m\x1b[2m \u2192 \x1b[36m${sanitize(parsed.newName)}\x1b[0m\x1b[2m${parsed.scope ? ` in \x1b[36m${sanitize(parsed.scope)}\x1b[0m\x1b[2m` : ""}\x1b[0m\r\n`,
+      this.notify(
+        `[refactor] renaming ${sanitize(parsed.oldName)} \u2192 ${sanitize(parsed.newName)}${parsed.scope ? ` in ${sanitize(parsed.scope)}` : ""}`,
       );
       void this.dispatchAgentQuery(refactorPrompt, {
         mode: mode.name,
@@ -1159,33 +1129,31 @@ export class Workspace {
   private async handleVerifyCommand(arg: string): Promise<void> {
     const v = this.agent.getVerifier();
     if (arg === "" || arg === "status") {
-      this.term.write(
-        `\r\n\x1b[2m[verify]\x1b[0m ${v.enabled ? "\x1b[32mon\x1b[0m" : "\x1b[31moff\x1b[0m"}, model = \x1b[36m${sanitize(v.model)}\x1b[0m\r\n`,
+      this.notify(
+        `[verify] ${v.enabled ? "on" : "off"}, model = ${sanitize(v.model)}`,
       );
       return;
     }
     if (/^off|disable|disabled|no|0$/i.test(arg)) {
       await this.agent.setVerifierEnabled(false);
-      this.term.write(`\r\n\x1b[2m[verify] off\x1b[0m\r\n`);
+      this.notify(`[verify] off`);
       return;
     }
     if (/^on|enable|enabled|yes|1$/i.test(arg)) {
       await this.agent.setVerifierEnabled(true);
-      this.term.write(`\r\n\x1b[2m[verify] on\x1b[0m\r\n`);
+      this.notify(`[verify] on`);
       return;
     }
     // Anything else — treat as model alias or slug.
     const resolved = resolveModel(arg);
     if (!resolved) {
-      this.term.write(
-        `\r\n\x1b[1;31m[verify]\x1b[0m unknown arg "${sanitize(arg)}". Try on / off / <model alias>.\r\n`,
+      this.notifyError(
+        `[verify] unknown arg "${sanitize(arg)}". Try on / off / <model alias>.`,
       );
       return;
     }
     await this.agent.setVerifierModel(resolved);
-    this.term.write(
-      `\r\n\x1b[2m[verify] reviewer model = ${sanitize(resolved)}\x1b[0m\r\n`,
-    );
+    this.notify(`[verify] reviewer model = ${sanitize(resolved)}`);
   }
 
   /**
@@ -1206,15 +1174,11 @@ export class Workspace {
   private async handleFixCommand(rawArgs: string, mode: Mode): Promise<void> {
     const parsed = parseFixArgs(rawArgs);
     if (parsed.error) {
-      this.term.write(
-        `\r\n\x1b[1;31m[fix]\x1b[0m ${sanitize(parsed.error)}\r\n`,
-      );
+      this.notifyError(`[fix] ${sanitize(parsed.error)}`);
       return;
     }
     if (!this.cwd) {
-      this.term.write(
-        `\r\n\x1b[1;33m[fix]\x1b[0m cwd unknown; cannot locate audit reports\r\n`,
-      );
+      this.notifyError(`[fix] cwd unknown; cannot locate audit reports`);
       return;
     }
 
@@ -1225,9 +1189,7 @@ export class Workspace {
         { cwd: this.cwd, path: parsed.reportPath ?? null },
       );
     } catch (e) {
-      this.term.write(
-        `\r\n\x1b[1;31m[fix]\x1b[0m ${sanitize(String(e))}\r\n`,
-      );
+      this.notifyError(`[fix] ${sanitize(String(e))}`);
       return;
     }
 
@@ -1235,8 +1197,8 @@ export class Workspace {
     try {
       report = JSON.parse(lookup.content) as AuditReport;
     } catch (e) {
-      this.term.write(
-        `\r\n\x1b[1;31m[fix]\x1b[0m failed to parse ${sanitize(prettyPath(lookup.path))}: ${sanitize(String(e))}\r\n`,
+      this.notifyError(
+        `[fix] failed to parse ${sanitize(prettyPath(lookup.path))}: ${sanitize(String(e))}`,
       );
       return;
     }
@@ -1247,15 +1209,15 @@ export class Workspace {
       parsed.include,
     );
     if (filterResult.error) {
-      this.term.write(
-        `\r\n\x1b[1;31m[fix]\x1b[0m ${sanitize(filterResult.error)} (report: ${sanitize(prettyPath(lookup.path))})\r\n`,
+      this.notifyError(
+        `[fix] ${sanitize(filterResult.error)} (report: ${sanitize(prettyPath(lookup.path))})`,
       );
       return;
     }
     const selected = filterResult.findings;
     if (selected.length === 0) {
-      this.term.write(
-        `\r\n\x1b[2m[fix]\x1b[0m nothing to fix \u2014 ${sanitize(prettyPath(lookup.path))} has 0 findings\r\n`,
+      this.notify(
+        `[fix] nothing to fix \u2014 ${sanitize(prettyPath(lookup.path))} has 0 findings`,
       );
       return;
     }
@@ -1264,8 +1226,8 @@ export class Workspace {
     this.setTitleFromText(
       `fix ${selected.length}/${report.findings.length} from latest audit`,
     );
-    this.term.write(
-      `\r\n\x1b[2m[fix] applying \x1b[36m${selected.length}\x1b[0m\x1b[2m of \x1b[36m${report.findings.length}\x1b[0m\x1b[2m findings from \x1b[36m${sanitize(prettyPath(lookup.path))}\x1b[0m\r\n`,
+    this.notify(
+      `[fix] applying ${selected.length} of ${report.findings.length} findings from ${sanitize(prettyPath(lookup.path))}`,
     );
     void this.dispatchAgentQuery(fixPrompt, {
       mode: mode.name,
@@ -1312,8 +1274,8 @@ export class Workspace {
       const trigger = detectVerifiedTrigger(prompt);
       if (trigger) {
         systemPrefix = buildVerifiedSystemPrefix(trigger);
-        this.term.write(
-          `\r\n\x1b[2m\u2192 [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched \u201c${sanitize(trigger.matched)}\u201d)\x1b[0m\r\n`,
+        this.notify(
+          `\u2192 [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched \u201c${sanitize(trigger.matched)}\u201d)`,
         );
       }
     }
@@ -1327,29 +1289,27 @@ export class Workspace {
     // Pull pending images out of the workspace so they're scoped to this turn.
     const images = this.takePendingImages();
     if (images.length > 0 && !modelSupportsVision(this.agent.getModel())) {
-      this.term.write(
-        `\r\n\x1b[1;33m[images]\x1b[0m model \x1b[36m${sanitize(this.agent.getModel())}\x1b[0m doesn't support images \u2014 sending text only\r\n`,
+      this.notify(
+        `[images] model ${sanitize(this.agent.getModel())} doesn't support images \u2014 sending text only`,
       );
     }
 
-    // Announce attachments in xterm so the user sees what's going out.
+    // Announce attachments in the agent panel so the user sees what's going out.
     const parts: string[] = [];
     if (resolved.length > 0) {
       const names = resolved
-        .map((r) => `\x1b[36m${sanitize(r.original)}\x1b[0m${r.truncated ? " \x1b[33m(truncated)\x1b[0m" : ""}`)
+        .map((r) => `${sanitize(r.original)}${r.truncated ? " (truncated)" : ""}`)
         .join(", ");
-      parts.push(`\x1b[2m[attached]\x1b[0m ${names}`);
+      parts.push(`[attached] ${names}`);
     }
     if (images.length > 0 && modelSupportsVision(this.agent.getModel())) {
-      parts.push(`\x1b[2m[images]\x1b[0m ${images.length} attached`);
+      parts.push(`[images] ${images.length} attached`);
     }
     for (const e of errors) {
-      parts.push(
-        `\x1b[1;31m[@${sanitize(e.original)}]\x1b[0m ${sanitize(e.error)}`,
-      );
+      parts.push(`[@${sanitize(e.original)}] ${sanitize(e.error)}`);
     }
     if (parts.length > 0) {
-      this.term.write("\r\n" + parts.join("\r\n") + "\r\n");
+      this.notify(parts.join("\n"));
     }
 
     const imagePayload: AgentImageContext[] = modelSupportsVision(
@@ -1516,9 +1476,7 @@ export class Workspace {
         const loc = row?.getAttribute("data-loc") ?? "";
         if (loc) {
           void navigator.clipboard.writeText(loc).catch(() => {});
-          this.term.write(
-            `\r\n\x1b[2m[problems] copied \x1b[36m${sanitize(loc)}\x1b[0m\x1b[2m to clipboard\x1b[0m\r\n`,
-          );
+          this.notify(`[problems] copied ${sanitize(loc)} to clipboard`);
         }
         return;
       }
@@ -1616,9 +1574,7 @@ export class Workspace {
   private handleProblemsCommand(rawArgs: string): void {
     const parsed = parseProblemsArgs(rawArgs);
     if (parsed.error) {
-      this.term.write(
-        `\r\n\x1b[1;31m[problems]\x1b[0m ${sanitize(parsed.error)}\r\n`,
-      );
+      this.notifyError(`[problems] ${sanitize(parsed.error)}`);
       return;
     }
     switch (parsed.action) {
@@ -1636,9 +1592,7 @@ export class Workspace {
         this.lastAuditReport = null;
         this.problemsFilter = defaultProblemsFilter();
         if (this.problemsVisible) this.renderProblemsPanelInto();
-        this.term.write(
-          `\r\n\x1b[2m[problems] cleared cached report\x1b[0m\r\n`,
-        );
+        this.notify(`[problems] cleared cached report`);
         break;
     }
   }
@@ -1673,14 +1627,16 @@ export class Workspace {
     this.refreshEditorDiagnostics();
     this.showProblemsPanel();
 
-    // ANSI summary in xterm — even if we fail to write the file, the
-    // user gets the parsed view inline. Pads the raw model output with
-    // a structured list so copy/paste works cleanly.
-    this.term.write(renderAnsiFindings(report));
+    // ANSI summary in the agent panel — even if we fail to write the
+    // file, the user gets the parsed view inline. The renderer emits
+    // ANSI for legacy reasons; appendNotice strips the escapes and the
+    // structure (headings, bullets, indentation) survives via
+    // .agent-notice's pre-wrap whitespace rule.
+    this.notify(renderAnsiFindings(report));
 
     if (!this.cwd) {
-      this.term.write(
-        `\r\n\x1b[1;33m[audit]\x1b[0m \x1b[2mcwd unknown; skipping report write (markdown report only persists when a shell is started with OSC 7)\x1b[0m\r\n`,
+      this.notify(
+        `[audit] cwd unknown; skipping report write (markdown report only persists when a shell is started with OSC 7)`,
       );
       return;
     }
@@ -1705,23 +1661,22 @@ export class Workspace {
         jsonContent: json,
       });
       const pretty = prettyPath(result.path);
-      this.term.write(
-        `\r\n\x1b[1;32m[audit]\x1b[0m \x1b[2mreport saved \u2192 \x1b[36m${sanitize(pretty)}\x1b[0m\x1b[2m (${formatBytesShort(result.bytes_written)})\x1b[0m\r\n`,
-      );
+      const lines = [
+        `[audit] report saved \u2192 ${sanitize(pretty)} (${formatBytesShort(result.bytes_written)})`,
+      ];
       if (result.json_path) {
         const prettyJson = prettyPath(result.json_path);
-        this.term.write(
-          `\x1b[2m[audit] sidecar     \u2192 \x1b[36m${sanitize(prettyJson)}\x1b[0m\x1b[2m (${formatBytesShort(result.json_bytes_written ?? 0)})\x1b[0m\r\n`,
+        lines.push(
+          `[audit] sidecar     \u2192 ${sanitize(prettyJson)} (${formatBytesShort(result.json_bytes_written ?? 0)})`,
         );
         // Update the workspace-state pointer so a future tab open
         // hydrates this audit without re-running it. Best-effort: a
         // failure here is logged but doesn't fail the audit turn.
         void this.updateLastAuditPointer(report, result.json_path);
       }
+      this.notify(lines.join("\n"));
     } catch (e) {
-      this.term.write(
-        `\r\n\x1b[1;31m[audit]\x1b[0m report write failed: ${sanitize(String(e))}\r\n`,
-      );
+      this.notifyError(`[audit] report write failed: ${sanitize(String(e))}`);
     }
   }
 
@@ -1759,13 +1714,12 @@ export class Workspace {
     this.lastBuildReport = report;
 
     // ANSI summary first so the user sees the parse outcome even if
-    // the persistence step fails.
-    this.term.write(renderAnsiBuildReport(report));
+    // the persistence step fails. appendNotice strips ANSI; structure
+    // (headings, bullets, indentation) survives.
+    this.notify(renderAnsiBuildReport(report));
 
     if (!this.cwd) {
-      this.term.write(
-        `\r\n\x1b[1;33m[${sanitize(info.mode)}]\x1b[0m \x1b[2mcwd unknown; skipping report write\x1b[0m\r\n`,
-      );
+      this.notify(`[${sanitize(info.mode)}] cwd unknown; skipping report write`);
       return;
     }
 
@@ -1786,19 +1740,20 @@ export class Workspace {
         jsonContent: json,
       });
       const pretty = prettyPath(result.path);
-      this.term.write(
-        `\r\n\x1b[1;32m[${sanitize(info.mode)}]\x1b[0m \x1b[2mreport saved \u2192 \x1b[36m${sanitize(pretty)}\x1b[0m\x1b[2m (${formatBytesShort(result.bytes_written)})\x1b[0m\r\n`,
-      );
+      const lines = [
+        `[${sanitize(info.mode)}] report saved \u2192 ${sanitize(pretty)} (${formatBytesShort(result.bytes_written)})`,
+      ];
       if (result.json_path) {
         const prettyJson = prettyPath(result.json_path);
-        this.term.write(
-          `\x1b[2m[${sanitize(info.mode)}] sidecar     \u2192 \x1b[36m${sanitize(prettyJson)}\x1b[0m\x1b[2m (${formatBytesShort(result.json_bytes_written ?? 0)})\x1b[0m\r\n`,
+        lines.push(
+          `[${sanitize(info.mode)}] sidecar     \u2192 ${sanitize(prettyJson)} (${formatBytesShort(result.json_bytes_written ?? 0)})`,
         );
         void this.updateLastBuildPointer(report, result.json_path);
       }
+      this.notify(lines.join("\n"));
     } catch (e) {
-      this.term.write(
-        `\r\n\x1b[1;31m[${sanitize(info.mode)}]\x1b[0m report write failed: ${sanitize(String(e))}\r\n`,
+      this.notifyError(
+        `[${sanitize(info.mode)}] report write failed: ${sanitize(String(e))}`,
       );
     }
   }
@@ -1828,9 +1783,7 @@ export class Workspace {
       );
     } catch (e) {
       // Corrupt state file. Surface dimly and continue with no spine.
-      this.term.write(
-        `\r\n\x1b[2m[workspace] could not load state: ${sanitize(String(e))}\x1b[0m\r\n`,
-      );
+      this.notify(`[workspace] could not load state: ${sanitize(String(e))}`);
       return;
     }
     if (!state) return;
@@ -2086,8 +2039,8 @@ export class Workspace {
   private async addImageFile(file: File): Promise<void> {
     const MAX_BYTES = 5 * 1024 * 1024; // 5 MB — vision APIs reject larger
     if (file.size > MAX_BYTES) {
-      this.term.write(
-        `\r\n\x1b[1;33m[images]\x1b[0m \x1b[36m${sanitize(file.name || "pasted")}\x1b[0m is ${Math.round(file.size / 1024)} KB \u2014 over the 5 MB cap\r\n`,
+      this.notify(
+        `[images] ${sanitize(file.name || "pasted")} is ${Math.round(file.size / 1024)} KB \u2014 over the 5 MB cap`,
       );
       return;
     }
@@ -2135,6 +2088,28 @@ export class Workspace {
       this.pendingImages = this.pendingImages.filter((i) => i.id !== id);
       this.renderAttachments();
     };
+  }
+
+  /**
+   * Append a status / notice line to the agent panel. Drop-in replacement
+   * for the legacy `this.term.write("...")` pattern that wrote agent-
+   * flavored content into xterm. AgentView.appendNotice strips ANSI so
+   * existing color escapes in the message are harmless; structure (newlines,
+   * indentation) survives via the `white-space: pre-wrap` rule on
+   * `.agent-notice` in styles.css.
+   *
+   * xterm is reserved for shell I/O after the panel-split rebuild
+   * (commit db5c9d8). The only legitimate `term.write` callers left in
+   * this file are the PTY-output passthrough and the two shell-lifecycle
+   * lines (start failure + `[shell exited]`).
+   */
+  private notify(message: string): void {
+    this.agentView?.appendNotice("router", message);
+  }
+
+  /** Append an error line (red, with left bar) to the agent panel. */
+  private notifyError(message: string): void {
+    this.agentView?.appendError(message);
   }
 
   private setTitleFromText(text: string): void {
@@ -3006,13 +2981,11 @@ export class Workspace {
       });
       this.openFileMtime = result.mtime_secs;
       this.fileEditor.markClean(content);
-      this.term.write(
-        `\r\n\x1b[1;32m[edit]\x1b[0m \x1b[2msaved \x1b[36m${sanitize(prettyPath(result.path))}\x1b[0m\x1b[2m (${formatBytesShort(result.bytes_written)})\x1b[0m\r\n`,
+      this.notify(
+        `[edit] saved ${sanitize(prettyPath(result.path))} (${formatBytesShort(result.bytes_written)})`,
       );
     } catch (err) {
-      this.term.write(
-        `\r\n\x1b[1;31m[edit]\x1b[0m save failed: ${sanitize(String(err))}\r\n`,
-      );
+      this.notifyError(`[edit] save failed: ${sanitize(String(err))}`);
     }
   }
 
@@ -3295,9 +3268,7 @@ export class Workspace {
       });
       target = Array.isArray(picked) ? (picked[0] ?? null) : picked;
     } catch (e) {
-      this.term.write(
-        `\r\n\x1b[1;31m[load]\x1b[0m dialog failed: ${sanitize(String(e))}\r\n`,
-      );
+      this.notifyError(`[load] dialog failed: ${sanitize(String(e))}`);
       return;
     }
     if (!target) return; // user cancelled
@@ -3327,9 +3298,7 @@ export class Workspace {
         path: target,
       });
     } catch (e) {
-      this.term.write(
-        `\r\n\x1b[1;31m[load]\x1b[0m ${sanitize(String(e))}\r\n`,
-      );
+      this.notifyError(`[load] ${sanitize(String(e))}`);
       return;
     }
 
@@ -3348,22 +3317,17 @@ export class Workspace {
     const pretty = prettyPath(target);
     const overwroteNote =
       priorCount > 0
-        ? ` \x1b[2m(replaced ${priorCount} prior message${priorCount === 1 ? "" : "s"})\x1b[0m`
+        ? ` (replaced ${priorCount} prior message${priorCount === 1 ? "" : "s"})`
         : "";
-    // Leading blank line so the [load] block has clear visual
-    // separation from whatever shell output preceded it.
-    this.term.write(
-      `\r\n\r\n\x1b[1;32m[load]\x1b[0m \x1b[2mloaded \x1b[36m${result.message_count}\x1b[0m\x1b[2m message${result.message_count === 1 ? "" : "s"} from \x1b[36m${sanitize(pretty)}\x1b[0m${overwroteNote}\r\n`,
-    );
+    const loadLines = [
+      `[load] loaded ${result.message_count} message${result.message_count === 1 ? "" : "s"} from ${sanitize(pretty)}${overwroteNote}`,
+    ];
     if (result.model) {
-      this.term.write(
-        `\x1b[2m[load] saved model was \x1b[36m${sanitize(result.model)}\x1b[0m\x1b[2m \u2014 current tab uses \x1b[36m${sanitize(this.agent.getModel())}\x1b[0m\x1b[2m. Use /model to switch if desired.\x1b[0m\r\n`,
+      loadLines.push(
+        `[load] saved model was ${sanitize(result.model)} \u2014 current tab uses ${sanitize(this.agent.getModel())}. Use /model to switch if desired.`,
       );
     }
-    // Trailing blank line so the next shell-emitted prompt (or the
-    // user's first follow-up) doesn't sit flush against the [load]
-    // body \u2014 same reasoning as the leading buffer above.
-    this.term.write("\r\n");
+    this.notify(loadLines.join("\n"));
 
     // Decide whether to render the transcript visually. A loaded chat
     // by default only seeds the model's context \u2014 the user sees only
@@ -3473,61 +3437,53 @@ export class Workspace {
     try {
       history = await this.agent.getHistoryFull();
     } catch (e) {
-      this.term.write(
-        `\r\n\x1b[1;31m[load]\x1b[0m render failed: ${sanitize(String(e))}\r\n`,
-      );
+      this.notifyError(`[load] render failed: ${sanitize(String(e))}`);
       return;
     }
     if (history.length === 0) return;
-    this.term.write(
-      `\r\n\x1b[2m\u2500\u2500\u2500 transcript \u2500\u2500\u2500\x1b[0m\r\n`,
-    );
+    // Build the entire transcript as one notice block so the messages
+    // render as a single cohesive section in AgentView rather than
+    // dozens of separate notice rows. ANSI escapes are stripped by
+    // appendNotice; the visual structure (newlines, prefixes) survives.
+    const lines: string[] = ["\u2500\u2500\u2500 transcript \u2500\u2500\u2500"];
     for (const m of history) {
-      const content = (m.content ?? "").replace(/\r?\n/g, "\r\n");
+      const content = (m.content ?? "").replace(/\r?\n/g, "\n");
       if (m.role === "user") {
-        this.term.write(
-          `\r\n\x1b[1;36myou\x1b[0m \x1b[2m\u203a\x1b[0m ${content}\r\n`,
-        );
+        lines.push("");
+        lines.push(`you \u203a ${content}`);
       } else if (m.role === "assistant") {
         if (m.tool_calls && m.tool_calls.length > 0) {
-          // Dim header + per-call \u2192 line, mirroring agent.ts onToolCall.
           if (content.length > 0) {
-            this.term.write(`\r\n${content}\r\n`);
+            lines.push("");
+            lines.push(content);
           }
           for (const c of m.tool_calls) {
             const argPreview = c.function.arguments
               .replace(/\s+/g, " ")
               .slice(0, 80);
-            this.term.write(
-              `\r\n\x1b[2m\u2192\x1b[0m \x1b[2m\x1b[36m${c.function.name}\x1b[0m \x1b[2m${argPreview}\x1b[0m\r\n`,
-            );
+            lines.push(`\u2192 ${c.function.name} ${argPreview}`);
           }
         } else {
-          this.term.write(
-            `\r\n\x1b[1;35m\u2732 assistant\x1b[0m\r\n${content}\r\n`,
-          );
+          lines.push("");
+          lines.push(`\u2732 assistant`);
+          lines.push(content);
         }
       } else if (m.role === "tool") {
         // Truncate large tool payloads so the transcript stays readable.
-        const flat = content.replace(/\r\n/g, " ").trim();
+        const flat = content.replace(/\n/g, " ").trim();
         const preview =
           flat.length > 200 ? flat.slice(0, 197) + "\u2026" : flat;
-        this.term.write(
-          `  \x1b[32m\u2713\x1b[0m \x1b[2m${preview}\x1b[0m\r\n`,
-        );
+        lines.push(`  \u2713 ${preview}`);
       }
     }
-    this.term.write(
-      `\r\n\x1b[2m\u2500\u2500\u2500 end transcript \u2500\u2500\u2500\x1b[0m\r\n\r\n`,
-    );
+    lines.push("\u2500\u2500\u2500 end transcript \u2500\u2500\u2500");
+    this.notify(lines.join("\n"));
   }
 
   async saveChat(full: boolean = false): Promise<void> {
     const count = this.agent.getMessageCount();
     if (count === 0) {
-      this.term.write(
-        "\r\n\x1b[2m[save] nothing to save \u2014 no chat messages yet\x1b[0m\r\n",
-      );
+      this.notify("[save] nothing to save \u2014 no chat messages yet");
       return;
     }
     const slug = slugify(this.title) || "chat";
@@ -3554,7 +3510,7 @@ export class Workspace {
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
     } catch (e) {
-      this.term.write(`\r\n\x1b[1;31m[save]\x1b[0m dialog failed: ${String(e)}\r\n`);
+      this.notifyError(`[save] dialog failed: ${String(e)}`);
       return;
     }
     if (!target) return; // user cancelled
@@ -3579,12 +3535,12 @@ export class Workspace {
         title: this.title,
         full,
       });
-      const modeTag = result.format === "prism-chat-v2" ? " \x1b[2m(full)\x1b[0m" : "";
-      this.term.write(
-        `\r\n\x1b[32m[save]\x1b[0m ${result.message_count} messages \u2192 \x1b[36m${target}\x1b[0m${modeTag}\r\n`,
+      const modeTag = result.format === "prism-chat-v2" ? " (full)" : "";
+      this.notify(
+        `[save] ${result.message_count} messages \u2192 ${target}${modeTag}`,
       );
     } catch (e) {
-      this.term.write(`\r\n\x1b[1;31m[save]\x1b[0m failed: ${String(e)}\r\n`);
+      this.notifyError(`[save] failed: ${String(e)}`);
     }
   }
 
@@ -3610,7 +3566,7 @@ export class Workspace {
         loadChatPath: tempTarget
       };
     } catch (e) {
-      this.term.write(`\r\n\x1b[1;31m[duplicate]\x1b[0m failed: ${String(e)}\r\n`);
+      this.notifyError(`[duplicate] failed: ${String(e)}`);
       return null;
     }
   }
