@@ -1153,6 +1153,19 @@ input:checked + .toggle-slider:before {
   color: #e5e7eb;
 }
 
+/* One-shot Markdown report block. Used by structural slash-command
+ * output (`/protocol`, future `/help` / `/models` / `/last`
+ * conversions) so headings, lists, bold, and inline code render
+ * properly via `.markdown-body` instead of being flattened by
+ * `appendNotice`. Same body color as `.agent-turn-prose` so reports
+ * read identically to streaming agent prose. */
+.agent-report {
+  margin: 4px 0;
+  overflow-wrap: break-word;
+  word-break: normal;
+  color: #e5e7eb;
+}
+
 /* ---------- markdown body styles (used inside prose + review) ---------- */
 
 .markdown-body p {

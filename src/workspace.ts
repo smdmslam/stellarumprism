@@ -2135,14 +2135,22 @@ export class Workspace {
    */
   private async handleProtocolCommand(id: string): Promise<void> {
     if (id.length === 0) {
-      const lines = ["[protocol] available recipes:"];
+      // Render the listing as Markdown via appendReport so headings,
+      // recipe ids (inline code), labels (bold), and category labels
+      // (italic) get proper visual weight via the existing
+      // `.markdown-body` styles. The plain-text appendNotice path is
+      // too dim for a structured listing \u2014 see the notify-overcorrection
+      // follow-up doc for the broader migration this seeds.
+      const md: string[] = ["## Available recipes", ""];
       for (const r of RECIPES) {
-        lines.push(`  \u2022 ${r.id}  \u2014 ${r.label} (${r.category})`);
-        lines.push(`     ${r.blurb}`);
+        md.push(
+          `- **\`${r.id}\`** \u2014 ${r.label} \u00b7 *${r.category}*  `,
+        );
+        md.push(`  ${r.blurb}`);
       }
-      lines.push("");
-      lines.push("Usage: /protocol <id>");
-      this.notify(lines.join("\n"));
+      md.push("");
+      md.push("Usage: `/protocol <id>`");
+      this.agentView?.appendReport(md.join("\n"));
       return;
     }
     try {

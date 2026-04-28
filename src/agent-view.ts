@@ -89,6 +89,15 @@ export interface AgentViewApi {
   appendReview(piece: string): void;
   /** Render a typed notice line (router note, header, footer, etc.). */
   appendNotice(kind: NoticeKind, body: string): void;
+  /**
+   * Render a one-shot Markdown report section into the current turn.
+   * Unlike `appendProse` (streaming, buffer-accumulating) each call to
+   * `appendReport` creates a fresh `<section>` so structural slash-
+   * command output (`/protocol`, future `/help` / `/models` / `/last`
+   * conversions) gets headings, lists, and inline code rendered
+   * properly via the existing `.markdown-body` styling.
+   */
+  appendReport(markdown: string): void;
   /** Render an error line at the end of the turn. */
   appendError(message: string): void;
   /** Close the current turn (no more content will be appended). */
@@ -246,6 +255,22 @@ export class AgentView implements AgentViewApi {
     el.className = `agent-notice agent-notice-${kind}`;
     el.textContent = stripAnsi(body);
     this.currentTurn!.appendChild(el);
+    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
+  }
+
+  appendReport(markdown: string): void {
+    if (markdown.length === 0) return;
+    const pinned = this.isPinnedToBottom();
+    if (!this.currentTurn) this.beginTurn("");
+    const section = document.createElement("section");
+    section.className = "agent-report markdown-body";
+    section.appendChild(markdownToFragment(markdown));
+    this.currentTurn!.appendChild(section);
+    // After a one-shot report, reset the streaming-prose pointer so a
+    // subsequent agent turn (which DOES use appendProse) opens a fresh
+    // section underneath instead of appending into our DOM block.
+    this.currentProseSection = null;
+    this.currentProseMarkdown = "";
     if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
   }
 
