@@ -324,15 +324,33 @@ commits and use git_log to enumerate them.\n\
 INVESTIGATION ORDER (mandatory):\n\
   1. git_log on the scope to enumerate commits and read commit messages. \
 Flag commits whose messages signal an architectural change as \
-'invariant-bearing': split, move, retire, rename, refactor, replace.\n\
+'invariant-bearing': split, move, retire, rename, refactor, replace, \
+rebuild, consolidate, decouple, extract.\n\
+  1b. WIDER INVARIANT SCAN. Also run a SECOND git_log over a wider \
+window (the last 50 commits, or `--since=3.months.ago`, whichever is \
+tighter) to catch invariant-bearing commits that fall OUTSIDE the \
+explicit review scope. Their OLD patterns still apply to current code \
+regardless of which commit is currently being reviewed \u{2014} an \
+invariant declared 30 commits ago whose violations live in code from \
+the last 5 commits is exactly the bug class refactor cohesion is \
+supposed to catch. Treat any architectural-keyword commit found in \
+this wider window as still-binding for the cohesion check.\n\
   2. git_diff on the scope to see what actually changed.\n\
   3. APPLY THE THREE COHESION CHECKS independently. Each maps to a bug \
 class grep-only audits routinely miss:\n\
-     a. REFACTOR COHESION. For each invariant-bearing commit, identify \
-the OLD pattern it deprecated. grep the WHOLE repo (not just the \
-touched files) for remaining occurrences. Each remaining occurrence is \
-a likely '[warning]' finding \u{2014} the invariant is being silently \
-broken in code that didn't go through the refactor commit.\n\
+     a. REFACTOR COHESION. For each invariant-bearing commit (from \
+step 1 OR step 1b), run git_diff on THAT specific commit and look at \
+the DELETED lines (lines prefixed with '-' in the diff). The deleted \
+lines literally define the OLD pattern. Take 1-3 representative \
+substrings from the deleted lines (a function call shape, an import \
+path, a CSS selector, a literal string) and grep the CURRENT tree \
+for each. Any surviving match in current code is a refactor-cohesion \
+finding \u{2014} '[warning]' if there are a few hits, '[error]' if there \
+are many or if the OLD pattern was explicitly retired by the commit \
+message. Do NOT try to infer the OLD pattern from the commit message \
+alone; the diff's deleted lines are the authoritative source. Do NOT \
+grep for ADDED patterns \u{2014} those by definition exist in the new code \
+and are not violations.\n\
      b. HELPER-BODY INSPECTION. For each helper function called by code \
 in scope, OPEN ITS BODY with read_file. Confirm the body does what the \
 name claims. Flag stubs (single-line returns of input, single-line TODO \
@@ -2453,10 +2471,17 @@ checks (each maps to a bug class grep-only audits routinely miss):\n\
   • REFACTOR COHESION. If the work includes a commit that moves \
 responsibility from one surface to another, retires a module, or changes \
 an architectural boundary (panel split, API rename, file relocation), \
-flag remaining occurrences of the OLD pattern across the repo — not \
-just in the touched files. Invariants leak across later commits that \
-don't honor the new rule, and reviewing commits in isolation cannot \
-catch this.\n\
+identify the OLD pattern by reading the commit's git_diff and looking \
+at the DELETED lines — those literally define what the new code is \
+supposed to no longer do. Take a representative substring from the \
+deleted lines and grep the CURRENT tree for surviving instances. Each \
+remaining occurrence is a refactor-cohesion finding. Apply this rule \
+ALSO to invariant-bearing commits found in a wider git_log window (last \
+50 commits or `--since=3.months.ago`), not just the commits being \
+reviewed in isolation — invariants declared earlier whose violations \
+live in current code are exactly the bug class this check is for. Do \
+NOT infer the OLD pattern from the commit message alone; the diff's \
+deleted lines are the authoritative source.\n\
   • HELPER-BODY INSPECTION. For every helper function the recent code \
 calls, confirm the body does what the name claims. Stubs that return \
 their input unchanged, single-line TODO bodies, and no-op wrappers are \
