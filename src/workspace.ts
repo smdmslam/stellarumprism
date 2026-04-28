@@ -1741,6 +1741,8 @@ export class Workspace {
         sidebar_width: state.layout.sidebar_width ?? this.layout.sidebar_width,
         problems_width: state.layout.problems_width ?? this.layout.problems_width,
         preview_height: state.layout.preview_height ?? this.layout.preview_height,
+        agent_pane_width:
+          state.layout.agent_pane_width ?? this.layout.agent_pane_width,
       });
       this.applyLayoutToDOM();
     }
@@ -2630,6 +2632,7 @@ export class Workspace {
       const startSidebar = this.layout.sidebar_width;
       const startProblems = this.layout.problems_width;
       const startPreview = this.layout.preview_height;
+      const startAgentPane = this.layout.agent_pane_width;
       el.setPointerCapture(ev.pointerId);
       el.classList.add("dragging");
       this.lastActiveDivider = kind;
@@ -2648,6 +2651,12 @@ export class Workspace {
         } else if (kind === "preview") {
           // The divider sits BELOW the preview; drag down → taller preview.
           this.layout.preview_height = clampPreview(startPreview + (e.clientY - startY));
+        } else if (kind === "pane") {
+          // The divider sits to the LEFT of the agent pane; drag left
+          // → wider agent pane (the center pane shrinks).
+          this.layout.agent_pane_width = clampAgentPane(
+            startAgentPane - (e.clientX - startX),
+          );
         }
         this.applyLayoutToDOM();
         // Refit xterm during the drag so the terminal reflows in real
@@ -2680,6 +2689,7 @@ export class Workspace {
       if (kind === "sidebar") this.layout.sidebar_width = DEFAULT_LAYOUT.sidebar_width;
       else if (kind === "problems") this.layout.problems_width = DEFAULT_LAYOUT.problems_width;
       else if (kind === "preview") this.layout.preview_height = DEFAULT_LAYOUT.preview_height;
+      else if (kind === "pane") this.layout.agent_pane_width = DEFAULT_LAYOUT.agent_pane_width;
       this.applyLayoutToDOM();
       this.fitTerminal();
       void this.persistLayout();
@@ -2712,6 +2722,10 @@ export class Workspace {
       this.layout.problems_width = clampProblems(this.layout.problems_width + delta);
     } else if (kind === "preview") {
       this.layout.preview_height = clampPreview(this.layout.preview_height + delta);
+    } else if (kind === "pane") {
+      this.layout.agent_pane_width = clampAgentPane(
+        this.layout.agent_pane_width + delta,
+      );
     }
     this.applyLayoutToDOM();
     this.fitTerminal();
@@ -2736,6 +2750,10 @@ export class Workspace {
     this.root.style.setProperty("--sidebar-width", `${this.layout.sidebar_width}px`);
     this.root.style.setProperty("--problems-width", `${this.layout.problems_width}px`);
     this.root.style.setProperty("--preview-height", `${this.layout.preview_height}px`);
+    this.root.style.setProperty(
+      "--agent-pane-width",
+      `${this.layout.agent_pane_width}px`,
+    );
   }
 
   /**
@@ -3196,14 +3214,20 @@ interface PersistedWorkspaceState {
     sidebar_width?: number;
     problems_width?: number;
     preview_height?: number;
+    agent_pane_width?: number;
   };
 }
 
-/** Identifier for one of the three resizable dividers. */
-type DividerKind = "sidebar" | "problems" | "preview";
+/** Identifier for one of the resizable dividers. */
+type DividerKind = "sidebar" | "problems" | "preview" | "pane";
 
 function isDividerKind(s: string): s is DividerKind {
-  return s === "sidebar" || s === "problems" || s === "preview";
+  return (
+    s === "sidebar" ||
+    s === "problems" ||
+    s === "preview" ||
+    s === "pane"
+  );
 }
 
 /** In-memory representation of the persisted layout (no optional fields). */
@@ -3211,6 +3235,10 @@ interface LayoutPrefs {
   sidebar_width: number;
   problems_width: number;
   preview_height: number;
+  /** Width of the right-hand agent pane (HTML chat surface). The
+   *  center pane (file viewer + xterm) gets the remaining horizontal
+   *  space. Resized via the vertical `.layout-divider-pane`. */
+  agent_pane_width: number;
 }
 
 /** Defaults used when state.json carries no layout. */
@@ -3218,6 +3246,11 @@ const DEFAULT_LAYOUT: LayoutPrefs = {
   sidebar_width: 240,
   problems_width: 360,
   preview_height: 360,
+  // The agent dialogue is the primary surface; the file viewer / xterm
+  // strip in the center pane reads more like a workshop drawer that
+  // opens when you need it. Default the agent pane to something
+  // generous so prose has breathing room out of the box.
+  agent_pane_width: 640,
 };
 
 /** Step size for Cmd+Opt+[/] keyboard nudges. */
@@ -3241,6 +3274,12 @@ function clampPreview(px: number): number {
   const max = Math.max(120, Math.floor(window.innerHeight * 0.7));
   return clampInt(px, 80, max);
 }
+function clampAgentPane(px: number): number {
+  // Min keeps prose readable; max stops the user from zeroing out the
+  // file viewer / xterm strip on the left.
+  const max = Math.max(360, Math.floor(window.innerWidth * 0.8));
+  return clampInt(px, 320, max);
+}
 function clampInt(v: number, lo: number, hi: number): number {
   if (!Number.isFinite(v)) return lo;
   return Math.max(lo, Math.min(hi, Math.round(v)));
@@ -3251,6 +3290,7 @@ function clampLayout(p: LayoutPrefs): LayoutPrefs {
     sidebar_width: clampSidebar(p.sidebar_width),
     problems_width: clampProblems(p.problems_width),
     preview_height: clampPreview(p.preview_height),
+    agent_pane_width: clampAgentPane(p.agent_pane_width),
   };
 }
 

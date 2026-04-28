@@ -961,7 +961,8 @@ input:checked + .toggle-slider:before {
 }
 
 .center-pane {
-  flex: 1 1 60%;
+  /* Center pane absorbs whatever the agent pane leaves behind. */
+  flex: 1 1 auto;
   min-width: 240px;
   display: flex;
   flex-direction: column;
@@ -970,7 +971,11 @@ input:checked + .toggle-slider:before {
 }
 
 .agent-pane {
-  flex: 1 1 40%;
+  /* Agent pane has a fixed (resizable) width — driven by the
+   * `--agent-pane-width` CSS var that the workspace writes from its
+   * persisted layout. The vertical `.layout-divider-pane` to its left
+   * lets the user drag this width. */
+  flex: 0 0 var(--agent-pane-width);
   min-width: 320px;
   display: flex;
   flex-direction: column;
