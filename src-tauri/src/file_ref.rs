@@ -689,6 +689,55 @@ pub fn create_dir(cwd: String, path: String) -> Result<String, String> {
     Ok(resolved.to_string_lossy().into_owned())
 }
 
+/// Expand a leading `~/` (or bare `~`) to the user's home directory.
+///
+/// Paths that don't start with `~/` are returned unchanged. Used by the
+/// frontend (`expandTilde` in `workspace.ts`) so paths bound for direct
+/// file commands or save dialogs are absolute regardless of which API
+/// the platform layer uses to resolve them.
+#[tauri::command]
+pub fn resolve_home_path(path: String) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("empty path".into());
+    }
+    if let Some(rest) = trimmed.strip_prefix("~/") {
+        let home = dirs::home_dir().ok_or("no home dir")?;
+        Ok(home.join(rest).to_string_lossy().into_owned())
+    } else if trimmed == "~" {
+        let home = dirs::home_dir().ok_or("no home dir")?;
+        Ok(home.to_string_lossy().into_owned())
+    } else {
+        Ok(path)
+    }
+}
+
+/// Remove a single file. Path resolves the same way other file_ref
+/// commands do (cwd-relative, absolute, or `~/`-prefixed). Idempotent:
+/// a missing target returns Ok(()) so callers can call it eagerly
+/// after a load that may or may not have produced a temp file.
+///
+/// Refuses to delete directories \u2014 the caller should use a
+/// dedicated tree-removal command for that to avoid accidental
+/// recursive wipes.
+#[tauri::command]
+pub fn remove_file(cwd: String, path: String) -> Result<(), String> {
+    let resolved = resolve_path(&cwd, &path)?;
+    let metadata = match fs::metadata(&resolved) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("cannot stat {}: {}", resolved.display(), e)),
+    };
+    if metadata.is_dir() {
+        return Err(format!(
+            "{} is a directory; remove_file refuses to recurse",
+            resolved.display()
+        ));
+    }
+    fs::remove_file(&resolved)
+        .map_err(|e| format!("cannot remove {}: {}", resolved.display(), e))
+}
+
 #[tauri::command]
 pub fn move_file(cwd: String, from: String, to: String) -> Result<String, String> {
     let resolved_from = resolve_path(&cwd, &from)?;

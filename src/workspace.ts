@@ -2846,7 +2846,7 @@ export class Workspace {
         // and for legacy chats saved before this change.
         defaultPath: this.cwd
           ? `${this.cwd}/.prism/chats/`
-          : expandTilde("~/Documents/Prism/Chats/"),
+          : await expandTilde("~/Documents/Prism/Chats/"),
         multiple: false,
         directory: false,
         filters: [{ name: "Markdown", extensions: ["md"] }],
@@ -3100,7 +3100,9 @@ export class Workspace {
     // time, so neither path needs to pre-exist.
     const defaultPath = this.cwd
       ? `${this.cwd}/.prism/chats/${slug}-${shortStamp()}.${ext}`
-      : expandTilde(`~/Documents/Prism/Chats/${slug}-${shortStamp()}.${ext}`);
+      : await expandTilde(
+          `~/Documents/Prism/Chats/${slug}-${shortStamp()}.${ext}`,
+        );
     let target: string | null = null;
     try {
       target = await saveDialog({
@@ -3148,7 +3150,9 @@ export class Workspace {
    * restore options so TabManager can spawn a clone.
    */
   async duplicateSession(): Promise<WorkspaceRestoreOptions | null> {
-    const tempTarget = expandTilde(`~/Documents/Prism/Chats/temp-dup-${crypto.randomUUID().slice(0, 8)}.full.md`);
+    const tempTarget = await expandTilde(
+      `~/Documents/Prism/Chats/temp-dup-${crypto.randomUUID().slice(0, 8)}.full.md`,
+    );
     try {
       await invoke("save_chat_markdown", {
         chatId: this.id,
@@ -3589,12 +3593,21 @@ function fileToDataUrl(file: File): Promise<string | null> {
   });
 }
 
-/** Expand a leading `~` to the user's home dir. Best-effort: we use the HOME
- *  env var via Tauri's expand later; here we just leave it for the dialog. */
-function expandTilde(p: string): string {
-  // The save dialog on macOS supports absolute paths. We keep tilde and let
-  // Tauri/AppKit resolve it, but as a defensive fallback rewrite it.
-  if (!p.startsWith("~/")) return p;
-  // Best we can do without a dedicated command \u2014 defer to dialog behavior.
-  return p;
+/**
+ * Expand a leading `~/` (or bare `~`) to the user's home directory by
+ * round-tripping through the Rust `resolve_home_path` Tauri command.
+ *
+ * Async because there is no synchronous way to read `$HOME` from the
+ * webview \u2014 only the Rust side has a reliable answer. Any path that
+ * doesn't start with `~/` is returned unchanged. On failure (no home
+ * dir, IPC error) the original path is returned so callers don't see
+ * exceptions in best-effort dialog defaults.
+ */
+async function expandTilde(p: string): Promise<string> {
+  if (!p.startsWith("~")) return p;
+  try {
+    return await invoke<string>("resolve_home_path", { path: p });
+  } catch {
+    return p;
+  }
 }

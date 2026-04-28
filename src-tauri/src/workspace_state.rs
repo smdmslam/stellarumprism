@@ -82,6 +82,9 @@ pub struct Layout {
     /// Height of `.file-preview` overlay in CSS pixels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview_height: Option<u32>,
+    /// Width of the right-hand agent pane in CSS pixels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_pane_width: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
