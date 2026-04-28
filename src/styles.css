@@ -949,6 +949,82 @@ input:checked + .toggle-slider:before {
   overflow: hidden;
 }
 
+/* ---------- agent prose panel ----------
+ *
+ * DOM-based rendering surface for agent dialogue, sized to take roughly
+ * half of the content column with the shell terminal sharing the bottom
+ * half during phase 1 (side-by-side render). Wraps via standard CSS so
+ * resize is automatic and word boundaries are respected.
+ *
+ * `flex: 1 1 0` with a hard `min-height` keeps the panel visible even
+ * when xterm is content-driven and would otherwise consume all the
+ * column space. The bottom border separates it from `.terminal-host`. */
+.agent-stage {
+  flex: 1 1 0;
+  min-height: 120px;
+  background-color: #0d0f14;
+  border-bottom: 1px solid #1f2937;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.agent-stage-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 24px 12px 40px;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #d1d5db;
+}
+
+.agent-stage-scroll::-webkit-scrollbar {
+  width: 10px;
+  background: transparent;
+}
+.agent-stage-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.agent-stage-scroll::-webkit-scrollbar-thumb {
+  background: #2d3748;
+  border-radius: 999px;
+  border: 2px solid #0d0f14;
+}
+.agent-stage-scroll::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+.agent-turn {
+  margin: 0 0 16px 0;
+  padding: 0;
+}
+
+.agent-turn-user {
+  font-weight: 600;
+  color: #7dd3fc;
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.agent-turn-user::before {
+  content: "you \203a  ";
+  color: #6b7280;
+  font-weight: 400;
+}
+
+.agent-turn-prose {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  color: #e5e7eb;
+}
+
 .terminal-host {
   flex: 1 1 auto;
   min-height: 0;

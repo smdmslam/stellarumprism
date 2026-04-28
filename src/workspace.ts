@@ -19,6 +19,7 @@ import {
   type AgentImageContext,
   type FullHistoryMessage,
 } from "./agent";
+import { AgentView } from "./agent-view";
 import { resolveModel, renderModelListAnsi, modelSupportsVision } from "./models";
 import { renderHelpAnsi } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
@@ -272,6 +273,7 @@ export class Workspace {
   private blocks!: BlockManager;
   private input!: PrismInput;
   private agent!: AgentController;
+  private agentView!: AgentView;
   private resizeObserver: ResizeObserver | null = null;
 
   private readonly disposers: UnlistenFn[] = [];
@@ -319,6 +321,7 @@ export class Workspace {
       <div class="content">
         <div class="file-preview" data-visible="false" aria-hidden="true"></div>
         <div class="layout-divider layout-divider-preview" data-divider="preview" data-visible="false" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize file preview"></div>
+        <div class="agent-stage" aria-label="Agent dialogue"></div>
         <div class="terminal-host">
           <div class="terminal-stage"></div>
         </div>
@@ -582,8 +585,15 @@ export class Workspace {
     this.resizeObserver.observe(stage);
 
     // Agent + editor.
+    // The DOM-based agent panel renders prose with `overflow-wrap`
+    // so it reflows naturally on resize, sidestepping xterm's
+    // cell-grid wrap. Phase 1: side-by-side with xterm so we can
+    // verify the new surface against the old one.
+    const agentStageEl = this.root.querySelector<HTMLElement>(".agent-stage");
+    this.agentView = new AgentView(agentStageEl ?? this.root);
     this.agent = new AgentController({
       term: this.term,
+      view: this.agentView,
       blocks: this.blocks,
       sessionId: this.id,
       chatId: this.id,

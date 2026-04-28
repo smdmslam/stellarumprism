@@ -7,6 +7,7 @@ import { route as routeModel, parseAutoSlug, PRESETS } from "./router";
 import { modelSupportsToolUse } from "./models";
 import { InlineCodeFormatter } from "./inline-code-format";
 import { MarkdownLineFormatter } from "./markdown-line-format";
+import type { AgentViewApi } from "./agent-view";
 import { detectRigorViolation } from "./grounded-rigor";
 import {
   WRITE_TOOL_NAMES,
@@ -118,6 +119,14 @@ const RESET = "\x1b[0m";
 
 export interface AgentControllerOptions {
   term: Terminal;
+  /**
+   * Optional DOM-based agent prose panel. When provided, prose tokens
+   * (and eventually tool log / headers / footers) are mirrored here so
+   * the agent surface gets word-aware wrap and resize-friendly layout
+   * for free. xterm continues to receive the same writes during the
+   * migration; later phases drop xterm from the agent path entirely.
+   */
+  view?: AgentViewApi;
   blocks: BlockManager;
   /** PTY session id — used when the agent needs to write to the shell. */
   sessionId: string;
@@ -314,6 +323,7 @@ export class AgentController {
     }
     this.messageCount = 0;
     this.opts.onSessionChange?.(0);
+    this.opts.view?.clear();
     this.clearActionBar();
   }
 
@@ -528,6 +538,9 @@ export class AgentController {
     this.opts.term.write(
       `\r\n\r\n\x1b[1;36myou\x1b[0m \x1b[2m\u203a\x1b[0m ${echoed}\r\n`,
     );
+    // Mirror the user prompt into the DOM-based agent panel so the
+    // panel's turn boundary lines up with the terminal echo.
+    this.opts.view?.beginTurn(prompt);
 
     // Decide the actual model. Priority:
     //   1. options.modelOverride (e.g. a mode's preferred model)
@@ -698,6 +711,11 @@ export class AgentController {
     // returning to column 0, so lines stair-step. Normalize on write.
     const normalized = colored.replace(/\r?\n/g, "\r\n");
     this.opts.term.write(normalized);
+    // Mirror the raw streaming piece into the DOM panel. ANSI is
+    // stripped inside the view so the panel doesn't fight the
+    // terminal's styling decisions \u2014 phase 2 ports the formatters
+    // into proper DOM elements.
+    this.opts.view?.appendProse(piece);
   }
 
   private onReviewToken(piece: string): void {
@@ -957,6 +975,7 @@ export class AgentController {
     }
 
     this.renderActionBar(extractCodeBlocks(this.responseBuffer));
+    this.opts.view?.endTurn();
     this.clearListeners();
     // Fire mode-specific completion hook for audit + build-family
     // turns. Capture mode/model/response BEFORE clearing currentMode so
@@ -1022,6 +1041,8 @@ export class AgentController {
       this.opts.term.write((mdTail + tail).replace(/\r?\n/g, "\r\n"));
     }
     this.writeLineToTerm(`${PREFIX_OPEN}[agent error]${RESET} ${msg}`);
+    this.opts.view?.appendProse(`\n[agent error] ${msg}\n`);
+    this.opts.view?.endTurn();
     this.inflightId = null;
     this.setBusy(false);
     this.clearListeners();
