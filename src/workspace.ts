@@ -2485,14 +2485,113 @@ export class Workspace {
   }
 
   /**
-   * Prompt the user to rename a file/dir in-place. Uses a lightweight
-   * window.prompt so there's no extra overlay needed. Falls back
-   * silently on cancel.
+   * Modal text-input helper. Used wherever the code needs a single
+   * line of free-form input from the user (file tree New File /
+   * New Folder / Rename). We can't use `window.prompt` because Tauri's
+   * WKWebView returns null without showing anything — silently broken.
+   * This builds a small modal at runtime that visually matches the
+   * existing `.confirm-dialog`, auto-focuses the input, accepts Enter
+   * to submit and Esc to cancel, and returns the trimmed text or
+   * `null` on cancel.
+   */
+  private askText(opts: {
+    title: string;
+    defaultValue?: string;
+    placeholder?: string;
+    body?: string;
+  }): Promise<string | null> {
+    return new Promise((resolve) => {
+      const overlay = document.createElement("div");
+      overlay.className = "confirm-dialog";
+      overlay.dataset.visible = "true";
+      overlay.setAttribute("role", "dialog");
+      overlay.setAttribute("aria-modal", "true");
+
+      const card = document.createElement("div");
+      card.className = "confirm-dialog-card";
+
+      const titleEl = document.createElement("h2");
+      titleEl.className = "confirm-dialog-title";
+      titleEl.textContent = opts.title;
+      card.appendChild(titleEl);
+
+      if (opts.body) {
+        const bodyEl = document.createElement("p");
+        bodyEl.className = "confirm-dialog-body";
+        bodyEl.textContent = opts.body;
+        card.appendChild(bodyEl);
+      }
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "confirm-dialog-input";
+      input.value = opts.defaultValue ?? "";
+      if (opts.placeholder) input.placeholder = opts.placeholder;
+      card.appendChild(input);
+
+      const actions = document.createElement("div");
+      actions.className = "confirm-dialog-actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "confirm-dialog-btn confirm-dialog-btn-no";
+      cancelBtn.type = "button";
+      cancelBtn.textContent = "Cancel";
+      const okBtn = document.createElement("button");
+      okBtn.className = "confirm-dialog-btn confirm-dialog-btn-yes";
+      okBtn.type = "button";
+      okBtn.textContent = "OK";
+      actions.appendChild(cancelBtn);
+      actions.appendChild(okBtn);
+      card.appendChild(actions);
+
+      overlay.appendChild(card);
+      this.root.appendChild(overlay);
+
+      const finish = (value: string | null) => {
+        document.removeEventListener("keydown", onKey, true);
+        overlay.remove();
+        resolve(value);
+      };
+      const onKey = (ev: KeyboardEvent) => {
+        if (ev.key === "Escape") {
+          ev.preventDefault();
+          finish(null);
+        } else if (ev.key === "Enter") {
+          ev.preventDefault();
+          const v = input.value.trim();
+          finish(v.length === 0 ? null : v);
+        }
+      };
+      okBtn.addEventListener("click", () => {
+        const v = input.value.trim();
+        finish(v.length === 0 ? null : v);
+      });
+      cancelBtn.addEventListener("click", () => finish(null));
+      // Click on the dimmed backdrop (overlay itself, not the card)
+      // dismisses the modal — same affordance the confirm dialog has.
+      overlay.addEventListener("mousedown", (ev) => {
+        if (ev.target === overlay) finish(null);
+      });
+      document.addEventListener("keydown", onKey, true);
+      // Focus + select-all so the user can immediately overtype the
+      // suggested default (e.g. selecting `untitled.txt` and typing).
+      queueMicrotask(() => {
+        input.focus();
+        input.select();
+      });
+    });
+  }
+
+  /**
+   * Prompt the user to rename a file/dir in-place via the in-app
+   * text-input modal. Falls back silently on cancel.
    */
   private async promptRenameTreeItem(path: string): Promise<void> {
     const parts = path.split("/");
     const oldName = parts[parts.length - 1] ?? "";
-    const newName = window.prompt("Rename to:", oldName);
+    const newName = await this.askText({
+      title: "Rename",
+      defaultValue: oldName,
+    });
     if (!newName || newName === oldName) return;
     const dir = parts.slice(0, -1).join("/");
     const newPath = dir ? `${dir}/${newName}` : newName;
@@ -2522,9 +2621,15 @@ export class Workspace {
       window.alert("cwd unknown \u2014 wait for the shell prompt");
       return;
     }
-    const name = window.prompt("New file name:", "untitled.txt");
-    if (!name || name.trim().length === 0) return;
-    const trimmed = name.trim();
+    const name = await this.askText({
+      title: "New file",
+      defaultValue: "untitled.txt",
+      body: parent && parent.length > 0
+        ? `Create in ${parent}`
+        : "Create at project root",
+    });
+    if (!name) return;
+    const trimmed = name;
     const target = parent && parent.length > 0 ? `${parent}/${trimmed}` : trimmed;
     try {
       await invoke("write_file_text", {
@@ -2557,9 +2662,15 @@ export class Workspace {
       window.alert("cwd unknown \u2014 wait for the shell prompt");
       return;
     }
-    const name = window.prompt("New folder name:", "new-folder");
-    if (!name || name.trim().length === 0) return;
-    const trimmed = name.trim();
+    const name = await this.askText({
+      title: "New folder",
+      defaultValue: "new-folder",
+      body: parent && parent.length > 0
+        ? `Create in ${parent}`
+        : "Create at project root",
+    });
+    if (!name) return;
+    const trimmed = name;
     const target = parent && parent.length > 0 ? `${parent}/${trimmed}` : trimmed;
     try {
       await invoke("create_dir", { cwd: this.cwd, path: target });

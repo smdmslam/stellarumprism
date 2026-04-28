@@ -3147,6 +3147,28 @@ input:checked + .toggle-slider:before {
   outline-offset: 2px;
 }
 
+/* Text input variant of `.confirm-dialog`. Reused by `askText` (file
+ * tree New File / New Folder / Rename) to collect a single line of
+ * text since `window.prompt` is a no-op in WKWebView (Tauri). */
+.confirm-dialog-input {
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+  color: #e5e7eb;
+  font-size: 13px;
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  outline: none;
+  box-sizing: border-box;
+}
+.confirm-dialog-input:focus {
+  border-color: rgba(125, 211, 252, 0.55);
+  background: rgba(0, 0, 0, 0.55);
+}
+
 /* Skill Library Expansion */
 
 .settings-header-row {
