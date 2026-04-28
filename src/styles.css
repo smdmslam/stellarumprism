@@ -2912,6 +2912,21 @@ input:checked + .toggle-slider:before {
   white-space: nowrap;
   color: #cbd5e1;
 }
+/* Size + relative-modified time, e.g. "12.4 KB · 3d ago". Sits between
+ * the path and the action buttons; full ISO timestamp lives on the
+ * title attribute for hover. Kept dim so it doesn't compete with the
+ * path for visual weight. */
+.file-preview-meta {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: #6b7280;
+  white-space: nowrap;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.file-preview-meta:empty {
+  display: none;
+}
 /* Copy-path button in the file viewer header. */
 .file-preview-copy-path {
   flex: 0 0 auto;

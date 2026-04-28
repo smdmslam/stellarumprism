@@ -2943,10 +2943,15 @@ export class Workspace {
 
     // The file preview is permanently mounted in the center pane;
     // opening just swaps the placeholder for the editor surface.
+    // The `.file-preview-meta` span is left empty here and populated
+    // after read_file_text returns size + mtime; rendering it in two
+    // steps avoids a header reflow once the read resolves and keeps
+    // the placeholder DOM stable.
     overlay.innerHTML =
       `<div class="file-preview-header">` +
       `<span class="file-preview-dirty" data-dirty="false" aria-hidden="true">\u25cf</span>` +
       `<span class="file-preview-path" title="${escapeAttr(path)}">${escapeHtml(path)}</span>` +
+      `<span class="file-preview-meta" aria-label="file size and modification time"></span>` +
       `<button class="file-preview-copy-path" type="button" aria-label="Copy path to clipboard" title="Copy path to clipboard">` +
       `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>` +
       `</button>` +
@@ -2981,7 +2986,12 @@ export class Workspace {
       () => void this.saveOpenFile(),
     );
 
-    let loaded: { path: string; content: string; mtime_secs: number };
+    let loaded: {
+      path: string;
+      content: string;
+      size: number;
+      mtime_secs: number;
+    };
     try {
       loaded = await invoke<{
         path: string;
@@ -3003,6 +3013,11 @@ export class Workspace {
     body.innerHTML = "";
     this.openFilePath = path;
     this.openFileMtime = loaded.mtime_secs;
+
+    // Populate the size + relative-modified meta span. The full ISO
+    // timestamp lands on the title attribute as a hover affordance for
+    // anyone who needs the exact wall-clock time.
+    this.updateFilePreviewMeta(loaded.size, loaded.mtime_secs);
     this.fileEditor = new FileEditor(body, loaded.content, {
       onDirtyChange: (dirty) => this.reflectDirty(dirty),
     });
@@ -3015,6 +3030,35 @@ export class Workspace {
     // per workspace). Focus the buffer so the user can start typing
     // immediately.
     this.fileEditor.focus();
+  }
+
+  /**
+   * Update the size + modification-time meta span in the file viewer
+   * header. Called once on initial open and again after every save so
+   * the user sees fresh values without reopening the file.
+   *
+   * `mtimeSecs` is the on-disk mtime as UNIX epoch seconds (matches
+   * the Tauri `read_file_text` / `write_file_text` return shape).
+   */
+  private updateFilePreviewMeta(sizeBytes: number, mtimeSecs: number): void {
+    const metaEl = this.root.querySelector<HTMLElement>(".file-preview-meta");
+    if (!metaEl) return;
+    const sizeLabel = formatBytesShort(sizeBytes);
+    let when = "";
+    let absolute = "";
+    if (mtimeSecs > 0) {
+      const ms = mtimeSecs * 1000;
+      const isoString = new Date(ms).toISOString();
+      when = formatRelativeTime(isoString);
+      // Friendlier hover than ISO; matches what `ls -l` would print.
+      absolute = new Date(ms).toLocaleString();
+    }
+    metaEl.textContent = when ? `${sizeLabel} \u00b7 ${when}` : sizeLabel;
+    if (absolute) {
+      metaEl.title = `${sizeBytes.toLocaleString()} bytes \u00b7 modified ${absolute}`;
+    } else {
+      metaEl.title = `${sizeBytes.toLocaleString()} bytes`;
+    }
   }
 
   /**
@@ -3058,6 +3102,9 @@ export class Workspace {
       });
       this.openFileMtime = result.mtime_secs;
       this.fileEditor.markClean(content);
+      // Refresh the meta span so the user sees the new size + "just
+      // now" timestamp immediately after save instead of stale values.
+      this.updateFilePreviewMeta(result.bytes_written, result.mtime_secs);
       this.notify(
         `[edit] saved ${sanitize(prettyPath(result.path))} (${formatBytesShort(result.bytes_written)})`,
       );
