@@ -9,6 +9,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { openPath } from "@tauri-apps/plugin-opener";
 import "@xterm/xterm/css/xterm.css";
 
 import { BlockManager, type Block } from "./blocks";
@@ -2216,10 +2217,21 @@ export class Workspace {
         void this.handleProtocolCommand(id);
       },
       onOpenReport: (path) => {
-        // v1: copy path to clipboard. Phase D / a future opener-plugin
-        // hookup can replace this with a real reveal-in-Finder action.
-        void navigator.clipboard.writeText(path).catch(() => {});
-        this.notify(`[protocol] report path copied to clipboard: ${path}`);
+        // Open the report in the user's default Markdown handler via
+        // tauri-plugin-opener (already registered in capabilities/
+        // default.json). Falls back to copying the path to clipboard
+        // when the open call fails (e.g. no default handler) so the
+        // user can paste it into a terminal or Finder manually.
+        void openPath(path)
+          .then(() => {
+            this.notify(`[protocol] opened report \u2192 ${path}`);
+          })
+          .catch((err) => {
+            void navigator.clipboard.writeText(path).catch(() => {});
+            this.notifyError(
+              `[protocol] could not open report (${String(err)}); path copied to clipboard: ${path}`,
+            );
+          });
       },
     });
     this.agentView?.appendCard(card.el);
