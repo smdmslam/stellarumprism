@@ -86,12 +86,63 @@ export async function runRecipe(
     `[protocol] starting "${recipe.label}" \u2014 ${recipe.steps.length} steps`,
   );
 
+  // Pre-flight: read package.json once and check that every shell
+  // step's required scripts exist. Recipe-level abort if any step
+  // with onMissing="abort" is missing scripts; per-step skip flags
+  // for onMissing="skip". Slash steps don't participate.
+  const preflight = await collectPreflight(recipe, ctx.getCwd());
+  if (preflight.recipeAbort.length > 0) {
+    const lines = preflight.recipeAbort.map(
+      (entry) =>
+        `  \u2022 step "${entry.label}" needs ${entry.missing.join(", ")}`,
+    );
+    const have =
+      preflight.scriptsAvailable.length > 0
+        ? preflight.scriptsAvailable.join(", ")
+        : "(none)";
+    ctx.notifyError(
+      `[protocol] "${recipe.label}" cannot run in this project \u2014 ` +
+        `missing required package.json scripts:\n${lines.join("\n")}\n` +
+        `  this project has: ${have}`,
+    );
+    const skippedSteps = recipe.steps.map<{ def: StepDef; result: StepResult }>(
+      (def) => ({ def, result: skippedResult("recipe pre-flight aborted") }),
+    );
+    return await finalizeReport({
+      recipe,
+      ctx,
+      startedAt,
+      startedAtIso,
+      stepResults: skippedSteps,
+      preflightAbortReason: preflight.recipeAbort
+        .flatMap((e) => e.missing)
+        .join(", "),
+      preflightScriptsAvailable: preflight.scriptsAvailable,
+    });
+  }
+
   const stepResults: Array<{ def: StepDef; result: StepResult }> = [];
   let aborted = false;
   for (let i = 0; i < recipe.steps.length; i++) {
     const def = recipe.steps[i];
     if (aborted) {
       stepResults.push({ def, result: skippedResult() });
+      continue;
+    }
+    // Per-step skip if pre-flight flagged this step's scripts missing
+    // and its onMissing was "skip". Surfaces a clear note so the user
+    // sees why the step didn't run; remaining steps still execute.
+    const skipEntry = preflight.perStepSkip.find((s) => s.index === i);
+    if (skipEntry) {
+      ctx.notify(
+        `[protocol] step ${i + 1}/${recipe.steps.length} skipped \u2014 ${def.label} (missing scripts: ${skipEntry.missing.join(", ")})`,
+      );
+      stepResults.push({
+        def,
+        result: skippedResult(
+          `missing package.json scripts: ${skipEntry.missing.join(", ")}`,
+        ),
+      });
       continue;
     }
     ctx.notify(
@@ -155,19 +206,47 @@ export async function runRecipe(
     }
   }
 
+  return await finalizeReport({
+    recipe,
+    ctx,
+    startedAt,
+    startedAtIso,
+    stepResults,
+    preflightScriptsAvailable: preflight.scriptsAvailable,
+  });
+}
+
+/**
+ * Common tail used both for normal completion and for the recipe-level
+ * pre-flight abort path. Renders the report, persists it, prints the
+ * top-line summary, and returns the structured RecipeReport.
+ */
+async function finalizeReport(input: {
+  recipe: Recipe;
+  ctx: RecipeRunnerCtx;
+  startedAt: Date;
+  startedAtIso: string;
+  stepResults: Array<{ def: StepDef; result: StepResult }>;
+  preflightAbortReason?: string;
+  preflightScriptsAvailable?: string[];
+}): Promise<RecipeReport> {
   const finishedAt = new Date();
-  const durationMs = finishedAt.getTime() - startedAt.getTime();
-  const allOk = stepResults.every((s) => s.result.state === "ok");
+  const durationMs = finishedAt.getTime() - input.startedAt.getTime();
+  const allOk =
+    !input.preflightAbortReason &&
+    input.stepResults.every((s) => s.result.state === "ok");
 
   const markdown = renderRecipeReportMarkdown({
-    recipe,
-    startedAtIso,
+    recipe: input.recipe,
+    startedAtIso: input.startedAtIso,
     finishedAtIso: finishedAt.toISOString(),
     durationMs,
-    steps: stepResults,
+    steps: input.stepResults,
     allOk,
+    preflightAbortReason: input.preflightAbortReason,
+    preflightScriptsAvailable: input.preflightScriptsAvailable,
   });
-  const filename = recipeReportFilename(recipe.id, startedAt);
+  const filename = recipeReportFilename(input.recipe.id, input.startedAt);
 
   let reportPath = "";
   try {
@@ -177,30 +256,34 @@ export async function runRecipe(
     );
     reportPath = writeResult.path;
   } catch (err) {
-    ctx.notifyError(`[protocol] could not save report: ${String(err)}`);
+    input.ctx.notifyError(`[protocol] could not save report: ${String(err)}`);
   }
 
   const report: RecipeReport = {
-    recipeId: recipe.id,
-    recipeLabel: recipe.label,
-    category: recipe.category,
-    startedAt: startedAtIso,
+    recipeId: input.recipe.id,
+    recipeLabel: input.recipe.label,
+    category: input.recipe.category,
+    startedAt: input.startedAtIso,
     finishedAt: finishedAt.toISOString(),
     durationMs,
-    steps: stepResults,
+    steps: input.stepResults,
     allOk,
     reportPath,
   };
 
-  // Top-line summary in AgentView. The full report is on disk; this
-  // gives the user enough to decide whether to open it.
-  const okCount = stepResults.filter((s) => s.result.state === "ok").length;
+  const okCount = input.stepResults.filter(
+    (s) => s.result.state === "ok",
+  ).length;
+  const skippedCount = input.stepResults.filter(
+    (s) => s.result.state === "skipped",
+  ).length;
+  const skippedTag = skippedCount > 0 ? ` \u00b7 ${skippedCount} skipped` : "";
   const summary =
-    `[protocol] "${recipe.label}" finished \u2014 ` +
-    `${okCount}/${stepResults.length} steps ok ` +
+    `[protocol] "${input.recipe.label}" finished \u2014 ` +
+    `${okCount}/${input.stepResults.length} steps ok${skippedTag} ` +
     `\u00b7 ${formatDuration(durationMs)} ` +
     `\u00b7 report: ${reportPath || "(not saved)"}`;
-  ctx.notify(summary);
+  input.ctx.notify(summary);
 
   return report;
 }
@@ -287,15 +370,103 @@ async function runShellStep(
   };
 }
 
-function skippedResult(): StepResult {
+function skippedResult(reason?: string): StepResult {
   return {
     state: "skipped",
     durationMs: 0,
     output: "",
     errorOutput: "",
     exitCode: null,
-    error: "skipped (prior step aborted the recipe)",
+    error: reason ?? "skipped (prior step aborted the recipe)",
   };
+}
+
+// ---------------------------------------------------------------------------
+// Pre-flight: package.json script applicability
+// ---------------------------------------------------------------------------
+
+/** Per-step missing-scripts entry produced by the pre-flight pass. */
+interface MissingScriptsEntry {
+  index: number;
+  label: string;
+  missing: string[];
+}
+
+interface PreflightOutcome {
+  /** Steps that should abort the recipe outright (onMissing="abort"). */
+  recipeAbort: MissingScriptsEntry[];
+  /** Steps that should skip but not abort (onMissing="skip"). */
+  perStepSkip: MissingScriptsEntry[];
+  /** Names of scripts found in package.json (sorted, for the report). */
+  scriptsAvailable: string[];
+}
+
+/**
+ * Read `<cwd>/package.json` (best-effort) and validate that every shell
+ * step's required scripts exist. Slash steps don't participate. Recipes
+ * whose shell steps have empty `requires` (e.g. `pnpm audit` which is a
+ * pnpm built-in) are exempt.
+ *
+ * On any failure to read or parse package.json, the function returns an
+ * empty `scriptsAvailable` set; steps with non-empty `requires` then
+ * report all of those as missing. The user gets a clear recipe-level
+ * message instead of a mid-run pnpm 254.
+ */
+async function collectPreflight(
+  recipe: Recipe,
+  cwd: string,
+): Promise<PreflightOutcome> {
+  const recipeAbort: MissingScriptsEntry[] = [];
+  const perStepSkip: MissingScriptsEntry[] = [];
+  const scripts = await readPackageJsonScripts(cwd);
+  const scriptsAvailable = Object.keys(scripts).sort();
+
+  for (let i = 0; i < recipe.steps.length; i++) {
+    const def = recipe.steps[i];
+    if (def.kind !== "shell") continue;
+    const required = def.requires ?? [def.script];
+    if (required.length === 0) continue;
+    const missing = required.filter((s) => !(s in scripts));
+    if (missing.length === 0) continue;
+    const onMissing = def.onMissing ?? "abort";
+    const entry: MissingScriptsEntry = { index: i, label: def.label, missing };
+    if (onMissing === "abort") {
+      recipeAbort.push(entry);
+    } else {
+      perStepSkip.push(entry);
+    }
+  }
+
+  return { recipeAbort, perStepSkip, scriptsAvailable };
+}
+
+/**
+ * Best-effort read of `<cwd>/package.json` returning its `scripts`
+ * record. Returns an empty object if package.json is missing,
+ * unreadable, or malformed; the caller treats that as "no scripts
+ * available" which surfaces missing-script errors at recipe level.
+ */
+async function readPackageJsonScripts(
+  cwd: string,
+): Promise<Record<string, string>> {
+  if (!cwd) return {};
+  let loaded: { content: string };
+  try {
+    loaded = await invoke<{ content: string }>("read_file_text", {
+      cwd,
+      path: "package.json",
+    });
+  } catch {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(loaded.content) as {
+      scripts?: Record<string, string>;
+    };
+    return parsed.scripts ?? {};
+  } catch {
+    return {};
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +480,8 @@ interface ReportRenderInput {
   durationMs: number;
   steps: Array<{ def: StepDef; result: StepResult }>;
   allOk: boolean;
+  preflightAbortReason?: string;
+  preflightScriptsAvailable?: string[];
 }
 
 function renderRecipeReportMarkdown(input: ReportRenderInput): string {
@@ -321,8 +494,26 @@ function renderRecipeReportMarkdown(input: ReportRenderInput): string {
   lines.push(`- **Finished:** ${input.finishedAtIso}`);
   lines.push(`- **Duration:** ${formatDuration(input.durationMs)}`);
   const okCount = input.steps.filter((s) => s.result.state === "ok").length;
+  const skippedCount = input.steps.filter(
+    (s) => s.result.state === "skipped",
+  ).length;
   lines.push(`- **Steps ok:** ${okCount} / ${input.steps.length}`);
+  if (skippedCount > 0) {
+    lines.push(`- **Steps skipped:** ${skippedCount}`);
+  }
   lines.push(`- **All ok:** ${input.allOk ? "yes" : "no"}`);
+  if (input.preflightAbortReason) {
+    lines.push(
+      `- **Pre-flight:** aborted \u2014 missing package.json scripts: ${input.preflightAbortReason}`,
+    );
+    if (input.preflightScriptsAvailable && input.preflightScriptsAvailable.length > 0) {
+      lines.push(
+        `- **Available scripts:** ${input.preflightScriptsAvailable.join(", ")}`,
+      );
+    } else {
+      lines.push(`- **Available scripts:** (none / no package.json)`);
+    }
+  }
   lines.push("");
   lines.push(`> ${input.recipe.blurb}`);
   lines.push("");

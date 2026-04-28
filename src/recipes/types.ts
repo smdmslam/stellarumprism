@@ -38,6 +38,25 @@ export type StepDef =
       /** Per-step timeout. Default 300s on the Rust side. */
       timeoutSecs?: number;
       onFailure?: "abort" | "continue";
+      /**
+       * Scripts that must exist in `<cwd>/package.json` for this step
+       * to apply. Defaults to `[script]` when omitted. Set to `[]` to
+       * skip the pre-flight check entirely (e.g. for a step that runs
+       * a non-pnpm command via a future shell kind).
+       */
+      requires?: string[];
+      /**
+       * What to do when one or more `requires` scripts are missing in
+       * the current cwd's `package.json`:
+       *   "abort" (default) \u2014 the recipe aborts BEFORE any step
+       *     runs, with a recipe-level message naming the missing
+       *     scripts. Prevents a noisy `pnpm exit 254` mid-run.
+       *   "skip" \u2014 this step transitions directly to `state: "skipped"`
+       *     with a clear note; remaining steps still run. Useful for
+       *     optional steps (e.g. `pnpm audit` on a project that has
+       *     no audit script).
+       */
+      onMissing?: "abort" | "skip";
     };
 
 /** Static recipe definition. Source-controlled, not user-authored in v1. */

@@ -54,6 +54,11 @@ export const RECIPES: Recipe[] = [
         // (vulnerabilities found) shouldn't abort the consolidated
         // report \u2014 the user wants to see them, not skip them.
         onFailure: "continue",
+        // `pnpm audit` is a built-in subcommand, not a package.json
+        // script lookup. Empty `requires` skips the pre-flight check
+        // so this step works on any project regardless of which
+        // scripts are defined.
+        requires: [],
       },
     ],
   },
