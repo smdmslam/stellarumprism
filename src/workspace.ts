@@ -2336,9 +2336,9 @@ export class Workspace {
 
   private setTitleFromText(text: string): void {
     if (this.autoTitleDone) return;
-    const trimmed = text.trim().replace(/\s+/g, " ");
-    if (trimmed.length === 0) return;
-    this.title = trimmed.length > 36 ? trimmed.slice(0, 33) + "\u2026" : trimmed;
+    const truncated = truncateLikeTabTitle(text);
+    if (truncated.length === 0) return;
+    this.title = truncated;
     this.autoTitleDone = true;
     this.cb.onTitleChange(this.id, this.title);
   }
@@ -3769,7 +3769,10 @@ export class Workspace {
       this.notify("[save] nothing to save \u2014 no chat messages yet");
       return;
     }
-    const slug = slugify(this.title) || "chat";
+    // Hybrid naming: tab title stays locked to the first prompt (setTitleFromText),
+    // but the save dialog default + exported YAML title follow the latest user
+    // message so filenames match recent conversation. User can still edit the path.
+    const { slug, exportTitle } = await this.getSaveNamingSuggestion();
     // Tag the filename with `.full.md` in v2 mode so the user can tell
     // a tool-aware export from a clean transcript at a glance in the
     // file dialog or finder.
@@ -3798,13 +3801,48 @@ export class Workspace {
     }
     if (!target) return; // user cancelled
 
-    await this.exportChat(target, full);
+    await this.exportChat(target, full, exportTitle);
+  }
+
+  /**
+   * Default filename slug and markdown title for /save: derived from the most
+   * recent non-empty user turn so exports align with the latest topic; falls
+   * back to the tab title when needed.
+   */
+  private async getSaveNamingSuggestion(): Promise<{
+    slug: string;
+    exportTitle: string;
+  }> {
+    const history = await this.agent.getHistory();
+    let lastUser = "";
+    for (let i = history.length - 1; i >= 0; i--) {
+      const m = history[i];
+      if (m.role === "user") {
+        const t = m.content.trim().replace(/\s+/g, " ");
+        if (t.length > 0) {
+          lastUser = t;
+          break;
+        }
+      }
+    }
+    const slugSource = lastUser || this.title;
+    const slug = slugify(slugSource) || slugify(this.title) || "chat";
+    const exportTitle =
+      lastUser.length > 0
+        ? truncateLikeTabTitle(lastUser) || this.title
+        : this.title;
+    return { slug, exportTitle };
   }
 
   /**
    * Used for both user /save commands and silent background duplication.
    */
-  private async exportChat(target: string, full: boolean = false): Promise<void> {
+  private async exportChat(
+    target: string,
+    full: boolean = false,
+    exportTitle?: string,
+  ): Promise<void> {
+    const titleForFile = exportTitle ?? this.title;
     try {
       const result = await invoke<{
         path: string;
@@ -3815,7 +3853,7 @@ export class Workspace {
         chatId: this.id,
         path: target,
         model: this.agent.getModel(),
-        title: this.title,
+        title: titleForFile,
         full,
       });
       const modeTag = result.format === "prism-chat-v2" ? " (full)" : "";
@@ -3829,9 +3867,12 @@ export class Workspace {
 
   /**
    * Silently serializes current history to a temp file, returning
-   * restore options so TabManager can spawn a clone.
+   * restore options so TabManager can spawn a clone. Uses the same
+   * export title as /save (latest user message) for the temp markdown;
+   * the new tab’s strip still uses the source `this.title`.
    */
   async duplicateSession(): Promise<WorkspaceRestoreOptions | null> {
+    const { exportTitle } = await this.getSaveNamingSuggestion();
     const tempTarget = await expandTilde(
       `~/Documents/Prism/Chats/temp-dup-${crypto.randomUUID().slice(0, 8)}.full.md`,
     );
@@ -3840,7 +3881,7 @@ export class Workspace {
         chatId: this.id,
         path: tempTarget,
         model: this.agent.getModel(),
-        title: this.title,
+        title: exportTitle,
         full: true,
       });
       return {
@@ -4282,6 +4323,13 @@ function renderHistoryAnsi(msgs: { role: string; content: string }[]): string {
     out.push(`\r\n\u2500\u2500 ${label} \u2500\u2500\r\n${content}`);
   }
   return out.join("") + "\r\n";
+}
+
+/** Same visible truncation rules as the tab strip auto-title. */
+function truncateLikeTabTitle(text: string): string {
+  const trimmed = text.trim().replace(/\s+/g, " ");
+  if (trimmed.length === 0) return "";
+  return trimmed.length > 36 ? trimmed.slice(0, 33) + "\u2026" : trimmed;
 }
 
 function slugify(s: string): string {
