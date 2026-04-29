@@ -3282,9 +3282,17 @@ input:checked + .toggle-slider:before {
   color: #e5e7eb;
 }
 
+.markdown-preview-widget > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-preview-widget > *:last-child {
+  margin-bottom: 0;
+}
+
 .markdown-preview-widget .markdown-heading {
   font-weight: 700;
-  margin: 1.5em 0 0.5em 0;
+  margin: 0.5em 0;
   color: #f3f4f6;
   line-height: 1.2;
   letter-spacing: -0.015em;

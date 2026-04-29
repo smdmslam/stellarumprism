@@ -279,7 +279,8 @@ const markdownPreviewPlugin = ViewPlugin.fromClass(
               lineStart,
               Decoration.widget({
                 widget: new MarkdownPreviewWidget(html),
-                side: -1, // Above the text
+                side: -1,
+                block: true,
               }),
             );
           } catch (e) {
@@ -315,8 +316,14 @@ const markdownPreviewPlugin = ViewPlugin.fromClass(
               Decoration.widget({
                 widget: new MarkdownPreviewWidget(html),
                 side: -1,
+                block: true,
               }),
             );
+            
+            // Skip the content of the code block in the main loop to avoid
+            // redundant scans, but we must update 'pos' and 'i' correctly.
+            // Actually, it's safer to just let the loop continue but we
+            // already have the logic to only trigger on '```' starts.
           }
         }
 
