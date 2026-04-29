@@ -804,6 +804,13 @@ export class Workspace {
       getCwd: () => this.cwd,
     });
 
+    badgeEl.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.input.toggleAgentMode();
+      queueMicrotask(() => this.input.focus());
+    });
+
     // Click anywhere in the input bar (but outside the badges) refocuses.
     // Critical carve-out: skip the manual refocus when the click is
     // already inside the editor itself. CodeMirror handles its own
@@ -3170,7 +3177,7 @@ export class Workspace {
     // timestamp lands on the title attribute as a hover affordance for
     // anyone who needs the exact wall-clock time.
     this.updateFilePreviewMeta(loaded.size, loaded.mtime_secs);
-    this.fileEditor = new FileEditor(body, loaded.content, {
+    this.fileEditor = new FileEditor(body, loaded.content, path, {
       onDirtyChange: (dirty) => this.reflectDirty(dirty),
     });
     // If we already have an audit report cached, push the matching

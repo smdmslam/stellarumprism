@@ -36,6 +36,16 @@ import {
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { oneDark, oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
+import { markdown } from "@codemirror/lang-markdown";
+import { javascript } from "@codemirror/lang-javascript";
+import { json } from "@codemirror/lang-json";
+import { python } from "@codemirror/lang-python";
+import { html } from "@codemirror/lang-html";
+import { css } from "@codemirror/lang-css";
+import { xml } from "@codemirror/lang-xml";
+import { yaml } from "@codemirror/lang-yaml";
+import { sql } from "@codemirror/lang-sql";
+import { languages } from "@codemirror/language-data";
 
 /** Severity tier for an inline diagnostic. Same vocabulary as audit findings. */
 export type EditorDiagnosticSeverity = "error" | "warning" | "info";
@@ -211,6 +221,33 @@ export interface FileEditorCallbacks {
   onDirtyChange: (dirty: boolean) => void;
 }
 
+/** Helper function to determine language extension from file path */
+function getLanguageExtension(filePath: string) {
+  const ext = filePath.toLowerCase();
+  if (ext.endsWith('.md') || ext.endsWith('.markdown')) {
+    return markdown({ codeLanguages: languages });
+  } else if (ext.endsWith('.js') || ext.endsWith('.jsx')) {
+    return javascript({ jsx: true });
+  } else if (ext.endsWith('.ts') || ext.endsWith('.tsx')) {
+    return javascript({ jsx: true, typescript: true });
+  } else if (ext.endsWith('.json')) {
+    return json();
+  } else if (ext.endsWith('.py')) {
+    return python();
+  } else if (ext.endsWith('.html')) {
+    return html();
+  } else if (ext.endsWith('.css')) {
+    return css();
+  } else if (ext.endsWith('.xml')) {
+    return xml();
+  } else if (ext.endsWith('.yml') || ext.endsWith('.yaml')) {
+    return yaml();
+  } else if (ext.endsWith('.sql')) {
+    return sql();
+  }
+  return null; // Use plain text
+}
+
 /** A managed CodeMirror buffer for one open file. */
 export class FileEditor {
   private readonly view: EditorView;
@@ -221,9 +258,11 @@ export class FileEditor {
   /** Cached dirty state so we only fire the callback on transitions. */
   private currentDirty = false;
 
-  constructor(host: HTMLElement, content: string, cb: FileEditorCallbacks) {
+  constructor(host: HTMLElement, content: string, filePath: string, cb: FileEditorCallbacks) {
     this.cb = cb;
     this.originalContent = content;
+
+    const languageExt = getLanguageExtension(filePath);
 
     // Theme tweaks layered on top of oneDark. The host lives inside an
     // overlay with its own background; we let the theme handle the
@@ -280,13 +319,15 @@ export class FileEditor {
         lineNumbers(),
         highlightActiveLine(),
         keymap.of([...defaultKeymap, ...historyKeymap]),
-        // Syntax highlighting fallback so even without a language
-        // extension we get a defensible look. oneDarkHighlightStyle
-        // gives us oneDark colors; defaultHighlightStyle is the
-        // baseline backstop. Both are no-ops without a language to
-        // produce tagged tokens, but they're cheap to load.
+        
+        // Language support
+        ...(languageExt ? [languageExt] : []),
+        
+        // Syntax highlighting fallback
         syntaxHighlighting(oneDarkHighlightStyle),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+        // WARP-like feature: Word wrapping so text never gets cut off
+        EditorView.lineWrapping,
         this.themeCompartment.of([oneDark, editorTheme]),
         updateListener,
       ],

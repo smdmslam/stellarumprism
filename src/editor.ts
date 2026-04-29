@@ -296,6 +296,10 @@ export class PrismInput {
     this.notifyChange();
   }
 
+  toggleAgentMode(): void {
+    this.toggleAgent();
+  }
+
   /** Tear the editor down (for hot-reloads / dev cleanup). */
   destroy(): void {
     OPTIONS_BY_VIEW.delete(this.view);

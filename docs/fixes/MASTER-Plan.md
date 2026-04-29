@@ -200,7 +200,126 @@ These improve how Prism reasons about recent work and catches subtle regressions
 
 ---
 
-## 6. Skills system / executable skills
+## 6. AI usage metering / cost visibility / billing readiness
+
+This is now urgent enough to deserve its own major track. Prism is unusually
+exposed to AI cost drift because it can invoke multiple model-backed actions
+inside a single user-visible task, and recent OpenRouter credit exhaustion has
+made the need for visibility concrete.
+
+Goals:
+- understand exactly where AI spend is coming from
+- make expensive model usage visible before it becomes surprising
+- support plan/pricing design with real data instead of guesswork
+- prepare for future Stripe-backed subscriptions without retrofitting core
+  architecture later
+- help decide whether some costly features or defaults should be paused,
+  downgraded, or rerouted to cheaper models until economics are clearer
+
+### 6.1 Unified AI usage event schema
+- Define a standard event record for every AI/model invocation.
+- Include at minimum:
+  - timestamp
+  - user/account/workspace/session/chat id (as available)
+  - mode (`chat`, `audit`, `build`, `fix`, `refactor`, protocol, skill, etc.)
+  - model slug
+  - provider
+  - prompt/input tokens
+  - completion/output tokens
+  - total tokens
+  - reasoning tokens if available
+  - cached tokens if available
+  - request duration
+  - success / failure / cancel state
+  - estimated cost
+- Acceptance goal: every model-backed call can be represented in one durable,
+  queryable format.
+
+### 6.2 Full-cost capture across all AI surfaces
+- Track not just the obvious foreground model call, but every meaningful
+  model-backed path so very little spend escapes attribution.
+- Include:
+  - primary agent turns
+  - verifier / reviewer calls
+  - retries
+  - follow-up completions
+  - `web_search` backend usage (`perplexity/sonar`)
+  - future recipe / protocol / skill-triggered model calls
+  - vision/image analysis calls
+  - any hidden or helper model invocations
+- Acceptance goal: a user-visible action can be decomposed into the full set of
+  AI calls and estimated cost that it triggered.
+
+### 6.3 Historical OpenRouter pricing snapshotting
+- Store the pricing basis used at the time of each call rather than relying
+  only on current live provider pricing.
+- Capture enough metadata to reconstruct historical cost even if OpenRouter
+  later changes prices.
+- Acceptance goal: historical usage reports remain accurate and auditable over
+  time.
+
+### 6.4 Usage aggregation and internal reporting
+- Aggregate usage by:
+  - day / week / month
+  - account / user / workspace / project
+  - model
+  - provider
+  - mode / feature
+- Add internal reporting views or exports for:
+  - highest-cost models
+  - highest-cost workflows
+  - high-frequency users
+  - premium vs cheap model mix
+  - cost spikes / anomalies
+- Acceptance goal: Prism can quickly explain where spend is coming from and
+  which features are economically dangerous.
+
+### 6.5 Plan-design instrumentation
+- Track usage dimensions that may become pricing units later, not just raw
+  tokens.
+- Candidate dimensions:
+  - agent turns
+  - audits
+  - builds
+  - fixes
+  - premium-model turns
+  - long-context turns
+  - web searches
+  - image/vision turns
+  - protocol runs
+- Acceptance goal: real usage data exists to inform subscription tiers,
+  included quotas, overages, and premium-feature gating.
+
+### 6.6 User-facing usage visibility
+- Add lightweight visibility so the user can see where usage is going before
+  formal billing exists.
+- Possible surfaces:
+  - per-session usage summary
+  - per-chat/model usage summary
+  - current-month estimated spend
+  - warnings when a conversation or feature path is using unusually expensive
+    models
+- Acceptance goal: heavy spend is visible early enough that users can change
+  behavior before running out of credits unexpectedly.
+
+### 6.7 Cost-aware routing and feature prudence
+- Use collected data to evaluate whether some defaults or features should be
+  temporarily downgraded, rerouted, or parked if they are economically too
+  expensive.
+- Tie this directly to model-alternative evaluation work so Prism can switch to
+  cheaper acceptable substitutes where quality remains close enough.
+- Acceptance goal: product decisions about defaults and feature availability
+  are informed by measured cost, not intuition.
+
+### 6.9 Companion planning documents
+- Model evaluation companion: `docs/fixes/MASTER-AI-model-list.md`
+- Usage / billing companion: `docs/fixes/MASTER-AI-usage-and-billing.md`
+- Acceptance goal: the master plan stays concise while detailed AI economics
+  and model-selection thinking live in dedicated companion documents.
+
+---
+
+## 7. Skills system / executable skills
 
 This is larger-scope infrastructure and should come after the core trust + UX
 work above.
@@ -229,7 +348,7 @@ work above.
 
 ---
 
-## 7. Lower-level plumbing / persistence cleanup
+## 8. Lower-level plumbing / persistence cleanup
 
 These are worth doing, but after the higher-value UX and trust issues.
 
@@ -258,7 +377,7 @@ These are worth doing, but after the higher-value UX and trust issues.
 
 ---
 
-## 8. Backlog features / ideas (not urgent fixes)
+## 9. Backlog features / ideas (not urgent fixes)
 
 These are valid ideas, but should not outrank the categories above.
 
@@ -312,18 +431,28 @@ These are valid ideas, but should not outrank the categories above.
 22. Protocol report card polish
 23. Recipe drift safeguards
 
-### Phase 5 — analysis engine upgrades
-24. Verifier/reviewer methodology tuning
-25. Dedicated `/review` mode
+### Phase 5 — AI usage, economics, and billing readiness
+24. Unified AI usage event schema
+25. Full-cost capture across all AI surfaces
+26. Historical OpenRouter pricing snapshotting
+27. Usage aggregation and internal reporting
+28. Plan-design instrumentation
+29. User-facing usage visibility
+30. Cost-aware routing and feature prudence
+31. Stripe/subscription architecture readiness
 
-### Phase 6 — larger infrastructure
-26. Skills runtime wiring
-27. Structured executable skills
-28. Package-manager / monorepo-aware recipes
+### Phase 6 — analysis engine upgrades
+32. Verifier/reviewer methodology tuning
+33. Dedicated `/review` mode
 
-### Phase 7 — cleanup + optional features
-29. Path/persistence cleanup items
-30. Fullscreen / viewer / chrome extras
+### Phase 7 — larger infrastructure
+34. Skills runtime wiring
+35. Structured executable skills
+36. Package-manager / monorepo-aware recipes
+
+### Phase 8 — cleanup + optional features
+37. Path/persistence cleanup items
+38. Fullscreen / viewer / chrome extras
 
 ---
 
