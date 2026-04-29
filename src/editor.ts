@@ -259,6 +259,32 @@ export class PrismInput {
     });
   }
 
+  /**
+   * Insert `text` at the current cursor position (replacing any active
+   * selection). Cursor lands at the end of the inserted text. Used by
+   * the file-tree context menu's "Add to Prompt" item so the user can
+   * stage an @-reference without typing it manually.
+   *
+   * If a non-empty buffer doesn't already end with whitespace, a
+   * leading space is prepended so the inserted token doesn't fuse to
+   * the prior word ("foo" + "@bar" \u2192 "foo @bar"). A trailing space
+   * is always appended for the same reason.
+   */
+  insertText(text: string): void {
+    if (text.length === 0) return;
+    const sel = this.view.state.selection.main;
+    const doc = this.view.state.doc;
+    const before = doc.sliceString(0, sel.from);
+    const needsLeadingSpace =
+      before.length > 0 && !/\s$/.test(before) && sel.from === sel.to;
+    const composed = (needsLeadingSpace ? " " : "") + text + " ";
+    this.view.dispatch({
+      changes: { from: sel.from, to: sel.to, insert: composed },
+      selection: { anchor: sel.from + composed.length },
+      scrollIntoView: true,
+    });
+  }
+
   isAgentMode(): boolean {
     return this.agentMode;
   }

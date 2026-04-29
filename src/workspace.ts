@@ -2670,12 +2670,26 @@ export class Workspace {
 
     // Relative path = strip cwd prefix (+ trailing slash).
     const cwd = this.cwd;
+    const rel =
+      cwd && path.startsWith(cwd)
+        ? path.slice(cwd.endsWith("/") ? cwd.length : cwd.length + 1)
+        : path;
     if (cwd && path.startsWith(cwd)) {
-      const rel = path.slice(cwd.endsWith("/") ? cwd.length : cwd.length + 1);
       addItem("Copy Relative Path", "◌", () => {
         void navigator.clipboard.writeText(rel);
       });
     }
+
+    // -- Stage in the prompt as an @-reference -----------------------------
+    // Inserts `@<relative-path>` at the cursor in the input bar, then
+    // focuses the editor so the user can keep typing. Mirrors what the
+    // existing @path autocomplete produces, but driven from a click
+    // instead of typing. The agent picks up @-refs via the existing
+    // file_refs.ts resolution path \u2014 no other plumbing needed.
+    addItem("Add to Prompt", "@", () => {
+      this.input.insertText(`@${rel}`);
+      this.input.focus();
+    });
 
     // -- Open / edit --------------------------------------------------------
     if (kind === "file") {
