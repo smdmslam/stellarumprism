@@ -87,10 +87,22 @@ normal daily use.
   and are gently guided toward forking or starting a new chat when a thread has
   become long or changed topics.
 
-### 2.6 Task/progress visibility
-- Make active work / checklist state more obvious in the UI.
-- Acceptance goal: users can tell what Prism is currently doing and what is
-  completed.
+### 2.7 Clickable model/cmd pills in the prompt chrome
+- Make the model badge/pill clickable.
+- Clicking the model pill should open the currently available model choices,
+  aligned with whatever the settings toggles currently allow.
+- Make the `CMD` / agent-mode pill clickable.
+- Clicking the `CMD` / agent pill should toggle the active mode directly.
+- Acceptance goal: the prompt chrome pills are interactive, discoverable
+  controls rather than passive labels.
+
+### 2.8 ANSI/control-sequence sanitization in agent output
+- Strip, sanitize, or safely render terminal control sequences in the agent
+  window and related UI surfaces.
+- Prevent raw escape sequences such as `\x1b[2m` / `\x1b[0m` from appearing as
+  visible text or replacement-glyph boxes in chat output.
+- Acceptance goal: terminal-style formatting codes never leak into rendered
+  conversation content.
 
 ---
 
@@ -283,33 +295,35 @@ These are valid ideas, but should not outrank the categories above.
 9. Highlight visibility
 10. New conversation affordance
 11. Task/progress visibility
+12. Clickable model/CMD pills in prompt chrome
+13. ANSI/control-sequence sanitization in agent output
 
 ### Phase 3 — file explorer / viewer quality-of-life
-12. Explorer context actions
-13. File viewer hide/show control
-14. Explorer settings (date / size)
-15. File viewer resize polish
-16. Recent paths in prompt area
-17. IDE-style hotkeys for pane visibility
+14. Explorer context actions
+15. File viewer hide/show control
+16. Explorer settings (date / size)
+17. File viewer resize polish
+18. Recent paths in prompt area
+19. IDE-style hotkeys for pane visibility
 
 ### Phase 4 — protocols / discoverability
-18. Toolbar Protocols menu
-19. Disabled/inapplicable recipe entries
-20. Protocol report card polish
-21. Recipe drift safeguards
+20. Toolbar Protocols menu
+21. Disabled/inapplicable recipe entries
+22. Protocol report card polish
+23. Recipe drift safeguards
 
 ### Phase 5 — analysis engine upgrades
-22. Verifier/reviewer methodology tuning
-23. Dedicated `/review` mode
+24. Verifier/reviewer methodology tuning
+25. Dedicated `/review` mode
 
 ### Phase 6 — larger infrastructure
-24. Skills runtime wiring
-25. Structured executable skills
-26. Package-manager / monorepo-aware recipes
+26. Skills runtime wiring
+27. Structured executable skills
+28. Package-manager / monorepo-aware recipes
 
 ### Phase 7 — cleanup + optional features
-27. Path/persistence cleanup items
-28. Fullscreen / viewer / chrome extras
+29. Path/persistence cleanup items
+30. Fullscreen / viewer / chrome extras
 
 ---
 
