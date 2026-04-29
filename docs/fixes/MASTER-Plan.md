@@ -123,13 +123,18 @@ These are practical IDE-surface improvements that will be felt constantly.
 - Explore quick access to recent paths near the prompt area.
 - Acceptance goal: easier file/path recall during prompting.
 
-### 3.6 Path copy affordances
-- Preserve and polish explicit copy-path actions in the file-view surface.
-- Acceptance goal: copying paths is frictionless and obvious.
+### 3.7 IDE-style hotkeys for pane visibility
+- Add a standard set of keyboard shortcuts for common pane toggles and layout
+  actions.
+- Initial examples:
+  - `Ctrl+J` toggles terminal visibility
+  - `Ctrl+L` toggles agent window visibility
+- Define the rest of the hotkey map based on common IDE conventions where that
+  improves familiarity, while avoiding conflicts with platform-reserved
+  shortcuts.
+- Acceptance goal: users can quickly show/hide major panes with predictable,
+  discoverable keyboard shortcuts.
 
----
-
-## 4. Protocols / recipe system
 
 This is the main productization layer for discoverable guided workflows.
 
@@ -285,25 +290,26 @@ These are valid ideas, but should not outrank the categories above.
 14. Explorer settings (date / size)
 15. File viewer resize polish
 16. Recent paths in prompt area
+17. IDE-style hotkeys for pane visibility
 
 ### Phase 4 — protocols / discoverability
-17. Toolbar Protocols menu
-18. Disabled/inapplicable recipe entries
-19. Protocol report card polish
-20. Recipe drift safeguards
+18. Toolbar Protocols menu
+19. Disabled/inapplicable recipe entries
+20. Protocol report card polish
+21. Recipe drift safeguards
 
 ### Phase 5 — analysis engine upgrades
-21. Verifier/reviewer methodology tuning
-22. Dedicated `/review` mode
+22. Verifier/reviewer methodology tuning
+23. Dedicated `/review` mode
 
 ### Phase 6 — larger infrastructure
-23. Skills runtime wiring
-24. Structured executable skills
-25. Package-manager / monorepo-aware recipes
+24. Skills runtime wiring
+25. Structured executable skills
+26. Package-manager / monorepo-aware recipes
 
 ### Phase 7 — cleanup + optional features
-26. Path/persistence cleanup items
-27. Fullscreen / viewer / chrome extras
+27. Path/persistence cleanup items
+28. Fullscreen / viewer / chrome extras
 
 ---
 
