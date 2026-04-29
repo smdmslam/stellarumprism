@@ -17,8 +17,8 @@
   "layout": {
     "sidebar_width": 218,
     "problems_width": 360,
-    "preview_height": 534,
-    "agent_pane_width": 520,
+    "preview_height": 465,
+    "agent_pane_width": 764,
     "preview_visible": true,
     "terminal_visible": true,
     "agent_visible": true
