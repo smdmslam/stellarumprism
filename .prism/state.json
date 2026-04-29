@@ -1,9 +1,9 @@
 {
   "version": 1,
   "last_audit": {
-    "path": ".prism/second-pass/audit-2026-04-28T22-40-58.json",
-    "generated_at": "2026-04-28T22:40:58.546Z",
-    "scope": null,
+    "path": ".prism/second-pass/audit-2026-04-28T23-00-50.json",
+    "generated_at": "2026-04-28T23:00:50.026Z",
+    "scope": "HEAD~5..HEAD",
     "counts": {
       "error": 0,
       "warning": 0,
@@ -15,12 +15,12 @@
   },
   "recent_files": [],
   "layout": {
-    "sidebar_width": 218,
-    "problems_width": 280,
+    "sidebar_width": 276,
+    "problems_width": 360,
     "preview_height": 465,
-    "agent_pane_width": 640,
+    "agent_pane_width": 535,
     "preview_visible": true,
-    "terminal_visible": true,
+    "terminal_visible": false,
     "agent_visible": true
   }
 }
