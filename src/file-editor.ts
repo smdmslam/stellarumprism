@@ -40,8 +40,13 @@ import {
 import { marked } from "marked";
 import hljs from "highlight.js";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
+import {
+  syntaxHighlighting,
+  defaultHighlightStyle,
+  HighlightStyle,
+} from "@codemirror/language";
 import { oneDark, oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
+import { tags as t } from "@lezer/highlight";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
@@ -336,6 +341,41 @@ export interface FileEditorCallbacks {
   onDirtyChange: (dirty: boolean) => void;
 }
 
+/**
+ * Prism-palette overlay on top of `oneDarkHighlightStyle`. The base
+ * theme paints markdown headings red and inline code green, which
+ * fights with the agent pane's cyan/violet language. We layer this
+ * style AFTER oneDark so its rules win for the tags we care about
+ * while everything else (keywords, strings, comments) keeps the
+ * familiar oneDark coloring.
+ *
+ *   tags.heading*           \u2192 cyan   (matches `.agent-turn-user`)
+ *   tags.processingInstruction (the `#` glyphs)
+ *                            \u2192 cyan, dimmed
+ *   tags.monospace          \u2192 violet (matches the `agent` label)
+ *   tags.url / tags.link    \u2192 cyan
+ *   tags.emphasis           \u2192 italic, slate
+ *   tags.strong             \u2192 bold, near-white
+ */
+const prismMarkdownHighlightStyle = HighlightStyle.define([
+  { tag: t.heading, color: "#7dd3fc", fontWeight: "700" },
+  { tag: t.heading1, color: "#7dd3fc", fontWeight: "800" },
+  { tag: t.heading2, color: "#7dd3fc", fontWeight: "700" },
+  { tag: t.heading3, color: "#7dd3fc", fontWeight: "700" },
+  { tag: t.heading4, color: "#7dd3fc", fontWeight: "700" },
+  { tag: t.heading5, color: "#7dd3fc", fontWeight: "600" },
+  { tag: t.heading6, color: "#7dd3fc", fontWeight: "600" },
+  { tag: t.processingInstruction, color: "rgba(125, 211, 252, 0.55)" },
+  { tag: t.contentSeparator, color: "rgba(125, 211, 252, 0.45)" },
+  { tag: t.monospace, color: "#c084fc" },
+  { tag: t.url, color: "#7dd3fc", textDecoration: "underline" },
+  { tag: t.link, color: "#7dd3fc" },
+  { tag: t.emphasis, color: "#cbd5e1", fontStyle: "italic" },
+  { tag: t.strong, color: "#f3f4f6", fontWeight: "700" },
+  { tag: t.strikethrough, textDecoration: "line-through" },
+  { tag: t.quote, color: "#9ca3af", fontStyle: "italic" },
+]);
+
 /** Helper function to determine language extension from file path */
 function getLanguageExtension(filePath: string): Extension {
   const ext = filePath.toLowerCase();
@@ -380,32 +420,51 @@ export class FileEditor {
     const languageExt = getLanguageExtension(filePath);
     const isMarkdown = filePath.toLowerCase().endsWith(".md") || filePath.toLowerCase().endsWith(".markdown");
 
-    // Theme tweaks layered on top of oneDark. The host lives inside an
-    // overlay with its own background; we let the theme handle the
-    // gutter + line-number colors so they stay legible.
+    // Theme tweaks layered on top of oneDark. Color tokens mirror the
+    // agent pane (`.agent-stage`, `.markdown-body`, `.input-row`):
+    //   surface         #0d0f14   (matches .agent-stage)
+    //   gutter surface  #0a0c11   (matches .input-bar)
+    //   borders         #1f2937
+    //   accent          --prism-cyan (#7dd3fc) at low opacity
+    // so the file editor and the agent surface read as siblings.
     const editorTheme = EditorView.theme(
       {
         "&": {
           height: "100%",
-          fontSize: "var(--editor-font-size, 12px)",
+          fontSize: "var(--editor-font-size, 14px)",
+          lineHeight: "1.7",
           backgroundColor: "transparent",
+          color: "#e5e7eb",
         },
         ".cm-content": {
           fontFamily:
-            '"JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace',
-          padding: "8px 0",
+            '"JetBrainsMono NF", "MesloLGS NF", "SF Mono", Menlo, Monaco, Consolas, monospace',
+          padding: "12px 0",
+          caretColor: "#7dd3fc",
         },
         ".cm-gutters": {
-          backgroundColor: "#0a0d13",
+          backgroundColor: "#0a0c11",
           borderRight: "1px solid #1f2937",
           color: "#4b5563",
         },
+        ".cm-lineNumbers .cm-gutterElement": {
+          padding: "0 10px 0 8px",
+          color: "#4b5563",
+        },
         ".cm-activeLineGutter": {
-          backgroundColor: "rgba(125, 211, 252, 0.08)",
-          color: "#94a3b8",
+          backgroundColor: "rgba(125, 211, 252, 0.10)",
+          color: "#7dd3fc",
+          fontWeight: "600",
         },
         ".cm-activeLine": {
-          backgroundColor: "rgba(125, 211, 252, 0.04)",
+          backgroundColor: "rgba(125, 211, 252, 0.06)",
+        },
+        ".cm-cursor, .cm-dropCursor": {
+          borderLeftColor: "#7dd3fc",
+          borderLeftWidth: "2px",
+        },
+        ".cm-selectionBackground, ::selection": {
+          backgroundColor: "rgba(125, 211, 252, 0.22) !important",
         },
         ".cm-scroller": { fontFamily: "inherit" },
         "&.cm-focused": { outline: "none" },
@@ -442,8 +501,12 @@ export class FileEditor {
         // Markdown rich preview for markdown files
         ...(isMarkdown ? [markdownPreviewPlugin] : []),
         
-        // Syntax highlighting fallback
+        // Syntax highlighting. oneDark paints baseline colors; the
+        // Prism overlay wins for markdown heading/code tags so the
+        // source view speaks the same cyan/violet language as the
+        // agent pane.
         syntaxHighlighting(oneDarkHighlightStyle),
+        syntaxHighlighting(prismMarkdownHighlightStyle),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         // WARP-like feature: Word wrapping so text never gets cut off
         EditorView.lineWrapping,

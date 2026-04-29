@@ -24,8 +24,8 @@
    * The -rgb companion tokens exist so translucent variants can be
    * authored as `rgba(var(--prism-rose-rgb), 0.4)` without losing the
    * single source of truth. */
-  --prism-emerald: #10b981;
-  --prism-emerald-rgb: 16, 185, 129;
+  --prism-emerald: #7dd3fc;
+  --prism-emerald-rgb: 125, 211, 252;
   --prism-amber: #f59e0b;
   --prism-amber-rgb: 245, 158, 11;
   --prism-rose: #f43f5e;
@@ -3249,10 +3249,10 @@ input:checked + .toggle-slider:before {
   /* Better font stack with system fonts */
   font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', 'Monaco', 'Cascadia Mono', monospace;
   font-size: 13px;
-  line-height: 1.6;
-  max-width: 900px;
+  line-height: 1.65;
+  max-width: 1080px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 32px 40px 48px 40px;
 }
 
 /* Proper word wrapping */
@@ -3263,125 +3263,174 @@ input:checked + .toggle-slider:before {
   hyphens: auto;
 }
 
-/* ===== WARP-LIKE MARKDOWN PREVIEW ===== */
+/* ===== MARKDOWN PREVIEW (rendered headings + code blocks) =====
+ *
+ * Image-1 aesthetic: headings flow on the plain editor background as
+ * if they were document chrome, NOT cards. Only code blocks keep a
+ * surface treatment. Color tokens match the agent pane: cyan accents
+ * for chrome, rose for inline code, slate/gray for prose. */
 .markdown-preview-widget {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.7;
-  margin: 12px 0;
-  padding: 16px;
-  border-left: 3px solid #6366f1;
-  background: rgba(99, 102, 241, 0.05);
-  border-radius: 0 8px 8px 0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  color: #e5e7eb;
 }
 
 .markdown-preview-widget .markdown-heading {
-  font-weight: 600;
+  font-weight: 700;
   margin: 1.5em 0 0.5em 0;
-  color: #e5e7eb;
-  line-height: 1.3;
+  color: #f3f4f6;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
 }
 
-.markdown-preview-widget h1 { 
-  font-size: 1.875rem; 
-  border-bottom: 2px solid #374151;
-  padding-bottom: 0.3em;
+/* H1 \u2014 hero. Display-weight, tight tracking, with a hairline cyan
+ * rule under it (image 1's signature treatment). */
+.markdown-preview-widget h1 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin: 24px 0 18px 0;
+  padding-bottom: 14px;
   color: #f9fafb;
+  border-bottom: 1px solid rgba(var(--prism-cyan-rgb), 0.35);
 }
-.markdown-preview-widget h2 { 
-  font-size: 1.5rem; 
-  border-bottom: 1px solid #374151;
-  padding-bottom: 0.3em;
+.markdown-preview-widget h2 {
+  font-size: 1.875rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 32px 0 12px 0;
+  padding-bottom: 8px;
   color: #f3f4f6;
+  border-bottom: 1px solid rgba(var(--prism-cyan-rgb), 0.20);
 }
-.markdown-preview-widget h3 { font-size: 1.25rem; color: #e5e7eb; }
-.markdown-preview-widget h4 { font-size: 1.125rem; color: #d1d5db; }
-.markdown-preview-widget h5, 
-.markdown-preview-widget h6 { font-size: 1rem; color: #9ca3af; }
+.markdown-preview-widget h3 {
+  font-size: 1.375rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 24px 0 8px 0;
+  color: #e5e7eb;
+}
+.markdown-preview-widget h4 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 20px 0 6px 0;
+  color: #d1d5db;
+}
+.markdown-preview-widget h5,
+.markdown-preview-widget h6 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 16px 0 4px 0;
+  color: #9ca3af;
+}
 
 .markdown-preview-widget p {
-  margin: 1em 0;
-  color: #d1d5db;
+  margin: 0.9em 0;
+  color: #e5e7eb;
 }
 
 .markdown-preview-widget .markdown-code-block {
-  font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', 'Monaco', monospace;
-  font-size: 13px;
-  background: #0d0f14;
-  color: #d4d4d4;
-  padding: 16px;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Menlo', 'Monaco', monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  background: #0a0d13;
+  color: #d1d5db;
+  padding: 14px 16px;
   border-radius: 8px;
   overflow-x: auto;
   margin: 1em 0;
-  border: 1px solid #374151;
+  border: 1px solid #1f2937;
 }
 
+/* Inline code spans use rose to echo the screenshot in image 1, where
+ * literal identifiers (e.g. `structureType`) read as warm accents on
+ * the cool body. The agent pane keeps cyan for its inline code; the
+ * file editor leans rose so the two surfaces aren't visually identical. */
 .markdown-preview-widget code:not(.markdown-code-block code) {
-  font-family: 'SF Mono', 'JetBrains Mono', monospace;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
   font-size: 0.9em;
-  background: rgba(125, 211, 252, 0.12);
+  background: rgba(var(--prism-rose-rgb), 0.10);
   padding: 2px 6px;
   border-radius: 4px;
-  color: #7dd3fc;
+  color: var(--prism-rose);
 }
 
 .markdown-preview-widget ul,
 .markdown-preview-widget ol {
-  margin: 1em 0;
+  margin: 0.9em 0;
   padding-left: 1.5em;
-  color: #d1d5db;
+  color: #e5e7eb;
 }
 
 .markdown-preview-widget ul li {
   list-style-type: disc;
-  margin: 0.3em 0;
+  margin: 0.35em 0;
 }
 
 .markdown-preview-widget ol li {
   list-style-type: decimal;
-  margin: 0.3em 0;
+  margin: 0.35em 0;
 }
 
 .markdown-preview-widget blockquote {
-  border-left: 4px solid #4b5563;
+  border-left: 3px solid rgba(var(--prism-cyan-rgb), 0.45);
   margin: 1em 0;
-  padding-left: 1em;
-  color: #9ca3af;
+  padding: 4px 0 4px 14px;
+  color: #cbd5e1;
   font-style: italic;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(var(--prism-cyan-rgb), 0.04);
 }
 
 .markdown-preview-widget a {
-  color: #6366f1;
+  color: var(--prism-cyan);
   text-decoration: none;
-  border-bottom: 1px dashed #6366f1;
+  border-bottom: 1px dashed rgba(var(--prism-cyan-rgb), 0.55);
 }
 
 .markdown-preview-widget a:hover {
-  border-bottom: 1px solid #6366f1;
+  color: #bae6fd;
+  border-bottom: 1px solid var(--prism-cyan);
 }
 
 .markdown-preview-widget hr {
   border: none;
   height: 1px;
-  background: linear-gradient(to right, transparent, #374151, transparent);
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(var(--prism-cyan-rgb), 0.35),
+    transparent
+  );
   margin: 2em 0;
 }
 
-/* Improved selection and active line */
+/* Active line + selection in the source view. Cyan-tinted to match the
+ * agent pane's focus color (see `.input-row:focus-within` and
+ * `.layout-divider:hover`) so every interactive surface speaks the same
+ * accent language. */
 .file-preview-body .cm-activeLine {
-  background: rgba(99, 102, 241, 0.05) !important;
+  background: rgba(var(--prism-cyan-rgb), 0.06) !important;
 }
 
 .file-preview-body .cm-activeLineGutter {
-  background: rgba(99, 102, 241, 0.1) !important;
-  color: #6366f1 !important;
+  background: rgba(var(--prism-cyan-rgb), 0.10) !important;
+  color: var(--prism-cyan) !important;
   font-weight: 600;
 }
 
-.file-preview-body .cm-selectionBackground {
-  background: rgba(99, 102, 241, 0.2) !important;
+.file-preview-body .cm-selectionBackground,
+.file-preview-body .cm-content ::selection {
+  background: rgba(var(--prism-cyan-rgb), 0.22) !important;
 }
 
 /* Improved scrollbar for editor */
