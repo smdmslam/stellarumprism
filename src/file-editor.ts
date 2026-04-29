@@ -22,6 +22,7 @@ import {
   StateEffect,
   StateField,
   RangeSetBuilder,
+  Extension,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -32,11 +33,16 @@ import {
   highlightActiveLine,
   keymap,
   lineNumbers,
+  WidgetType,
+  ViewPlugin,
+  ViewUpdate,
 } from "@codemirror/view";
+import { marked } from "marked";
+import hljs from "highlight.js";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { oneDark, oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
-import { markdown } from "@codemirror/lang-markdown";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { javascript } from "@codemirror/lang-javascript";
 import { json } from "@codemirror/lang-json";
 import { python } from "@codemirror/lang-python";
@@ -210,6 +216,115 @@ const diagnosticsGutter = gutter({
   initialSpacer: () => new DiagnosticGutterMarker("info", ""),
 });
 
+/**
+ * Widget that renders a rendered HTML preview of a markdown block (heading,
+ * code block, etc.) directly in the editor flow.
+ */
+class MarkdownPreviewWidget extends WidgetType {
+  constructor(readonly html: string) {
+    super();
+  }
+
+  toDOM() {
+    const div = document.createElement("div");
+    div.className = "markdown-preview-widget";
+    div.innerHTML = this.html;
+    return div;
+  }
+
+  ignoreEvent() {
+    return true; // Let the editor handle clicks for editing
+  }
+}
+
+/**
+ * View plugin that scans the document for markdown structures and injects
+ * preview widgets. Dynamic: re-scans on edit or viewport change.
+ */
+const markdownPreviewPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+
+    constructor(view: EditorView) {
+      this.decorations = this.buildDecorations(view);
+    }
+
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = this.buildDecorations(update.view);
+      }
+    }
+
+    private buildDecorations(view: EditorView) {
+      const builder = new RangeSetBuilder<Decoration>();
+      const content = view.state.doc.toString();
+      const lines = content.split("\n");
+      let pos = 0;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lineStart = pos;
+
+        // Render headings (H1-H6)
+        if (line.match(/^#{1,6}\s/)) {
+          try {
+            const html = marked.parse(line) as string;
+            builder.add(
+              lineStart,
+              lineStart,
+              Decoration.widget({
+                widget: new MarkdownPreviewWidget(html),
+                side: -1, // Above the text
+              }),
+            );
+          } catch (e) {
+            console.warn("Markdown preview error", e);
+          }
+        }
+
+        // Render code block starts
+        if (line.trim().startsWith("```")) {
+          const lang = line.trim().slice(3);
+          let codeLines: string[] = [];
+          let j = i + 1;
+          while (j < lines.length && !lines[j].trim().startsWith("```")) {
+            codeLines.push(lines[j]);
+            j++;
+          }
+          if (j < lines.length) {
+            const code = codeLines.join("\n");
+            let highlighted = code;
+            try {
+              if (lang && hljs.getLanguage(lang)) {
+                highlighted = hljs.highlight(code, { language: lang }).value;
+              } else {
+                highlighted = hljs.highlightAuto(code).value;
+              }
+            } catch (e) {
+              /* fallback to raw */
+            }
+            const html = `<pre class="markdown-code-block"><code>${highlighted}</code></pre>`;
+            builder.add(
+              lineStart,
+              lineStart,
+              Decoration.widget({
+                widget: new MarkdownPreviewWidget(html),
+                side: -1,
+              }),
+            );
+          }
+        }
+
+        pos += line.length + 1;
+      }
+      return builder.finish();
+    }
+  },
+  {
+    decorations: (v) => v.decorations,
+  },
+);
+
 /** Callbacks the FileEditor invokes back into its host. */
 export interface FileEditorCallbacks {
   /**
@@ -222,30 +337,30 @@ export interface FileEditorCallbacks {
 }
 
 /** Helper function to determine language extension from file path */
-function getLanguageExtension(filePath: string) {
+function getLanguageExtension(filePath: string): Extension {
   const ext = filePath.toLowerCase();
-  if (ext.endsWith('.md') || ext.endsWith('.markdown')) {
-    return markdown({ codeLanguages: languages });
-  } else if (ext.endsWith('.js') || ext.endsWith('.jsx')) {
+  if (ext.endsWith(".md") || ext.endsWith(".markdown")) {
+    return markdown({ base: markdownLanguage, codeLanguages: languages });
+  } else if (ext.endsWith(".js") || ext.endsWith(".jsx")) {
     return javascript({ jsx: true });
-  } else if (ext.endsWith('.ts') || ext.endsWith('.tsx')) {
+  } else if (ext.endsWith(".ts") || ext.endsWith(".tsx")) {
     return javascript({ jsx: true, typescript: true });
-  } else if (ext.endsWith('.json')) {
+  } else if (ext.endsWith(".json")) {
     return json();
-  } else if (ext.endsWith('.py')) {
+  } else if (ext.endsWith(".py")) {
     return python();
-  } else if (ext.endsWith('.html')) {
+  } else if (ext.endsWith(".html")) {
     return html();
-  } else if (ext.endsWith('.css')) {
+  } else if (ext.endsWith(".css")) {
     return css();
-  } else if (ext.endsWith('.xml')) {
+  } else if (ext.endsWith(".xml")) {
     return xml();
-  } else if (ext.endsWith('.yml') || ext.endsWith('.yaml')) {
+  } else if (ext.endsWith(".yml") || ext.endsWith(".yaml")) {
     return yaml();
-  } else if (ext.endsWith('.sql')) {
+  } else if (ext.endsWith(".sql")) {
     return sql();
   }
-  return null; // Use plain text
+  return []; // Use plain text
 }
 
 /** A managed CodeMirror buffer for one open file. */
@@ -263,6 +378,7 @@ export class FileEditor {
     this.originalContent = content;
 
     const languageExt = getLanguageExtension(filePath);
+    const isMarkdown = filePath.toLowerCase().endsWith(".md") || filePath.toLowerCase().endsWith(".markdown");
 
     // Theme tweaks layered on top of oneDark. The host lives inside an
     // overlay with its own background; we let the theme handle the
@@ -321,7 +437,10 @@ export class FileEditor {
         keymap.of([...defaultKeymap, ...historyKeymap]),
         
         // Language support
-        ...(languageExt ? [languageExt] : []),
+        languageExt,
+        
+        // Markdown rich preview for markdown files
+        ...(isMarkdown ? [markdownPreviewPlugin] : []),
         
         // Syntax highlighting fallback
         syntaxHighlighting(oneDarkHighlightStyle),

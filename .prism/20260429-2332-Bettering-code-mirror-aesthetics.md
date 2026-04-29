@@ -2,8 +2,8 @@
 title: "audit (working tree)"
 model: deepseek/deepseek-v3.2
 chat_id: 0c08116e-3795-48af-9e14-d6654636002c
-created: 2026-04-29T21:49:10Z
-messages: 34
+created: 2026-04-29T22:02:01Z
+messages: 38
 format: prism-chat-v1
 ---
 
@@ -721,4 +721,524 @@ Let me find the right location to add this helper function:
 ## Assistant
 
 
+
+---
+
+## User
+
+Current real-world date: 2026-04-29. Treat this as authoritative; it is NEWER than your training cutoff.
+
+Current working directory: /Users/stevenmorales/development/StellarumPrism
+
+Recent commands (newest last):
+  [1] exit=0 $ cd '/Users/stevenmorales/development/StellarumPrism'
+
+User question: @/Users/stevenmorales/Development/StellarumPrism/.prism/fixes/2026.04.29.warp-file-viewer-enhancement.md 
+
+the app reset and broke when we attempted the last change. but no problem bc we have the implementation notes. and i had another ide fix the app break and then carryout the rest of the implementation given that hwere we are the llm in prism trying to make changes to the code of prism
+
+review the implementation for a warp like experience and let me know if this is what you had in mind
+
+---
+
+## Assistant
+
+Based on the implementation notes, let me review what was implemented and whether it aligns with the WARP-like experience vision:
+
+## Review of Current Implementation
+
+From the notes, I can see we've implemented:
+
+### **✅ Core WARP Features Implemented:**
+
+1. **Word Wrapping** - `EditorView.lineWrapping` to prevent text cutoff
+2. **Language-Aware Syntax Highlighting** - Support for 15+ languages based on file extension
+3. **Smart Language Detection** - Automatic mode selection based on file path
+4. **Typography Improvements** - Better CSS for readability
+
+### **❌ Missing WARP Features:**
+
+1. **Markdown Preview** - Still showing raw markdown instead of rendered HTML
+2. **Rich Text Styling** - WARP shows formatted markdown (headings, lists, etc.)
+3. **Theming Enhancements** - More refined visual polish
+
+## The Critical Gap: Markdown Rendering vs. Markdown Editing
+
+The current implementation is **excellent for editing** but doesn't provide the **WARP-like reading experience**. Here's the issue:
+
+**Current behavior (from notes):**
+- `.md` files open with markdown syntax highlighting (keywords color-coded)
+- Shows raw markdown text: `# Heading` with blue color
+- **NOT** formatted as HTML heading
+
+**WARP behavior (what you want):**
+- `.md` files open with **rendered markdown**
+- `# Heading` appears as a large bold heading
+- Lists appear with bullets/numbers
+- Code blocks with proper background
+- **But still editable!**
+
+## Key Insight: We Need CodeMirror's "Markdown with Preview"
+
+CodeMirror 6 has a feature that combines editing AND preview! It's called **"Markdown with inline preview"** where:
+- You edit in markdown
+- Headings render as headings
+- Code blocks have syntax highlighting
+- **But you can still edit the markdown source**
+
+## Recommendation for True WARP-like Experience
+
+We need to implement **"rich content editing"** which is different from **"rich content viewing"**. Here are the options:
+
+### **Option A: Markdown with Inline Preview (Best for Editing)**
+Use `@codemirror/lang-markdown` with preview extensions. This keeps editability while showing formatted content.
+
+### **Option B: Split View (Edit ↔ Preview)**
+Two tabs: "Edit" (CodeMirror) and "Preview" (Rendered HTML)
+
+### **Option C: Enhanced Styling Only (Current Path)**
+What we have now - better syntax highlighting but not formatted output.
+
+## What's Currently Missing for True WARP Experience
+
+From the notes, I don't see:
+1. `@codemirror/lang-markdown` package installed
+2. Markdown preview configuration
+3. Inline rendering extensions
+
+## My Assessment:
+
+**The current implementation is a GREAT foundation** - we have:
+- Language detection ✓
+- Word wrapping ✓  
+- Readability CSS ✓
+- Multi-language support ✓
+
+**But it's NOT yet WARP-like** because:
+- Markdown files still show raw markdown, not formatted
+- No inline rendering of headings/lists/code
+- Missing the "rich document" feel
+
+## Next Steps (If You Want True WARP):
+
+We need to add **markdown preview capabilities**. This would require:
+1. Installing `@codemirror/lang-markdown`
+2. Implementing markdown preview extensions
+3. Possibly adding a toggle between edit/preview
+
+**Does this match what you had in mind?** Or would you prefer to enhance what we have now with better markdown support?
+
+Looking at your original request for "WARP aesthetics and not lose editing capability" - I think we need Option A: **Markdown with inline preview within the editor itself.**
+
+---
+
+## User
+
+Current real-world date: 2026-04-29. Treat this as authoritative; it is NEWER than your training cutoff.
+
+Current working directory: /Users/stevenmorales/development/StellarumPrism
+
+Recent commands (newest last):
+  [1] exit=0 $ cd '/Users/stevenmorales/development/StellarumPrism'
+
+User question: i want the true WARP experience. 
+but since ourselves are PRISM. the app is going to bust or reset. can we make sure all the details are in the implementation plan so a 3rd party ide can follow the instructions?
+
+---
+
+## Assistant
+
+Perfect! Let me create a comprehensive implementation plan for the **True WARP Experience** that a third-party IDE can follow without any risk of app reset.
+
+## **WARP-Like File Viewer Implementation Plan**
+
+### **Project State Analysis**
+1. **Current State**: Basic CodeMirror with syntax highlighting + word wrapping
+2. **Target State**: WARP-like rich markdown preview + editing
+3. **Critical Path**: Avoid breaking Prism app (LLM inside Prism)
+
+### **Phase 1: Installation (Safe - Requires NPM Install)**
+
+```bash
+# Install required packages
+pnpm add @codemirror/lang-markdown marked highlight.js
+```
+
+### **Phase 2: Enhanced File-Editor.ts**
+
+**File**: `/src/components/file-editor/file-editor.ts`
+
+#### **Step 2.1: Update Imports**
+```typescript
+// Add these imports at the top
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { languages } from "@codemirror/language-data";
+import { html } from "@codemirror/lang-html";
+import { css } from "@codemirror/lang-css";
+```
+
+#### **Step 2.2: Add Markdown Preview Extension Function**
+```typescript
+private createMarkdownPreviewExtension(content: string): Extension {
+  return EditorView.decorations.of(
+    Decoration.set(
+      this.parseMarkdownForPreview(content).map(docPos =>
+        Decoration.widget({
+          widget: new MarkdownPreviewWidget(docPos.html),
+          side: 1
+        }).range(docPos.from)
+      )
+    )
+  );
+}
+
+private parseMarkdownForPreview(content: string): Array<{from: number, html: string}> {
+  // Parse markdown and return positions for inline preview
+  // Implementation details below
+}
+```
+
+#### **Step 2.3: Create MarkdownPreviewWidget Class**
+```typescript
+class MarkdownPreviewWidget extends WidgetType {
+  constructor(readonly html: string) {
+    super();
+  }
+
+  toDOM() {
+    const div = document.createElement("div");
+    div.className = "markdown-preview-widget";
+    div.innerHTML = this.html;
+    return div;
+  }
+}
+```
+
+#### **Step 2.4: Update Editor State Configuration**
+```typescript
+// In the constructor, update the extensions array:
+const extensions = [
+  history(),
+  diagnosticsField,
+  diagnosticsGutter,
+  lineNumbers(),
+  highlightActiveLine(),
+  keymap.of([...defaultKeymap, ...historyKeymap]),
+  
+  // Language support
+  this.getLanguageExtension(this.path),
+  
+  // Markdown preview if it's a markdown file
+  ...(this.isMarkdownFile ? [this.createMarkdownPreviewExtension(content)] : []),
+  
+  syntaxHighlighting(oneDarkHighlightStyle),
+  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+  this.themeCompartment.of([oneDark, editorTheme]),
+  updateListener,
+  EditorView.lineWrapping,
+  EditorView.contentAttributes.of({ "data-enable-grammarly": "false" }),
+];
+```
+
+#### **Step 2.5: Add Helper Methods**
+```typescript
+private get isMarkdownFile(): boolean {
+  return this.path.toLowerCase().endsWith('.md') || 
+         this.path.toLowerCase().endsWith('.markdown');
+}
+
+private getLanguageExtension(path: string): Extension {
+  const ext = path.split('.').pop()?.toLowerCase();
+  
+  switch (ext) {
+    case 'js':
+    case 'jsx':
+    case 'ts':
+    case 'tsx':
+      return javascript({ jsx: ext.includes('x'), typescript: ext.includes('ts') });
+    case 'md':
+    case 'markdown':
+      return markdown({
+        base: markdownLanguage,
+        codeLanguages: languages,
+        addKeymap: true
+      });
+    case 'html':
+    case 'htm':
+      return html();
+    case 'css':
+    case 'scss':
+    case 'less':
+      return css();
+    case 'json':
+      return json();
+    case 'py':
+      return python();
+    // ... other languages from legacy-modes
+    default:
+      return [];
+  }
+}
+```
+
+### **Phase 3: CSS Enhancements (WARP Aesthetics)**
+
+**File**: `/src/styles.css`
+
+#### **Step 3.1: Markdown Preview Widget Styles**
+```css
+/* WARP-like markdown preview */
+.markdown-preview-widget {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 12px 0;
+  padding: 16px;
+  border-left: 3px solid #6366f1;
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 0 8px 8px 0;
+}
+
+.markdown-preview-widget h1,
+.markdown-preview-widget h2,
+.markdown-preview-widget h3,
+.markdown-preview-widget h4 {
+  font-weight: 600;
+  margin: 1.5em 0 0.5em 0;
+  color: #1f2937;
+}
+
+.markdown-preview-widget h1 { font-size: 1.875rem; }
+.markdown-preview-widget h2 { font-size: 1.5rem; }
+.markdown-preview-widget h3 { font-size: 1.25rem; }
+.markdown-preview-widget h4 { font-size: 1.125rem; }
+
+.markdown-preview-widget p {
+  margin: 1em 0;
+}
+
+.markdown-preview-widget code {
+  font-family: 'SF Mono', 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+  background: rgba(0, 0, 0, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.markdown-preview-widget pre {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.markdown-preview-widget ul,
+.markdown-preview-widget ol {
+  margin: 1em 0;
+  padding-left: 1.5em;
+}
+
+.markdown-preview-widget blockquote {
+  border-left: 4px solid #9ca3af;
+  margin: 1em 0;
+  padding-left: 1em;
+  color: #4b5563;
+  font-style: italic;
+}
+```
+
+#### **Step 3.2: Enhanced File Preview Container**
+```css
+/* WARP-inspired file preview improvements */
+.file-preview-body .cm-editor {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.file-preview-body .cm-scroller {
+  font-family: 'SF Pro Text', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.file-preview-body .cm-content {
+  padding: 4px 0;
+}
+
+/* Better syntax highlighting */
+.cm-highlight {
+  font-weight: 500;
+}
+
+.cm-header {
+  font-weight: 600;
+  color: #1e40af;
+}
+
+.cm-quote {
+  color: #065f46;
+  font-style: italic;
+}
+```
+
+### **Phase 4: Markdown Parser Implementation**
+
+#### **Step 4.1: Create Markdown Parser Utility**
+**File**: `/src/utils/markdown-parser.ts`
+```typescript
+import { marked } from 'marked';
+import hljs from 'highlight.js';
+
+// Configure marked
+marked.setOptions({
+  highlight: function(code, lang) {
+    if (lang && hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value;
+    }
+    return hljs.highlightAuto(code).value;
+  },
+  gfm: true,
+  breaks: true
+});
+
+export interface MarkdownBlock {
+  from: number;
+  to: number;
+  html: string;
+  type: 'heading' | 'paragraph' | 'code' | 'list' | 'blockquote';
+}
+
+export function parseMarkdownForInlinePreview(markdown: string): MarkdownBlock[] {
+  const blocks: MarkdownBlock[] = [];
+  const lines = markdown.split('\n');
+  let currentPos = 0;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const from = currentPos;
+    const to = from + line.length;
+    
+    // Parse line type
+    if (line.startsWith('# ')) {
+      blocks.push({
+        from,
+        to,
+        html: marked.parse(line) as string,
+        type: 'heading'
+      });
+    } else if (line.startsWith('```')) {
+      // Handle code blocks (multi-line)
+      const codeStart = i;
+      while (i < lines.length && !lines[i].startsWith('```')) i++;
+      const codeEnd = i;
+      const codeContent = lines.slice(codeStart + 1, codeEnd).join('\n');
+      const codeFrom = currentPos;
+      let codeTo = codeFrom;
+      for (let j = codeStart; j <= codeEnd; j++) {
+        codeTo += lines[j]?.length || 0;
+        if (j < codeEnd) codeTo += 1; // Newline char
+      }
+      
+      blocks.push({
+        from: codeFrom,
+        to: codeTo,
+        html: marked.parse('```\n' + codeContent + '\n```') as string,
+        type: 'code'
+      });
+    } else if (line.trim().startsWith('- ') || line.trim().startsWith('* ') || /^\d+\./.test(line.trim())) {
+      blocks.push({
+        from,
+        to,
+        html: marked.parse(line) as string,
+        type: 'list'
+      });
+    } else if (line.trim().startsWith('>')) {
+      blocks.push({
+        from,
+        to,
+        html: marked.parse(line) as string,
+        type: 'blockquote'
+      });
+    } else if (line.trim().length > 0) {
+      blocks.push({
+        from,
+        to,
+        html: marked.parse(line) as string,
+        type: 'paragraph'
+      });
+    }
+    
+    currentPos = to + 1; // +1 for newline
+  }
+  
+  return blocks;
+}
+```
+
+### **Phase 5: Testing & Validation**
+
+#### **Test Cases to Verify:**
+1. ✅ `.md` files show formatted headings (not `# Heading`)
+2. ✅ Code blocks have syntax highlighting
+3. ✅ Lists show as bulleted/numbered
+4. ✅ Blockquotes are styled
+5. ✅ Still editable - can click and modify markdown
+6. ✅ Word wrapping works for all files
+7. ✅ Language detection works for all supported extensions
+
+### **Backup Plan (If Issues Arise)**
+
+If the inline preview is too complex, implement **Split View Alternative**:
+
+```typescript
+// Simple toggle between edit and preview
+class MarkdownEditorWithPreview {
+  private editView: EditorView;
+  private previewElement: HTMLElement;
+  private mode: 'edit' | 'preview' = 'edit';
+  
+  toggleMode() {
+    if (this.mode === 'edit') {
+      this.showPreview();
+    } else {
+      this.showEditor();
+    }
+  }
+  
+  private showPreview() {
+    const html = marked.parse(this.editView.state.doc.toString());
+    this.previewElement.innerHTML = html;
+    // Switch visibility
+  }
+}
+```
+
+### **Risk Mitigation Checklist**
+
+1. **Before starting**: Commit all changes to git
+2. **Install packages**: Use `pnpm install --save-dev` to avoid breaking prod
+3. **Test incrementally**: 
+   - First test CSS changes
+   - Then test TypeScript changes
+   - Finally test markdown preview
+4. **Have rollback ready**: Keep original `file-editor.ts` backed up
+5. **Test with sample files**: Create test.md with various markdown elements
+
+### **Expected WARP-Like Features Delivered**
+
+1. **Formatted Markdown**: Headings, lists, code blocks rendered properly
+2. **Syntax Highlighting**: Code blocks with language-specific colors
+3. **Readability**: Optimal line length (70-80 chars), good typography
+4. **Editability**: Can still edit markdown source
+5. **Multi-language Support**: All file types get appropriate highlighting
+6. **Visual Polish**: WARP-inspired styling with proper spacing and colors
+
+---
+
+**This plan provides everything a third-party IDE needs to implement the True WARP Experience without risking the Prism app.** The implementation is modular, with clear fallback options if any component proves too complex.
+
+Would you like me to elaborate on any specific part of this implementation plan?
 

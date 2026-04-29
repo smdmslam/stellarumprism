@@ -3250,6 +3250,9 @@ input:checked + .toggle-slider:before {
   font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', 'Monaco', 'Cascadia Mono', monospace;
   font-size: 13px;
   line-height: 1.6;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px;
 }
 
 /* Proper word wrapping */
@@ -3260,55 +3263,125 @@ input:checked + .toggle-slider:before {
   hyphens: auto;
 }
 
-/* Improved code blocks within markdown */
-.file-preview-body .cm-snippetField {
-  background: rgba(125, 211, 252, 0.08);
-  border-radius: 4px;
-  padding: 1px 4px;
-  font-family: 'SF Mono', monospace;
-  font-size: 12px;
+/* ===== WARP-LIKE MARKDOWN PREVIEW ===== */
+.markdown-preview-widget {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 12px 0;
+  padding: 16px;
+  border-left: 3px solid #6366f1;
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 0 8px 8px 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
-/* Better markdown headings within editor */
-.file-preview-body .cm-header {
-  font-weight: 700;
+.markdown-preview-widget .markdown-heading {
+  font-weight: 600;
+  margin: 1.5em 0 0.5em 0;
   color: #e5e7eb;
+  line-height: 1.3;
 }
 
-.file-preview-body .cm-header-1 { font-size: 1.4em; }
-.file-preview-body .cm-header-2 { font-size: 1.3em; }
-.file-preview-body .cm-header-3 { font-size: 1.2em; }
-.file-preview-body .cm-header-4 { font-size: 1.1em; }
-
-/* Improved lists within editor */
-.file-preview-body .cm-list {
-  padding-left: 1.5em;
+.markdown-preview-widget h1 { 
+  font-size: 1.875rem; 
+  border-bottom: 2px solid #374151;
+  padding-bottom: 0.3em;
+  color: #f9fafb;
 }
-
-/* Better inline code */
-.file-preview-body .cm-inlineCode {
-  background: rgba(125, 211, 252, 0.12);
-  color: #7dd3fc;
-  padding: 0.1em 0.4em;
-  border-radius: 3px;
-  font-family: 'SF Mono', monospace;
-  font-size: 0.95em;
+.markdown-preview-widget h2 { 
+  font-size: 1.5rem; 
+  border-bottom: 1px solid #374151;
+  padding-bottom: 0.3em;
+  color: #f3f4f6;
 }
+.markdown-preview-widget h3 { font-size: 1.25rem; color: #e5e7eb; }
+.markdown-preview-widget h4 { font-size: 1.125rem; color: #d1d5db; }
+.markdown-preview-widget h5, 
+.markdown-preview-widget h6 { font-size: 1rem; color: #9ca3af; }
 
-/* Horizontal rule styling */
-.file-preview-body .cm-hr {
-  border: none;
-  border-top: 1px solid #374151;
+.markdown-preview-widget p {
   margin: 1em 0;
+  color: #d1d5db;
 }
 
-/* Better blockquote styling */
-.file-preview-body .cm-blockquote {
-  border-left: 3px solid #4b5563;
+.markdown-preview-widget .markdown-code-block {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Menlo', 'Monaco', monospace;
+  font-size: 13px;
+  background: #0d0f14;
+  color: #d4d4d4;
+  padding: 16px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1em 0;
+  border: 1px solid #374151;
+}
+
+.markdown-preview-widget code:not(.markdown-code-block code) {
+  font-family: 'SF Mono', 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+  background: rgba(125, 211, 252, 0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #7dd3fc;
+}
+
+.markdown-preview-widget ul,
+.markdown-preview-widget ol {
+  margin: 1em 0;
+  padding-left: 1.5em;
+  color: #d1d5db;
+}
+
+.markdown-preview-widget ul li {
+  list-style-type: disc;
+  margin: 0.3em 0;
+}
+
+.markdown-preview-widget ol li {
+  list-style-type: decimal;
+  margin: 0.3em 0;
+}
+
+.markdown-preview-widget blockquote {
+  border-left: 4px solid #4b5563;
+  margin: 1em 0;
   padding-left: 1em;
   color: #9ca3af;
   font-style: italic;
-  margin: 0.5em 0;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.markdown-preview-widget a {
+  color: #6366f1;
+  text-decoration: none;
+  border-bottom: 1px dashed #6366f1;
+}
+
+.markdown-preview-widget a:hover {
+  border-bottom: 1px solid #6366f1;
+}
+
+.markdown-preview-widget hr {
+  border: none;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #374151, transparent);
+  margin: 2em 0;
+}
+
+/* Improved selection and active line */
+.file-preview-body .cm-activeLine {
+  background: rgba(99, 102, 241, 0.05) !important;
+}
+
+.file-preview-body .cm-activeLineGutter {
+  background: rgba(99, 102, 241, 0.1) !important;
+  color: #6366f1 !important;
+  font-weight: 600;
+}
+
+.file-preview-body .cm-selectionBackground {
+  background: rgba(99, 102, 241, 0.2) !important;
 }
 
 /* Improved scrollbar for editor */
