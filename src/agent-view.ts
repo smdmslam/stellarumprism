@@ -114,6 +114,8 @@ export interface AgentViewApi {
 export class AgentView implements AgentViewApi {
   private readonly root: HTMLElement;
   private readonly scrollHost: HTMLElement;
+  /** True while streaming should keep the latest output in view. */
+  private followStream = true;
 
   private currentTurn: HTMLElement | null = null;
   /** `<section class="agent-turn-prose">` for the active turn. */
@@ -132,6 +134,11 @@ export class AgentView implements AgentViewApi {
     this.scrollHost = document.createElement("div");
     this.scrollHost.className = "agent-stage-scroll";
     this.root.appendChild(this.scrollHost);
+    this.scrollHost.addEventListener("scroll", () => {
+      // If the user scrolls up, stop forcing autoscroll until they come
+      // back near the bottom.
+      this.followStream = this.isPinnedToBottom();
+    });
   }
 
   beginTurn(userPrompt: string): void {
@@ -153,15 +160,12 @@ export class AgentView implements AgentViewApi {
     this.currentToolLog = null;
     this.currentReview = null;
     this.currentReviewMarkdown = "";
-    if (pinned || userPrompt.trim().length > 0) {
-      // Force pinning to bottom on a new user turn
-      this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
-    }
+    this.followStream = pinned || userPrompt.trim().length > 0;
+    this.scrollToBottomIfFollowing();
   }
 
   appendProse(piece: string): void {
     if (piece.length === 0) return;
-    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     if (!this.currentProseSection) {
       const section = document.createElement("section");
@@ -172,11 +176,10 @@ export class AgentView implements AgentViewApi {
     this.currentProseMarkdown += piece;
     const frag = markdownToFragment(this.currentProseMarkdown);
     this.currentProseSection.replaceChildren(frag);
-    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
+    this.scrollToBottomIfFollowing();
   }
 
   appendToolCall(info: ToolCallInfo): void {
-    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     if (!this.currentToolLog) {
       const log = document.createElement("section");
@@ -203,12 +206,12 @@ export class AgentView implements AgentViewApi {
     head.appendChild(glyph);
     const name = document.createElement("span");
     name.className = "agent-tool-card-name";
-    name.textContent = info.name;
+    name.textContent = stripAnsi(info.name);
     head.appendChild(name);
     if (info.argsPretty) {
       const args = document.createElement("span");
       args.className = "agent-tool-card-args";
-      args.textContent = info.argsPretty;
+      args.textContent = stripAnsi(info.argsPretty);
       head.appendChild(args);
     }
     card.appendChild(head);
@@ -216,7 +219,7 @@ export class AgentView implements AgentViewApi {
     if (info.summary) {
       const summary = document.createElement("div");
       summary.className = "agent-tool-card-summary";
-      summary.textContent = info.summary;
+      summary.textContent = stripAnsi(info.summary);
       card.appendChild(summary);
     }
 
@@ -227,12 +230,11 @@ export class AgentView implements AgentViewApi {
     this.currentProseSection = null;
     this.currentProseMarkdown = "";
 
-    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
+    this.scrollToBottomIfFollowing();
   }
 
   appendReview(piece: string): void {
     if (piece.length === 0) return;
-    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     if (!this.currentReview) {
       const review = document.createElement("section");
@@ -250,22 +252,20 @@ export class AgentView implements AgentViewApi {
     this.currentReviewMarkdown += piece;
     const frag = markdownToFragment(this.currentReviewMarkdown);
     this.currentReview.replaceChildren(frag);
-    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
+    this.scrollToBottomIfFollowing();
   }
 
   appendNotice(kind: NoticeKind, body: string): void {
-    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     const el = document.createElement("div");
     el.className = `agent-notice agent-notice-${kind}`;
     el.textContent = stripAnsi(body);
     this.currentTurn!.appendChild(el);
-    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
+    this.scrollToBottomIfFollowing();
   }
 
   appendReport(markdown: string): void {
     if (markdown.length === 0) return;
-    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     const section = document.createElement("section");
     section.className = "agent-report markdown-body";
@@ -276,7 +276,7 @@ export class AgentView implements AgentViewApi {
     // section underneath instead of appending into our DOM block.
     this.currentProseSection = null;
     this.currentProseMarkdown = "";
-    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
+    this.scrollToBottomIfFollowing();
   }
 
   /**
@@ -287,22 +287,20 @@ export class AgentView implements AgentViewApi {
    * reason `appendReport` does.
    */
   appendCard(card: HTMLElement): void {
-    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     this.currentTurn!.appendChild(card);
     this.currentProseSection = null;
     this.currentProseMarkdown = "";
-    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
+    this.scrollToBottomIfFollowing();
   }
 
   appendError(message: string): void {
-    const pinned = this.isPinnedToBottom();
     if (!this.currentTurn) this.beginTurn("");
     const el = document.createElement("div");
     el.className = "agent-error";
     el.textContent = stripAnsi(message);
     this.currentTurn!.appendChild(el);
-    if (pinned) this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
+    this.scrollToBottomIfFollowing();
   }
 
   endTurn(): void {
@@ -316,7 +314,13 @@ export class AgentView implements AgentViewApi {
 
   clear(): void {
     this.scrollHost.innerHTML = "";
+    this.followStream = true;
     this.endTurn();
+  }
+
+  private scrollToBottomIfFollowing(): void {
+    if (!this.followStream) return;
+    this.scrollHost.scrollTop = this.scrollHost.scrollHeight;
   }
 
   private isPinnedToBottom(): boolean {

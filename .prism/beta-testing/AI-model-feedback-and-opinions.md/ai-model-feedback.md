@@ -4,6 +4,7 @@ KEEP GOOD
 - GLM 5
 - HAIKU
 - GROK 4 FAST (fast and good)
+- QWEN 235B (less detail but no hallucination)
 
 KEEP OK
 - STEP (good, but)
@@ -18,6 +19,8 @@ REMOVE
 - CODESTRAL (hallucinates)
 - MERCURY 2
 - SCOUT
+- GPT 5 MINI (slow)
+- QWEN 80 
 
 
 

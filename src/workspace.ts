@@ -1458,7 +1458,10 @@ export class Workspace {
       if (!this.root.classList.contains("active")) return;
       if (e.key !== "/") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (this.isEditorFocused()) return; // CodeMirror already owns it.
+      // If the keystroke originated from an editable control within this
+      // workspace (prompt editor, file editor, input/textarea/contenteditable),
+      // never hijack it for slash-command focus.
+      if (this.isEditorFocused(e.target)) return;
 
       const busy = this.blocks
         .getBlocks()
@@ -1484,17 +1487,30 @@ export class Workspace {
    * CodeMirror (.file-preview-body). This prevents the slash-focus hijack
    * from stealing `/` while the user is typing inside an open file.
    */
-  private isEditorFocused(): boolean {
+  private isEditorFocused(target?: EventTarget | null): boolean {
     const active = document.activeElement;
-    if (!active) return false;
+    const eventTarget =
+      target instanceof Node && this.root.contains(target) ? target : null;
+    const candidate = (eventTarget ?? active) as Element | null;
+    if (!candidate) return false;
 
     // 1. Check if focus is in any CodeMirror editor instance (prompt or file editor)
     // within this workspace. CM6 wrapper uses .cm-editor.
-    if (active.closest(".cm-editor") && this.root.contains(active)) return true;
+    if (candidate.closest(".cm-editor") && this.root.contains(candidate)) return true;
+
+    // 1b. Native editable controls inside the workspace should also opt out.
+    if (
+      candidate instanceof HTMLElement &&
+      this.root.contains(candidate) &&
+      (candidate.isContentEditable ||
+        candidate.closest("input, textarea, [contenteditable='true']"))
+    ) {
+      return true;
+    }
 
     // 2. Check if focus is in the terminal (xterm.js uses a hidden textarea).
     const termHost = this.root.querySelector(".terminal-host");
-    if (termHost && termHost.contains(active)) return true;
+    if (termHost && termHost.contains(candidate)) return true;
 
     return false;
   }

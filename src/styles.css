@@ -1253,6 +1253,8 @@ input:checked + .toggle-slider:before {
   border-collapse: collapse;
   margin: 12px 0;
   font-size: 12px;
+  overflow-x: auto; /* Enable horizontal scrolling for wide tables */
+  display: block;
 }
 .markdown-body thead {
   border-bottom: 2px solid rgba(125, 211, 252, 0.3);
@@ -1263,11 +1265,13 @@ input:checked + .toggle-slider:before {
   font-weight: 600;
   color: #7dd3fc;
   background: rgba(125, 211, 252, 0.06);
+  font-size: 12px;
 }
 .markdown-body td {
   padding: 6px 12px;
   border-bottom: 1px solid rgba(31, 41, 55, 0.6);
   color: #d1d5db;
+  font-size: 12px;
 }
 .markdown-body tr:hover td {
   background: rgba(125, 211, 252, 0.04);
