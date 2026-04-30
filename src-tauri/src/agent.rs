@@ -19,6 +19,7 @@ use uuid::Uuid;
 
 use crate::approval::{ApprovalDecision, ApprovalState};
 use crate::config::ConfigState;
+use crate::usage::emit_usage_event;
 
 /// Max number of non-system messages kept in the rolling history. Older
 /// user/assistant pairs are dropped when we exceed this, so long sessions
@@ -1339,13 +1340,30 @@ struct OrRequest<'a> {
     messages: Vec<OutMessage<'a>>,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    stream_options: Option<OrStreamOptions>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<serde_json::Value>,
+}
+
+#[derive(Serialize)]
+struct OrStreamOptions {
+    pub include_usage: bool,
 }
 
 #[derive(Deserialize)]
 struct OrChunk {
     #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
     choices: Vec<OrChoice>,
+    #[serde(default)]
+    usage: Option<OrUsage>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct OrUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
 }
 
 #[derive(Deserialize)]
@@ -1567,6 +1585,7 @@ pub async fn agent_query(
     let approval_pending = Arc::clone(&approval.pending);
     let approval_session = Arc::clone(&approval.session_allowed);
     let chat_id_for_task = chat_id.clone();
+    let mode_for_task = mode.clone();
 
     tokio::spawn(async move {
         let token_event = format!("agent-token-{}", id_for_task);
@@ -1604,6 +1623,7 @@ pub async fn agent_query(
             } else {
                 &[]
             };
+            let start_time = std::time::Instant::now();
             let result = run_stream(
                 &app_handle,
                 &token_event,
@@ -1618,6 +1638,7 @@ pub async fn agent_query(
                 system_prefix_for_task.as_deref(),
             )
             .await;
+            let duration_ms = start_time.elapsed().as_millis() as u64;
             // Images only attach to the first round; after that the model has
             // seen them and we don't re-send.
             attach_images_this_turn = false;
@@ -1626,7 +1647,24 @@ pub async fn agent_query(
                 Ok(StreamOutcome::Completed {
                     total_chars,
                     assistant_text,
+                    usage,
+                    request_id,
                 }) => {
+                    if let Some(u) = usage {
+                        emit_usage_event(
+                            request_id,
+                            chat_id_for_task.clone(),
+                            cwd_str.clone(),
+                            mode_for_task.clone().unwrap_or_else(|| "chat".into()),
+                            chosen_model.clone(),
+                            "openrouter".into(),
+                            u.prompt_tokens,
+                            u.completion_tokens,
+                            duration_ms,
+                            true,
+                            false,
+                        );
+                    }
                     total_chars_all += total_chars;
                     completed_branch_fired = true;
                     // No tool calls emitted \u2014 this is the final response.
@@ -1663,7 +1701,24 @@ pub async fn agent_query(
                     total_chars,
                     partial_text,
                     calls,
+                    usage,
+                    request_id,
                 }) => {
+                    if let Some(u) = usage {
+                        emit_usage_event(
+                            request_id,
+                            chat_id_for_task.clone(),
+                            cwd_str.clone(),
+                            mode_for_task.clone().unwrap_or_else(|| "chat".into()),
+                            chosen_model.clone(),
+                            "openrouter".into(),
+                            u.prompt_tokens,
+                            u.completion_tokens,
+                            duration_ms,
+                            true,
+                            false,
+                        );
+                    }
                     total_chars_all += total_chars;
                     // Persist the assistant's tool-call turn so the model sees
                     // its own decisions in the next round.
@@ -1726,6 +1781,8 @@ pub async fn agent_query(
                                     match call.function.name.as_str() {
                                         "web_search" => {
                                             crate::tools::execute_web_search(
+                                                chat_id_for_task.clone(),
+                                                cwd_str.clone(),
                                                 &call.function.arguments,
                                                 &api_key,
                                                 &base_url,
@@ -1852,11 +1909,37 @@ pub async fn agent_query(
                     // Loop: next iteration sends the updated messages back.
                 }
                 Ok(StreamOutcome::Cancelled { assistant_text }) => {
+                    emit_usage_event(
+                        None,
+                        chat_id_for_task.clone(),
+                        cwd_str.clone(),
+                        mode_for_task.clone().unwrap_or_else(|| "chat".into()),
+                        chosen_model.clone(),
+                        "openrouter".into(),
+                        0,
+                        0,
+                        duration_ms,
+                        false,
+                        true,
+                    );
                     session_for_task.append_assistant(assistant_text);
                     final_cancelled = true;
                     break;
                 }
                 Err(e) => {
+                    emit_usage_event(
+                        None,
+                        chat_id_for_task.clone(),
+                        cwd_str.clone(),
+                        mode_for_task.clone().unwrap_or_else(|| "chat".into()),
+                        chosen_model.clone(),
+                        "openrouter".into(),
+                        0,
+                        0,
+                        duration_ms,
+                        false,
+                        false,
+                    );
                     let _ = app_handle.emit(&error_event, e.to_string());
                     inflight_map.remove(&id_for_task);
                     return;
@@ -1951,6 +2034,26 @@ pub async fn agent_query(
             )
             .await;
             let review_payload = match outcome {
+                Ok(StreamOutcome::Completed { usage, request_id, .. }) => {
+                    if let Some(u) = usage {
+                        emit_usage_event(
+                            request_id,
+                            chat_id_for_task.clone(),
+                            cwd_str.clone(),
+                            "reviewer".into(),
+                            verifier_cfg.model.clone(),
+                            "openrouter".into(),
+                            u.prompt_tokens,
+                            u.completion_tokens,
+                            0, // duration not tracked for background pass yet
+                            true,
+                            false,
+                        );
+                    }
+                    serde_json::json!({
+                        "model": verifier_cfg.model,
+                    })
+                }
                 Ok(_) => serde_json::json!({
                     "model": verifier_cfg.model,
                 }),
@@ -2043,11 +2146,15 @@ enum StreamOutcome {
     Completed {
         total_chars: usize,
         assistant_text: String,
+        usage: Option<OrUsage>,
+        request_id: Option<String>,
     },
     ToolCalls {
         total_chars: usize,
         partial_text: String,
         calls: Vec<ToolCall>,
+        usage: Option<OrUsage>,
+        request_id: Option<String>,
     },
     Cancelled {
         assistant_text: String,
@@ -2134,6 +2241,7 @@ async fn run_stream(
         model,
         messages: out_messages,
         stream: true,
+        stream_options: Some(OrStreamOptions { include_usage: true }),
         tools: if include_tools {
             Some(crate::tools::tool_schema())
         } else {
@@ -2162,6 +2270,8 @@ async fn run_stream(
     let mut buf = String::new();
     let mut total_chars = 0usize;
     let mut assistant_text = String::new();
+    let mut usage: Option<OrUsage> = None;
+    let mut request_id: Option<String> = None;
     // Accumulator for tool calls being assembled from streaming deltas.
     // Keyed by index (which OpenRouter assigns per parallel call).
     let mut tool_calls: Vec<ToolCall> = Vec::new();
@@ -2182,9 +2292,15 @@ async fn run_stream(
                     buf.drain(..sep_pos + 2); // consume "\n\n" or "\r\n\r\n"
                     if let Some(data) = extract_data(&event) {
                         if data == "[DONE]" {
-                            return Ok(finalize(total_chars, assistant_text, tool_calls));
+                            return Ok(finalize(total_chars, assistant_text, tool_calls, usage, request_id));
                         }
                         if let Ok(parsed) = serde_json::from_str::<OrChunk>(&data) {
+                            if request_id.is_none() && parsed.id.is_some() {
+                                request_id = parsed.id.clone();
+                            }
+                            if let Some(u) = parsed.usage {
+                                usage = Some(u);
+                            }
                             if let Some(choice) = parsed.choices.first() {
                                 if let Some(piece) = &choice.delta.content {
                                     if !piece.is_empty() {
@@ -2223,9 +2339,11 @@ async fn run_stream(
                                             total_chars,
                                             partial_text: assistant_text,
                                             calls: tool_calls,
+                                            usage,
+                                            request_id,
                                         });
                                     }
-                                    return Ok(finalize(total_chars, assistant_text, tool_calls));
+                                    return Ok(finalize(total_chars, assistant_text, tool_calls, usage, request_id));
                                 }
                             }
                         }
@@ -2234,7 +2352,7 @@ async fn run_stream(
             }
         }
     }
-    Ok(finalize(total_chars, assistant_text, tool_calls))
+    Ok(finalize(total_chars, assistant_text, tool_calls, usage, request_id))
 }
 
 /// Strip the most common padding / end-of-text sentinel tokens from a
@@ -2300,17 +2418,23 @@ fn finalize(
     total_chars: usize,
     assistant_text: String,
     tool_calls: Vec<ToolCall>,
+    usage: Option<OrUsage>,
+    request_id: Option<String>,
 ) -> StreamOutcome {
     if !tool_calls.is_empty() {
         StreamOutcome::ToolCalls {
             total_chars,
             partial_text: assistant_text,
             calls: tool_calls,
+            usage,
+            request_id,
         }
     } else {
         StreamOutcome::Completed {
             total_chars,
             assistant_text,
+            usage,
+            request_id,
         }
     }
 }

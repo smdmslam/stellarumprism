@@ -1056,6 +1056,8 @@ struct SonarMessage<'a> {
 struct SonarResponse {
     #[serde(default)]
     choices: Vec<SonarChoice>,
+    #[serde(default)]
+    usage: Option<crate::agent::OrUsage>,
 }
 
 #[derive(Deserialize)]
@@ -1077,6 +1079,8 @@ struct SonarResponseMessage {
 /// a one-shot search backend, not a chat participant. The primary agent
 /// model handles synthesis across multiple searches.
 pub async fn execute_web_search(
+    chat_id: String,
+    workspace_id: String,
     args_json: &str,
     api_key: &str,
     base_url: &str,
@@ -1128,10 +1132,28 @@ pub async fn execute_web_search(
         ));
     }
 
+    let start_time = std::time::Instant::now();
     let parsed: SonarResponse = match resp.json().await {
         Ok(p) => p,
         Err(e) => return err_invocation(format!("parse sonar response: {}", e)),
     };
+    let duration_ms = start_time.elapsed().as_millis() as u64;
+
+    if let Some(u) = &parsed.usage {
+        crate::usage::emit_usage_event(
+            None, // request_id not easily available for non-streaming Sonar call yet
+            chat_id,
+            workspace_id,
+            "web_search".into(),
+            WEB_SEARCH_MODEL.into(),
+            "openrouter".into(),
+            u.prompt_tokens,
+            u.completion_tokens,
+            duration_ms,
+            true,
+            false,
+        );
+    }
     let Some(choice) = parsed.choices.into_iter().next() else {
         return err_invocation("sonar returned no choices".into());
     };
