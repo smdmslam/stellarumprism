@@ -112,6 +112,23 @@
   - Protocol report cards show step-by-step progress (phase transitions)
 - **Remaining:** Verify protocol report card rendering is polished
 
+#### 2.9 Cmd+F find in agent pane
+- **Status:** NOT STARTED
+- **Issue:** No way to search within an agent conversation. Tauri's WebKit doesn't expose a native find dialog and `window.find()` is non-standard, so Cmd+F is a no-op inside `.agent-stage-scroll` today.
+- **Why:** Long agent transcripts are exactly when find matters most (recall a code reference, a path, or a directive from earlier in the turn).
+- **Companion:** File viewer Cmd+F is already shipped (see 3.5) — that path uses `@codemirror/search`. The agent pane needs a separate, custom solution because it's plain DOM, not a CodeMirror buffer.
+- **Design sketch:**
+  - Small overlay anchored to the top-right of `.agent-stage` (input field, match count, prev/next, close).
+  - Match algorithm: walk text nodes inside `.agent-stage-scroll`, wrap matches in `<mark class="agent-find-hit">`, track positions in an array, scroll the active hit into view.
+  - Active hit gets a brighter highlight (`.agent-find-hit-active`) so the user can tell which one is current.
+  - Cmd+F opens / focuses input, Cmd+G next, Cmd+Shift+G prev, Esc closes (and unwraps the marks).
+  - Re-run match pass on stream events (`appendProse`, `appendToolCall`, etc.) so matches stay in sync as new content arrives during a search.
+- **Open questions:**
+  - Search scope: just prose, or include tool-result blocks, approval cards, and report cards too? Probably all text-bearing nodes by default.
+  - Auto-clear on new turn, or persist until Esc?
+  - Case-sensitivity / regex toggles, or keep it dead simple? Suggest dead-simple (substring, case-insensitive) for v1.
+- **Estimated scope:** ~80–150 LOC + minimal CSS. Self-contained module (`agent-find.ts`) wired into `AgentView` lifecycle hooks.
+
 ---
 
 ### Phase 3 — File Explorer / Viewer QoL (MEDIUM PRIORITY)
@@ -151,17 +168,27 @@
 - **Current:** Dividers are `.layout-divider` with drag handlers
 - **Note:** May need CSS tweaks to make grab area larger/more obvious
 
-#### 3.5 IDE-style hotkeys for pane visibility ✅ DONE
+#### 3.5 File viewer Cmd+F find ✅ DONE
 - **Status:** IMPLEMENTED
-- **Fixed in:** Multiple commits, wired in `setupBadges()`
+- **Fixed in:** Latest commit (`@codemirror/search` integration in `src/file-editor.ts`)
+- **What works:**
+  - `Cmd+F` opens find panel at top of file viewer
+  - `Cmd+G` / `Cmd+Shift+G` step through matches
+  - `Esc` closes panel
+  - `highlightSelectionMatches` tints other occurrences of the current selection while the panel is closed
+- **Verification:** Open any file in the viewer, press ⌘F, confirm panel appears and search works.
+
+#### 3.6 IDE-style hotkeys for pane visibility ✅ DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** Multiple commits, canonical handler in `tabs.ts` window-level keydown
 - **What works:**
   - `Cmd+B` toggles sidebar
   - `Cmd+J` toggles terminal
   - `Cmd+L` toggles agent pane
   - `Cmd+Shift+P` toggles preview
-- **Verification:** All four hotkeys should be functional
+- **Verification:** All four hotkeys functional regardless of focus (terminal, file editor, file tree, prompt).
 
-#### 3.6 Recent paths in prompt area
+#### 3.7 Recent paths in prompt area
 - **Status:** NOT STARTED
 - **Issue:** Explore quick access to recent paths near prompt
 - **Design:** Possible autocomplete enhancement or sidebar widget

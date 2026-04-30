@@ -35,6 +35,7 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { highlightSelectionMatches, search, searchKeymap } from "@codemirror/search";
 import {
   syntaxHighlighting,
   defaultHighlightStyle,
@@ -378,8 +379,19 @@ export class FileEditor {
         diagnosticsGutter,
         lineNumbers(),
         highlightActiveLine(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
-        
+        // Find/replace panel: \u2318F opens the search bar, \u2318G / \u2318\u21e7G
+        // step through matches, Esc closes. Render the panel at the top
+        // of the editor so it doesn't obscure the active line at the
+        // bottom of a long file. `highlightSelectionMatches` is the
+        // standard companion that tints other occurrences of the
+        // current selection while the search panel is closed.
+        search({ top: true }),
+        highlightSelectionMatches(),
+        // Search keymap precedes the default keymap so \u2318F / \u2318G land
+        // on the search panel even if a future default binding would
+        // claim them.
+        keymap.of([...searchKeymap, ...defaultKeymap, ...historyKeymap]),
+
         // Language support
         languageExt,
         
