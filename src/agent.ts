@@ -688,8 +688,15 @@ export class AgentController {
       await listen(`agent-review-done-${requestId}`, () => {
         this.onReviewDone();
       }),
-      await listen(`agent-done-${requestId}`, () => {
-        this.onDone();
+      await listen<{
+        total_chars: number;
+        model: string;
+        message_count: number;
+        assistant_text_len: number;
+        total_tokens?: number;
+        estimated_cost_usd?: number;
+      }>(`agent-done-${requestId}`, (e) => {
+        this.onDone(e.payload);
       }),
       await listen<string>(`agent-error-${requestId}`, (e) => {
         this.onError(e.payload);
@@ -1080,25 +1087,14 @@ export class AgentController {
     });
   }
 
-  private onDone(): void {
+  private onDone(payload?: {
+    total_tokens?: number;
+    estimated_cost_usd?: number;
+  }): void {
     this.inflightId = null;
     this.setBusy(false);
 
     // Grounded-Chat rigor enforcement.
-    //
-    // The protocol promises the model will only stamp `\u2713 Observed` on
-    // claims it tool-verified THIS turn, and only emit `Verified total:
-    // N` on counts it computed from source THIS turn. We can't audit
-    // each claim against its supposed source, but we can enforce the
-    // global invariant: if grounded mode was active and zero tool
-    // calls fired, every observation-shaped label is structurally
-    // unbacked. Surface a clear warning so the user doesn't trust a
-    // fabricated `Verified total: 556` like we saw with Kimi K2.5.
-    //
-    // Done BEFORE clearing the per-turn flags so the check runs
-    // against the right state, but AFTER setBusy(false) so the
-    // warning is the last thing the user sees as the busy pill
-    // disappears \u2014 it visually anchors to the response above it.
     const violation = detectRigorViolation({
       groundedActive: this.currentGroundedActive,
       toolCallCount: this.currentTurnToolCount,
@@ -1111,29 +1107,21 @@ export class AgentController {
       );
     }
 
-    // \"Files modified\" footer. Renders only when at least one
-    // write_file / edit_file fired this turn. Most useful for
-    // /build, /fix, /refactor, /new \u2014 chat-only turns are silent.
-    // Each line shows the path the model passed (verbatim, not
-    // resolved) plus the tool that wrote it; failed writes get a
-    // \"(failed)\" tag so the user sees \"the agent tried but couldn't\"
-    // rather than thinking nothing was attempted.
+    // \"Files modified\" footer.
     if (this.currentTurnWrites.length > 0) {
       const footer = formatFilesModifiedFooter(this.currentTurnWrites);
       this.opts.view.appendNotice("files-modified", footer.join("\n"));
     }
 
-    // \"Done in Ns \u00b7 N tools \u00b7 model\" turn footer. Renders unconditionally
-    // (every turn produces the line) so the user has a consistent
-    // scroll-back anchor at the end of each agent reply. Skipped only
-    // when query() never set currentTurnStartedAt (defensive \u2014
-    // shouldn't happen in practice).
+    // \"Done in Ns \u00b7 N tools \u00b7 model\" turn footer.
     if (this.currentTurnStartedAt !== null) {
       const elapsedMs = Date.now() - this.currentTurnStartedAt;
       const summaryLine = formatTurnFooter({
         elapsedMs,
         toolCount: this.currentTurnToolCount,
         model: shortSlug(this.currentResolvedModel ?? this.model),
+        totalTokens: payload?.total_tokens,
+        estimatedCostUsd: payload?.estimated_cost_usd,
       });
       this.opts.view.appendNotice("turn-footer", summaryLine);
     }

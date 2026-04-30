@@ -128,6 +128,9 @@ export class SettingsUI {
       case "history":
         await this.renderHistory();
         break;
+      case "usage":
+        await this.renderUsage();
+        break;
       case "substrate":
         this.renderSubstrate();
         break;
@@ -723,5 +726,93 @@ export class SettingsUI {
         </p>
       </div>
     `;
+  }
+
+  private async renderUsage(): Promise<void> {
+    this.content.innerHTML = `
+      <h2 class="settings-section-title">AI Usage & Analytics</h2>
+      <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 24px;">
+        Track your AI consumption and estimated costs. Data is updated after every agent turn.
+      </p>
+      <div id="usage-container" class="usage-container">
+        <div class="loading-state">Loading usage summary...</div>
+      </div>
+    `;
+
+    const container = document.getElementById("usage-container")!;
+    try {
+      // Use the active workspace's chat_id if available, otherwise null (aggregate only)
+      const chatId = this.activeWorkspace?.id || null;
+      const summary = await invoke<{
+        session_tokens: number;
+        session_cost_usd: number;
+        today_tokens: number;
+        today_cost_usd: number;
+        by_model: { model: string; tokens: number; cost_usd: number }[];
+      }>("get_usage_summary", { chat_id: chatId });
+
+      const formatCost = (c: number) => `$${c.toFixed(3)}`;
+      const formatTokens = (t: number) =>
+        t >= 1000 ? `${(t / 1000).toFixed(1)}k` : t.toString();
+
+      let html = `
+        <div class="usage-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 32px;">
+          <div class="usage-stat-card" style="background: #111827; border: 1px solid #374151; padding: 16px; border-radius: 8px;">
+            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; margin-bottom: 4px;">Current Session</div>
+            <div style="font-size: 24px; font-weight: 600; color: #e5e7eb; margin-bottom: 4px;">${formatTokens(summary.session_tokens)} <span style="font-size: 12px; font-weight: 400; color: #94a3b8;">tokens</span></div>
+            <div style="font-size: 14px; color: #10b981;">${formatCost(summary.session_cost_usd)} <span style="font-size: 11px; color: #6b7280;">est. cost</span></div>
+          </div>
+          <div class="usage-stat-card" style="background: #111827; border: 1px solid #374151; padding: 16px; border-radius: 8px;">
+            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; margin-bottom: 4px;">Today</div>
+            <div style="font-size: 24px; font-weight: 600; color: #e5e7eb; margin-bottom: 4px;">${formatTokens(summary.today_tokens)} <span style="font-size: 12px; font-weight: 400; color: #94a3b8;">tokens</span></div>
+            <div style="font-size: 14px; color: #10b981;">${formatCost(summary.today_cost_usd)} <span style="font-size: 11px; color: #6b7280;">est. cost</span></div>
+          </div>
+        </div>
+
+        <h3 style="font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 12px;">Breakdown by Model</h3>
+        <div class="usage-table-wrapper" style="background: #111827; border: 1px solid #374151; border-radius: 8px; overflow: hidden;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
+            <thead>
+              <tr style="border-bottom: 1px solid #374151; background: #1f2937;">
+                <th style="padding: 10px 16px; color: #94a3b8; font-weight: 500;">Model</th>
+                <th style="padding: 10px 16px; color: #94a3b8; font-weight: 500; text-align: right;">Tokens</th>
+                <th style="padding: 10px 16px; color: #94a3b8; font-weight: 500; text-align: right;">Est. Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+      `;
+
+      if (summary.by_model.length === 0) {
+        html += `
+          <tr>
+            <td colspan="3" style="padding: 24px; text-align: center; color: #6b7280; font-style: italic;">No usage recorded yet.</td>
+          </tr>
+        `;
+      } else {
+        for (const m of summary.by_model) {
+          const modelName = m.model.split("/").pop() || m.model;
+          html += `
+            <tr style="border-bottom: 1px solid #1f2937;">
+              <td style="padding: 10px 16px; color: #e5e7eb; font-family: ui-monospace, monospace;">${escapeHtml(modelName)}</td>
+              <td style="padding: 10px 16px; color: #e5e7eb; text-align: right; font-weight: 500;">${formatTokens(m.tokens)}</td>
+              <td style="padding: 10px 16px; color: #10b981; text-align: right; font-weight: 500;">${formatCost(m.cost_usd)}</td>
+            </tr>
+          `;
+        }
+      }
+
+      html += `
+            </tbody>
+          </table>
+        </div>
+        <p style="font-size: 10px; color: #6b7280; margin-top: 16px; line-height: 1.4;">
+          * Costs are estimated based on standard OpenRouter pricing and may vary slightly from your actual bill.
+        </p>
+      `;
+
+      container.innerHTML = html;
+    } catch (e) {
+      container.innerHTML = `<div class="error-state">Failed to load usage data: ${escapeHtml(String(e))}</div>`;
+    }
   }
 }

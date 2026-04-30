@@ -76,6 +76,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     takesArg: true,
   },
   {
+    label: "/usage",
+    detail: "Show AI usage statistics",
+    info: "Prints your AI consumption summary for this session and today, including token counts and estimated costs across all models.",
+  },
+  {
     label: "/help",
     detail: "Show this list",
   },

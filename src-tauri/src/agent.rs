@@ -1598,6 +1598,9 @@ pub async fn agent_query(
 
         let max_rounds = max_tool_rounds;
         let mut total_chars_all = 0usize;
+        let mut total_prompt_tokens = 0u32;
+        let mut total_completion_tokens = 0u32;
+        let mut total_cost_usd = 0.0f64;
         let mut final_assistant_text = String::new();
         let mut final_cancelled = false;
         // True iff the Completed branch fired during the loop (regardless
@@ -1651,6 +1654,14 @@ pub async fn agent_query(
                     request_id,
                 }) => {
                     if let Some(u) = usage {
+                        let pricing = crate::pricing::get_pricing_basis(&chosen_model);
+                        let cost = (u.prompt_tokens as f64 * pricing.input_per_m / 1_000_000.0) +
+                                   (u.completion_tokens as f64 * pricing.output_per_m / 1_000_000.0);
+                        
+                        total_prompt_tokens += u.prompt_tokens;
+                        total_completion_tokens += u.completion_tokens;
+                        total_cost_usd += cost;
+
                         emit_usage_event(
                             request_id,
                             chat_id_for_task.clone(),
@@ -1705,6 +1716,14 @@ pub async fn agent_query(
                     request_id,
                 }) => {
                     if let Some(u) = usage {
+                        let pricing = crate::pricing::get_pricing_basis(&chosen_model);
+                        let cost = (u.prompt_tokens as f64 * pricing.input_per_m / 1_000_000.0) +
+                                   (u.completion_tokens as f64 * pricing.output_per_m / 1_000_000.0);
+                        
+                        total_prompt_tokens += u.prompt_tokens;
+                        total_completion_tokens += u.completion_tokens;
+                        total_cost_usd += cost;
+
                         emit_usage_event(
                             request_id,
                             chat_id_for_task.clone(),
@@ -1997,6 +2016,10 @@ pub async fn agent_query(
                 "model": chosen_model,
                 "message_count": session_for_task.non_system_count(),
                 "assistant_text_len": final_assistant_text.len(),
+                "prompt_tokens": total_prompt_tokens,
+                "completion_tokens": total_completion_tokens,
+                "total_tokens": total_prompt_tokens + total_completion_tokens,
+                "estimated_cost_usd": total_cost_usd,
             })
         };
         let _ = app_handle.emit(&done_event, payload);

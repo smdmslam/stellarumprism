@@ -149,6 +149,8 @@ export interface TurnSummary {
   elapsedMs: number;
   toolCount: number;
   model: string;
+  totalTokens?: number;
+  estimatedCostUsd?: number;
 }
 
 /**
@@ -164,6 +166,14 @@ export function formatTurnFooter(s: TurnSummary): string {
   const parts: string[] = [`done in ${formatElapsed(s.elapsedMs)}`];
   if (s.toolCount > 0) {
     parts.push(`${s.toolCount} tool${s.toolCount === 1 ? "" : "s"}`);
+  }
+  if (s.totalTokens) {
+    const t = s.totalTokens >= 1000 ? `${(s.totalTokens / 1000).toFixed(1)}k` : s.totalTokens;
+    let cost = "";
+    if (s.estimatedCostUsd !== undefined && s.estimatedCostUsd > 0) {
+      cost = `, $${s.estimatedCostUsd.toFixed(3)}`;
+    }
+    parts.push(`${t} tokens${cost}`);
   }
   if (s.model) parts.push(s.model);
   return `[${parts.join(" \u00b7 ")}]`;

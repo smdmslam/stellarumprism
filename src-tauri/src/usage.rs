@@ -1,5 +1,5 @@
-use std::fs::OpenOptions;
-use std::io::Write;
+use std::fs::{self, OpenOptions};
+use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
 use chrono::Utc;
@@ -25,6 +25,22 @@ pub struct UsageEvent {
     pub cancelled: bool,
     pub estimated_cost_usd: f64,
     pub pricing_basis: PricingBasis,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UsageSummary {
+    pub session_tokens: u32,
+    pub session_cost_usd: f64,
+    pub today_tokens: u32,
+    pub today_cost_usd: f64,
+    pub by_model: Vec<ModelUsage>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ModelUsage {
+    pub model: String,
+    pub tokens: u32,
+    pub cost_usd: f64,
 }
 
 pub fn emit_usage_event(
@@ -70,6 +86,73 @@ pub fn emit_usage_event(
             let _ = append_to_file(path, format!("{}\n", json));
         }
     }
+}
+
+#[tauri::command]
+pub fn get_usage_summary(chat_id: String) -> Result<UsageSummary, String> {
+    let path = usage_file_path().ok_or("cannot resolve usage file path")?;
+    if !path.exists() {
+        return Ok(UsageSummary {
+            session_tokens: 0,
+            session_cost_usd: 0.0,
+            today_tokens: 0,
+            today_cost_usd: 0.0,
+            by_model: Vec::new(),
+        });
+    }
+
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+    let now = Utc::now();
+    let today_prefix = now.format("%Y-%m-%d").to_string();
+
+    let mut session_tokens = 0;
+    let mut session_cost = 0.0;
+    let mut today_tokens = 0;
+    let mut today_cost = 0.0;
+    let mut model_map: std::collections::HashMap<String, (u32, f64)> = std::collections::HashMap::new();
+
+    for line in reader.lines() {
+        let Ok(l) = line else { continue };
+        let Ok(event) = serde_json::from_str::<UsageEvent>(&l) else { continue };
+
+        let is_today = event.timestamp.starts_with(&today_prefix);
+        let is_session = event.chat_id == chat_id;
+
+        if is_today {
+            today_tokens += event.total_tokens;
+            today_cost += event.estimated_cost_usd;
+        }
+
+        if is_session {
+            session_tokens += event.total_tokens;
+            session_cost += event.estimated_cost_usd;
+        }
+
+        let entry = model_map.entry(event.model).or_insert((0, 0.0));
+        entry.0 += event.total_tokens;
+        entry.1 += event.estimated_cost_usd;
+    }
+
+    let mut by_model: Vec<ModelUsage> = model_map
+        .into_iter()
+        .map(|(model, (tokens, cost_usd))| ModelUsage {
+            model,
+            tokens,
+            cost_usd,
+        })
+        .collect();
+    
+    // Sort by cost descending
+    by_model.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
+
+    Ok(UsageSummary {
+        session_tokens,
+        session_cost_usd: session_cost,
+        today_tokens,
+        today_cost_usd: today_cost,
+        by_model,
+    })
 }
 
 fn usage_file_path() -> Option<PathBuf> {

@@ -1110,6 +1110,12 @@ export class Workspace {
       void this.handleVerifyCommand(arg);
       return;
     }
+    // /usage — print AI consumption summary.
+    const usageMatch = /^\s*\/usage\s*$/i.exec(text);
+    if (usageMatch) {
+      void this.handleUsageCommand();
+      return;
+    }
     // /cd <path> — issue a real `cd` to the shell with shell-safe quoting.
     const cdSlash = /^\s*\/cd\s+(.+)$/i.exec(text);
     if (cdSlash) {
@@ -1386,7 +1392,7 @@ export class Workspace {
     });
   }
 
-  private async handleVerifyCommand(arg: string): Promise<void> {
+  async handleVerifyCommand(arg: string): Promise<void> {
     const v = this.agent.getVerifier();
     if (arg === "" || arg === "status") {
       this.notify(
@@ -1414,6 +1420,47 @@ export class Workspace {
     }
     await this.agent.setVerifierModel(resolved);
     this.notify(`[verify] reviewer model = ${stripAnsi(resolved)}`);
+  }
+
+  private async handleUsageCommand(): Promise<void> {
+    try {
+      const summary = await invoke<{
+        session_tokens: number;
+        session_cost_usd: number;
+        today_tokens: number;
+        today_cost_usd: number;
+        by_model: { model: string; tokens: number; cost_usd: number }[];
+      }>("get_usage_summary", { chat_id: this.id });
+
+      const RESET = "\x1b[0m";
+      const BOLD = "\x1b[1m";
+      const DIM = "\x1b[2m";
+      const GREEN = "\x1b[32m";
+      const CYAN = "\x1b[36m";
+      const YELLOW = "\x1b[33m";
+
+      const formatCost = (c: number) => `$${c.toFixed(3)}`;
+      const formatTokens = (t: number) =>
+        t >= 1000 ? `${(t / 1000).toFixed(1)}k` : t.toString();
+
+      const out: string[] = [];
+      out.push(`${BOLD}AI Usage Summary${RESET}`);
+      out.push(`${DIM}Session: ${RESET}${BOLD}${formatTokens(summary.session_tokens)}${RESET} tokens, ${GREEN}${formatCost(summary.session_cost_usd)}${RESET}`);
+      out.push(`${DIM}Today:   ${RESET}${BOLD}${formatTokens(summary.today_tokens)}${RESET} tokens, ${GREEN}${formatCost(summary.today_cost_usd)}${RESET}`);
+      
+      if (summary.by_model.length > 0) {
+        out.push("");
+        out.push(`${BOLD}By Model${RESET} ${DIM}(all time)${RESET}`);
+        for (const m of summary.by_model) {
+          const modelName = m.model.split("/").pop() || m.model;
+          out.push(`  ${CYAN}${modelName.padEnd(24)}${RESET} ${BOLD}${formatTokens(m.tokens).padStart(6)}${RESET} tokens  ${GREEN}${formatCost(m.cost_usd)}${RESET}`);
+        }
+      }
+
+      this.notify(out.join("\r\n") + "\r\n");
+    } catch (e) {
+      this.notifyError(`[usage] failed to load summary: ${stripAnsi(String(e))}`);
+    }
   }
 
   /**

@@ -48,6 +48,7 @@ use skills::{list_skills, read_skill};
 use workspace_state::{
     read_latest_build_report, read_workspace_state, write_build_report, write_workspace_state,
 };
+use usage::get_usage_summary;
 use config::{
     get_agent_config, load_or_init, set_agent_model, set_verifier_enabled, set_verifier_model,
     ConfigState,
@@ -109,6 +110,7 @@ pub fn run() {
             write_recipe_report,
             list_skills,
             read_skill,
+            get_usage_summary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
