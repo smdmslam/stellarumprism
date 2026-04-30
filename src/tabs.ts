@@ -95,6 +95,30 @@ export class TabManager {
           // uses to sync the UI.
           this.opts.onSelectTab?.(this.activeId!);
         }
+      } else if (e.key === "j" || e.key === "J") {
+        e.preventDefault();
+        const ws = this.getActiveWorkspace();
+        if (ws) {
+          ws.toggleTerminal();
+          this.opts.onSelectTab?.(this.activeId!);
+        }
+      } else if (e.key === "l" || e.key === "L") {
+        e.preventDefault();
+        const ws = this.getActiveWorkspace();
+        if (ws) {
+          ws.toggleAgent();
+          this.opts.onSelectTab?.(this.activeId!);
+        }
+      } else if ((e.key === "p" || e.key === "P") && e.shiftKey) {
+        // \u2318+Shift+P toggles the file viewer pane. \u2318+P alone is reserved
+        // for the system / future file picker, so the shift modifier is
+        // required.
+        e.preventDefault();
+        const ws = this.getActiveWorkspace();
+        if (ws) {
+          ws.togglePreview();
+          this.opts.onSelectTab?.(this.activeId!);
+        }
       }
     });
   }

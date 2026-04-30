@@ -926,38 +926,32 @@ export class Workspace {
 
     const editorHost = this.root.querySelector<HTMLElement>(".editor-host")!;
 
-    // Global-feel keyboard shortcuts when the editor is focused.
+    // Tab-management shortcuts when the prompt editor is focused. The
+    // window-level handler in tabs.ts is the canonical owner of all of
+    // these (plus the layout-toggle shortcuts \u2318B/J/L/\u2318\u21e7P), so
+    // the layout shortcuts intentionally do NOT live here \u2014 having them
+    // in both places caused the toggle to double-fire when the editor
+    // happened to be focused. We keep tab-management bindings here so
+    // CodeMirror doesn't get a chance to claim \u2318T / \u2318W / \u23181-9 for
+    // its own commands before the user's intent is honored.
     editorHost.addEventListener("keydown", (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey;
       if (!isMod) return;
 
       const key = e.key.toLowerCase();
 
-      // Tab management (inherited)
       if (key === "t") {
         e.preventDefault();
+        e.stopPropagation();
         this.cb.onRequestNewTab();
       } else if (key === "w") {
         e.preventDefault();
+        e.stopPropagation();
         this.cb.onRequestClose(this.id);
       } else if (/^[1-9]$/.test(key)) {
         e.preventDefault();
+        e.stopPropagation();
         this.cb.onRequestSelectIndex(Number(key) - 1);
-      } 
-      // Layout toggles (new)
-      else if (key === "b") {
-        e.preventDefault();
-        this.toggleSidebar();
-      } else if (key === "j") {
-        e.preventDefault();
-        this.toggleTerminal();
-      } else if (key === "l") {
-        e.preventDefault();
-        this.toggleAgent();
-      } else if (key === "p" && e.shiftKey) {
-        // Cmd+Shift+P for preview (Cmd+P is usually file picker, so shift+P is safer)
-        e.preventDefault();
-        this.togglePreview();
       }
     });
   }

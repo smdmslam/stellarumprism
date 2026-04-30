@@ -285,7 +285,11 @@ function stepGlyph(state: CardStepState): string {
     case "skipped":
       return "\u2014";
     case "active":
-      return "\u25cf"; // CSS turns this into a spinner when state-active
+      // U+25D0 (CIRCLE WITH LEFT HALF BLACK) — has visible asymmetry so
+      // the CSS 360\u00b0 rotation actually reads as motion. The original
+      // \u25cf (full black circle) was rotation-symmetric, so the
+      // "spinner" looked frozen.
+      return "\u25d0";
     default:
       return "\u00b7";
   }
