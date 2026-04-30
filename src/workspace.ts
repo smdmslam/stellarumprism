@@ -414,8 +414,6 @@ export class Workspace {
               <span class="input-prefix" data-intent="command">\u276f</span>
               <span class="cwd-badge" title="Current working directory"></span>
               <span class="input-meta-spacer"></span>
-              <button class="new-chat-btn" type="button" title="Start a new chat" aria-label="Start a new chat">New</button>
-              
               <div class="pill-group">
                 <span class="model-badge" title="Agent model" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="Active model">...</span>
                 <div class="model-selector-menu" role="menu" hidden></div>
@@ -861,7 +859,6 @@ export class Workspace {
   private setupBadges(): void {
     const modelBadge = this.root.querySelector<HTMLElement>(".model-badge")!;
     const intentBadge = this.root.querySelector<HTMLElement>(".intent-badge")!;
-    const newChatBtn = this.root.querySelector<HTMLButtonElement>(".new-chat-btn");
 
     intentBadge.addEventListener("click", (e) => {
       e.preventDefault();
@@ -873,11 +870,6 @@ export class Workspace {
       e.preventDefault();
       e.stopPropagation();
       this.toggleModelMenu();
-    });
-    newChatBtn?.addEventListener("click", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.startNewConversation();
     });
 
     // Delegate menu item clicks.
@@ -919,7 +911,6 @@ export class Workspace {
     this.root.querySelector(".input-bar")?.addEventListener("mousedown", (e) => {
       const t = e.target as HTMLElement;
       if (t.classList.contains("intent-badge") || t.classList.contains("model-badge")) return;
-      if (t.classList.contains("new-chat-btn")) return;
       if (t.closest(".editor-host")) return;
       queueMicrotask(() => this.input.focus());
     });

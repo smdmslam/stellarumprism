@@ -305,25 +305,77 @@
 
 ---
 
-### Phase 7 — Skills System / Executable Skills (LOWER PRIORITY)
+### Phase 7 — Skills System (LLM-driven surfacing)
+**North star:** stored skills surface to the LLM as candidates; the LLM decides if any apply to the current turn and asks the user for permission to load one. Two distinct concepts that should NOT be conflated:
+  1. **Skill as knowledge** — markdown content the LLM can pull into context when relevant. Small. Ship first.
+  2. **Skill as executable** — runnable workflow that goes through the recipe lifecycle. Big. Defer until #1 is in users' hands and we have data on usage.
 
-#### 7.1 Wire skills into runtime behavior
-- **Status:** NOT STARTED
-- **Issue:** Make enabled skills actually influence agent behavior
-- **Why:** Skills should be discoverable and have observable effect
-- **Design:** Context injection, skill metadata in prompts
+7.1–7.4 are v1 (knowledge-only). Each step is independently shippable. Stop after 7.4, ship, watch real usage before opening 7.5+.
 
-#### 7.2 Structured executable skills (`prism-skill-v1`)
-- **Status:** NOT STARTED
-- **Issue:** Define contract, add loader/validator, add `/skill check|run|convert` commands
-- **Why:** Skills should run through same lifecycle as recipes (protocol cards, etc.)
-- **Complexity:** High (new system, ~500+ lines)
+**Why LLM-driven instead of keyword-matching:** users want stored knowledge to *surface* when relevant, not to manage a heuristic. The LLM already understands semantic intent better than any string-overlap scoring we'd hand-roll. Hit/miss is acknowledged — that's the cost of automation; users still control the final yes/no.
 
-#### 7.3 Optional agent-assisted skill builder
+#### 7.1 Define the v1 file format
 - **Status:** NOT STARTED
-- **Issue:** Agent can help formalize loose skills into structured runnable skills
-- **Why:** Lower friction for power users to capture workflows
-- **Note:** Lower priority; depends on 7.1–7.2 working well
+- **What:** A skill is a markdown file at `.prism/skills/<slug>.md` with a tiny YAML frontmatter:
+  - `name`: human-readable label
+  - `description`: one-line "when to use" hint (this is what the LLM sees — quality matters)
+  - body: free-form markdown that becomes the injected content when the skill is loaded
+- **Deliberate non-goals (v1):** no schema version, no validator, no `steps:`, no required fields beyond name + description.
+- **Description-style guidance (in the README):** lead with the trigger condition ("Use when …"), be specific about domain, keep under 100 chars. Vague descriptions cause over- or under-triggering by the LLM.
+- **Estimated scope:** docs only — `.prism/skills/README.md` describing format + description-style. ~40 lines.
+
+#### 7.2 `/skills` slash command (list + browse)
+- **Status:** NOT STARTED
+- **What:** New slash command that scans `.prism/skills/`, parses each file's frontmatter, renders a Discord-style table (name + description) in the agent panel.
+- **Mirrors:** `/models` (`renderModelsMarkdown` pattern in `slash-commands.ts`).
+- **Backend:** Tauri command `list_skills(cwd)` returning `[{slug, name, description}]`. Reading the body is deferred until the user actually uses one.
+- **Why before 7.3:** browsing is orthogonal to runtime use, gives users a way to confirm what's discoverable, and doubles as a debugging surface for the manifest the LLM will see.
+- **Estimated scope:** ~50 LOC TS + ~30 LOC Rust.
+
+#### 7.3 Skills toggle + LLM-driven `read_skill` tool (CORE FEATURE)
+- **Status:** NOT STARTED
+- **What:** The mechanism that makes skills surface ambiently:
+  1. New pill near CMD/AGENT: `skills off` / `skills on`. Same shape as the intent badge. State persisted per-tab in layout state.
+  2. When ON, the agent's system prompt gets a manifest line: `Available skills (call read_skill(slug) if any apply): react-debugging — Use when debugging a React component or hook; …`. Just name + description — cheap on context, no bodies.
+  3. New tool `read_skill(slug)` registered in the agent's toolset. Marked `requires_approval: true` so it slots into the existing per-call approval system (commit `058fbbc`).
+  4. When the LLM decides a skill applies, it calls the tool. User sees the standard approval card: "Read skill `react-debugging`?" with the description as context. Yes → tool returns the body, LLM continues with it in context. No → tool returns `"user declined"`, LLM proceeds without it.
+- **Why this design wins:**
+  - Replaces both keyword-matching and `@@<slug>` explicit invocation with one mechanism.
+  - Lazy: bodies only loaded when the LLM actually wants them; manifest is cheap.
+  - Reuses existing approval plumbing — no new consent UI to design.
+  - Self-explaining: the user sees WHICH skill and WHY (the description) before saying yes.
+- **Default state:** toggle OFF on first launch. Opt-in to keep the surface discoverable but never surprising.
+- **Trade-offs accepted:**
+  - One extra round-trip (~1s) when the LLM triggers a skill. Tolerable; only happens on confident matches.
+  - Manifest tokens per-turn when toggle is ON. Mitigated by short descriptions and the toggle.
+  - Hit/miss element on the LLM's part — acknowledged. Users still gate via Yes/No.
+- **Estimated scope:**
+  - Pill + toggle state + persistence: ~40 LOC TS
+  - Manifest assembly into systemPrefix: ~30 LOC TS
+  - `read_skill` tool registration + approval wiring: ~50 LOC TS + ~30 LOC Rust
+  - Approval card text rendering for the skill case: ~20 LOC TS
+- **Closes:** the original "wire skills into runtime" gap.
+
+#### 7.4 Per-skill enable/disable in settings
+- **Status:** NOT STARTED
+- **What:** Settings UI already references skills but doesn't affect runtime. Add a per-skill toggle list. Disabled skills are excluded from the manifest the LLM sees in 7.3.
+- **Mirrors:** `settings.isModelEnabled` pattern (already in `settings.ts`).
+- **Why useful:** users can hide noisy or unused skills without deleting the file. Also useful for project-specific skill sets across multiple repos.
+- **Estimated scope:** ~10 LOC plumbing + per-row toggle UI in existing settings panel.
+
+--- v1 stops here. Ship and watch. ---
+
+#### 7.5 Structured executable skills (`prism-skill-v1`)
+- **Status:** NOT STARTED. **Do not start until 7.1–7.4 are shipped and used.**
+- **What:** Extend the spec with optional `steps:` block (same shape as recipes), reuse the recipe runner + ProtocolReportCard, add `/skill run <slug>`.
+- **Why deferred:** ~500 LOC of new validator + lifecycle, and may be the wrong abstraction. Recipes already exist for runnable workflows; if knowledge-skills + recipes covers 95% of use cases, this is dead weight.
+- **Decision gate:** revisit after 30 days of v1 usage. Are users repeatedly asking for runnable skills? Are they trying to put `steps:` in their markdown anyway?
+
+#### 7.6 Agent-assisted skill builder
+- **Status:** NOT STARTED
+- **What:** Agent helps formalize loose skills into structured runnable skills.
+- **Dependencies:** 7.5 must be shipped and used first.
+- **Note:** Lowest priority in this phase — nice-to-have for power users, not a needle-mover.
 
 ---
 
@@ -476,17 +528,17 @@
 
 | Phase | Items | Status | Notes |
 |-------|-------|--------|-------|
-| **1** Trust & Safety | 5 | 4/5 DONE | File-editor slash needs E2E verification |
-| **2** Daily-use | 8 | 7/8 DONE | Code-block contrast not yet started |
-| **3** File Explorer | 6 | 5/6 DONE | Resize polish not yet started |
-| **4** Protocols | 5 | 1/5 DONE | Card is polished; UI menu not started |
+| **1** Trust & Safety | 5 | 4/5 DONE | File-editor slash verified clean (this session) |
+| **2** Daily-use | 9 | 7/9 DONE | Code-block contrast + agent-pane Cmd+F not yet started |
+| **3** File Explorer | 7 | 6/7 DONE | File viewer Cmd+F shipped this session; resize polish remaining |
+| **4** Protocols | 5 | 1/5 DONE | Card polished + spinner glyph fixed; UI menu not started |
 | **5** AI Usage / Billing | 8 | 0/8 DONE | **CRITICAL PATH** — needs planning |
 | **6** Analysis Engine | 2 | 0/2 DONE | Requires verifier methodology work |
-| **7** Skills | 3 | 0/3 DONE | Infrastructure not started |
+| **7** Skills | 6 | 0/6 DONE | LLM-driven plan: 7.1–7.4 = v1, 7.5–7.6 deferred |
 | **8** Plumbing | 5 | 3/5 DONE | Mostly cleanup, minor issues remain |
 | **9** Backlog | 4 | 0/4 DONE | Nice-to-have, deprioritized |
 
-**Overall:** 23/46 items DONE (~50%) | 15 items IN PROGRESS / PARTIAL | 8 items CRITICAL PATH (billing)
+**Overall:** 24/51 items DONE (~47%) | several IN PROGRESS / PARTIAL | Phase 5 still CRITICAL PATH (billing)
 
 ---
 
@@ -519,5 +571,5 @@
 
 ---
 
-**Last Updated:** 2026-04-30 by Prism audit system  
+**Last Updated:** 2026-04-30 (skills LLM-driven plan + Cmd+F items)  
 **Format:** Reorganized from sequential to TODO ↔ DONE for clarity and planning
