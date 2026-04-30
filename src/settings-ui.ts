@@ -751,6 +751,9 @@ export class SettingsUI {
         by_model: { model: string; tokens: number; cost_usd: number }[];
       }>("get_usage_summary", { chat_id: chatId });
 
+      const subInfo = await invoke<{ tier: string }>("get_subscription_info");
+      const isPro = subInfo.tier === "Pro";
+
       const formatCost = (c: number) => `$${c.toFixed(3)}`;
       const formatTokens = (t: number) =>
         t >= 1000 ? `${(t / 1000).toFixed(1)}k` : t.toString();
@@ -805,12 +808,46 @@ export class SettingsUI {
             </tbody>
           </table>
         </div>
+        
+        <div class="usage-subscription-section" style="margin-top: 32px; border-top: 1px solid #1f2937; padding-top: 24px;">
+          <h3 style="font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 8px;">Subscription Tier</h3>
+          <div style="display: flex; align-items: center; justify-content: space-between; background: #1f2937; padding: 12px 16px; border-radius: 8px;">
+            <div>
+              <div style="font-size: 14px; color: #e5e7eb; font-weight: 500;">${isPro ? "Pro Plan" : "Free Tier"}</div>
+              <div style="font-size: 11px; color: #94a3b8;">${isPro ? "Unlimited token capacity" : "500k tokens daily limit"}</div>
+            </div>
+            ${isPro ? `
+              <div style="background: #059669; color: white; padding: 4px 12px; border-radius: 99px; font-size: 11px; font-weight: 600;">Current Plan</div>
+            ` : `
+              <button id="upgrade-pro-btn" class="settings-action-btn" style="background: #3b82f6; color: white; border: none; padding: 6px 16px; border-radius: 4px; font-weight: 600; font-size: 12px; cursor: pointer;">Upgrade to Pro</button>
+            `}
+          </div>
+        </div>
+
         <p style="font-size: 10px; color: #6b7280; margin-top: 16px; line-height: 1.4;">
           * Costs are estimated based on standard OpenRouter pricing and may vary slightly from your actual bill.
         </p>
       `;
 
       container.innerHTML = html;
+
+      // Wire upgrade button
+      const upgradeBtn = document.getElementById("upgrade-pro-btn") as HTMLButtonElement;
+      if (upgradeBtn) {
+        upgradeBtn.addEventListener("click", async () => {
+          try {
+            upgradeBtn.disabled = true;
+            upgradeBtn.textContent = "Processing...";
+            await invoke("upgrade_to_pro");
+            alert("Success! You are now on the Pro plan with unlimited token capacity.");
+            this.renderUsage(); // Refresh UI
+          } catch (e) {
+            alert(`Upgrade failed: ${e}`);
+            upgradeBtn.disabled = false;
+            upgradeBtn.textContent = "Upgrade to Pro";
+          }
+        });
+      }
     } catch (e) {
       container.innerHTML = `<div class="error-state">Failed to load usage data: ${escapeHtml(String(e))}</div>`;
     }

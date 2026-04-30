@@ -170,3 +170,32 @@ fn append_to_file(path: PathBuf, data: String) -> std::io::Result<()> {
         .open(path)?;
     file.write_all(data.as_bytes())
 }
+
+pub fn get_total_today_tokens() -> u64 {
+    let path = match usage_file_path() {
+        Some(p) => p,
+        None => return 0,
+    };
+
+    if !path.exists() {
+        return 0;
+    }
+
+    let now = Utc::now();
+    let today_str = now.format("%Y-%m-%d").to_string();
+    let mut total = 0u64;
+
+    if let Ok(file) = File::open(path) {
+        let reader = BufReader::new(file);
+        for line in reader.lines() {
+            if let Ok(l) = line {
+                if let Ok(event) = serde_json::from_str::<UsageEvent>(&l) {
+                    if event.timestamp.starts_with(&today_str) {
+                        total += (event.prompt_tokens + event.completion_tokens) as u64;
+                    }
+                }
+            }
+        }
+    }
+    total
+}

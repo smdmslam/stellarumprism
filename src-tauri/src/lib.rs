@@ -10,6 +10,7 @@ mod approval;
 mod config;
 mod usage;
 mod pricing;
+mod billing;
 // Substrate cells are exposed at the crate root so the `prism-audit`
 // CLI binary (and any future Rust consumer) can call them directly
 // without going through the Tauri command surface.
@@ -111,6 +112,8 @@ pub fn run() {
             list_skills,
             read_skill,
             get_usage_summary,
+            billing::get_subscription_info,
+            billing::upgrade_to_pro,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

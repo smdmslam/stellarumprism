@@ -1452,6 +1452,20 @@ pub async fn agent_query(
         ));
     }
 
+    // Quota enforcement
+    let sub = crate::billing::load_subscription();
+    if sub.tier == crate::billing::SubscriptionTier::Free {
+        if let Some(quota) = sub.daily_token_quota {
+            let used = crate::usage::get_total_today_tokens();
+            if used >= quota {
+                return Err(format!(
+                    "Daily token quota exceeded ({}/{} used today). Upgrade to Pro for unlimited agent capacity.",
+                    used, quota
+                ));
+            }
+        }
+    }
+
     // Resolve the runtime-probe base URL once per turn:
     //   1. Explicit `agent.dev_server_url` from config wins.
     //   2. Otherwise infer from project shape (vite \u{2192} 5173, next \u{2192} 3000,
