@@ -217,6 +217,10 @@ export class Workspace {
    * fallbacks so a fresh workspace renders identically to v0.
    */
   private layout: LayoutPrefs = { ...DEFAULT_LAYOUT };
+  /** Keywords from the previous plain-chat user prompt (topic-shift nudge heuristic). */
+  private lastChatTopicKeywords: string[] = [];
+  /** Prevent repeated "topic changed" nudges in one conversation. */
+  private topicShiftNudged = false;
   /**
    * Tracks the most recently interacted-with divider so the
    * Cmd+Opt+[/] keyboard nudge knows what to move when no divider has
@@ -1369,6 +1373,11 @@ export class Workspace {
       maxToolRounds?: number;
     } = {},
   ): Promise<void> {
+    // Contextual nudge: if a plain chat prompt looks like a topic pivot in a
+    // long thread, suggest starting a fresh chat.
+    if (!options.mode) {
+      this.maybeNudgeTopicShift(prompt);
+    }
     // Grounded-Chat protocol: when this is a regular chat turn (no
     // mode-specific persona like /audit, /fix, /build active) and the
     // prompt looks like an inspectable factual question, send the
@@ -2464,9 +2473,36 @@ export class Workspace {
     void this.agent.newSession().then(() => {
       this.title = "New Tab";
       this.autoTitleDone = false;
+      this.lastChatTopicKeywords = [];
+      this.topicShiftNudged = false;
       this.cb.onTitleChange(this.id, this.title);
       this.notify("[agent] new session \u2014 history cleared and title reset");
     });
+  }
+
+  /**
+   * If this looks like a new topic in a long chat thread, emit a one-time
+   * nudge to start a fresh conversation for better focus.
+   */
+  private maybeNudgeTopicShift(prompt: string): void {
+    if (this.topicShiftNudged) return;
+    const messageCount = this.agent.getMessageCount();
+    // Wait until the thread has enough context to make "topic drift" meaningful.
+    if (messageCount < 24) return; // ~12 turns
+    const nextKeywords = topicKeywords(prompt);
+    if (nextKeywords.length < 3) return;
+    if (this.lastChatTopicKeywords.length === 0) {
+      this.lastChatTopicKeywords = nextKeywords;
+      return;
+    }
+    const overlap = keywordOverlapRatio(this.lastChatTopicKeywords, nextKeywords);
+    this.lastChatTopicKeywords = nextKeywords;
+    if (overlap > 0.2) return;
+    this.topicShiftNudged = true;
+    this.agentView?.appendNotice(
+      "router",
+      "This looks like a new topic. Consider starting a new chat (New button or `/clear`) to keep context focused.",
+    );
   }
 
   private updateModelBadge(): void {
@@ -4515,6 +4551,37 @@ function shortStamp(): string {
   const d = new Date();
   const pad = (n: number) => n.toString().padStart(2, "0");
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+const TOPIC_STOPWORDS = new Set([
+  "the","and","for","with","this","that","from","into","about","what","when","where","which",
+  "would","could","should","have","has","had","your","you","are","was","were","can","cant",
+  "will","just","need","want","please","make","build","fix","help","then","also","than",
+]);
+
+function topicKeywords(input: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const parts = input.toLowerCase().match(/[a-z0-9_]+/g) ?? [];
+  for (const raw of parts) {
+    if (raw.length < 4) continue;
+    if (TOPIC_STOPWORDS.has(raw)) continue;
+    if (seen.has(raw)) continue;
+    seen.add(raw);
+    out.push(raw);
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
+function keywordOverlapRatio(a: string[], b: string[]): number {
+  if (a.length === 0 || b.length === 0) return 0;
+  const aset = new Set(a);
+  let overlap = 0;
+  for (const k of b) {
+    if (aset.has(k)) overlap++;
+  }
+  return overlap / Math.min(a.length, b.length);
 }
 
 /** Compact byte formatter for status lines. */
