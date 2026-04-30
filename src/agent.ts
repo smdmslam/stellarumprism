@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import type { BlockManager } from "./blocks";
-import { route as routeModel, parseAutoSlug, PRESETS } from "./router";
 import { modelSupportsToolUse } from "./models";
 import type { AgentViewApi } from "./agent-view";
 import { detectRigorViolation } from "./grounded-rigor";
@@ -18,10 +17,10 @@ import type { RuntimeProbe, SubstrateRun } from "./findings";
 
 /**
  * Universal tool-capable fallback used when the resolved model can't do
- * tool calling AND we're not in an auto preset (so no preset.default to
- * fall back to). Kimi is in every preset's pool and supports tools.
+ * tool calling. Gemini 2.5 Flash is the project default chat model,
+ * supports tools, and is cheap, so it's a safe last-resort swap.
  */
-const UNIVERSAL_TOOL_FALLBACK = "moonshotai/kimi-k2.5";
+const UNIVERSAL_TOOL_FALLBACK = "google/gemini-2.5-flash";
 
 // ---------------------------------------------------------------------------
 // Types shared with the Rust side
@@ -598,8 +597,7 @@ export class AgentController {
 
     // Decide the actual model. Priority:
     //   1. options.modelOverride (e.g. a mode's preferred model)
-    //   2. Auto-preset router (when this.model is "auto-*" / "auto")
-    //   3. The session's explicit model (set via /model <slug>)
+    //   2. The session's explicit model (set via /model <slug>)
     let resolvedModel = this.model;
     if (options.modelOverride) {
       resolvedModel = options.modelOverride;
@@ -608,40 +606,16 @@ export class AgentController {
         "router",
         `\u2192 [${label}] ${shortSlug(resolvedModel)}`,
       );
-    } else {
-      const preset = parseAutoSlug(this.model);
-      if (preset !== null) {
-        const decision = routeModel(
-          prompt,
-          {
-            hasImages: images.length > 0,
-            hasAtRefs: /(?:^|\s)@[A-Za-z0-9._~/+-]/.test(prompt),
-            // Prism's agent loop always attaches tool schemas.
-            requireToolUse: true,
-          },
-          preset,
-        );
-        resolvedModel = decision.slug;
-        this.opts.view.appendNotice(
-          "router",
-          `\u2192 [auto/${preset}] ${shortSlug(resolvedModel)} (${decision.reason})`,
-        );
-      }
     }
 
-    // Hard-gate (belt-and-braces): even when the router didn't run
-    // (user explicitly set `/model sonar`, say), never send tool schemas
-    // to a non-tool-capable model. Swap to a safe fallback and warn.
+    // Hard-gate (belt-and-braces): never send tool schemas to a
+    // non-tool-capable model. Swap to the universal fallback and warn.
     if (!modelSupportsToolUse(resolvedModel)) {
-      const presetForFallback = parseAutoSlug(this.model);
-      const fallback = presetForFallback
-        ? PRESETS[presetForFallback].default
-        : UNIVERSAL_TOOL_FALLBACK;
       this.opts.view.appendNotice(
         "router",
-        `[router] ${shortSlug(resolvedModel)} doesn't support tool use; using ${shortSlug(fallback)} for this turn`,
+        `[router] ${shortSlug(resolvedModel)} doesn't support tool use; using ${shortSlug(UNIVERSAL_TOOL_FALLBACK)} for this turn`,
       );
-      resolvedModel = fallback;
+      resolvedModel = UNIVERSAL_TOOL_FALLBACK;
     }
     // Stash the model we're actually using so onAuditComplete can report it.
     this.currentResolvedModel = resolvedModel;

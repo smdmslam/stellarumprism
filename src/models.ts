@@ -232,10 +232,9 @@ export function modelSupportsToolUse(slug: string): boolean {
 
 /** Resolve an alias or full slug to a concrete model slug (case-insensitive).
  *
- *  Auto presets are no longer surfaced in the picker, but the virtual
- *  slugs `auto-agentic` / `auto-frontier` / `auto-thrifty` are still
- *  honored downstream via `parseAutoSlug` in router.ts so any saved
- *  config carrying one of those values keeps working. */
+ *  Auto presets have been removed entirely. Saved configs carrying
+ *  legacy `auto-*` values are migrated to a concrete default by the
+ *  Rust-side `load_or_init` on app start. */
 export function resolveModel(input: string): string | null {
   const q = input.trim().toLowerCase();
   if (q.length === 0) return null;

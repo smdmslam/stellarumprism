@@ -166,7 +166,9 @@ fn default_verifier_enabled() -> bool {
     true
 }
 fn default_verifier_model() -> String {
-    "anthropic/claude-haiku-4.5".into()
+    // Qwen3 235B at ~$0.30/$0.90 — 5–10x cheaper than Haiku for the
+    // verifier doubler that fires on every chat turn ≥ min_chars.
+    "qwen/qwen3-235b-a22b-2507".into()
 }
 fn default_verifier_min_chars() -> usize {
     200
@@ -181,10 +183,13 @@ pub struct Config {
 }
 
 fn default_model() -> String {
-    // Haiku is the new baseline default — Gemini Flash was pulled from the
-    // auto flow for being too lazy on this project. Users can still point
-    // at any slug via `/model <slug>` or by editing config.toml.
-    "anthropic/claude-haiku-4.5".into()
+    // Gemini 2.5 Flash is the new baseline default: $0.30/$2.50, 1M
+    // context, vision, thinking mode. Cheap enough for casual chat where
+    // Haiku's premium pricing was wasted, plus the verifier (which fires
+    // on every long turn) doubles every primary call so the default
+    // model's per-token cost matters a lot. Users can still point at any
+    // slug via `/model <slug>` or by editing config.toml.
+    "google/gemini-2.5-flash".into()
 }
 fn default_base_url() -> String {
     "https://openrouter.ai/api/v1".into()
@@ -345,7 +350,7 @@ pub fn load_or_init() -> Config {
 
 [openrouter]
 api_key = ""
-default_model = "anthropic/claude-haiku-4.5"
+default_model = "google/gemini-2.5-flash"
 # base_url = "https://openrouter.ai/api/v1"
 
 [agent]
@@ -357,7 +362,26 @@ default_model = "anthropic/claude-haiku-4.5"
     }
 
     match fs::read_to_string(&path) {
-        Ok(contents) => toml::from_str::<Config>(&contents).unwrap_or_default(),
+        Ok(contents) => {
+            let mut cfg: Config = toml::from_str(&contents).unwrap_or_default();
+            // Migration: auto-preset routing was removed. Any config
+            // that still carries an "auto" / "auto-*" slug would be
+            // sent to OpenRouter verbatim and rejected. Replace with
+            // the concrete default and persist the rewrite so the
+            // user never sees the legacy value again.
+            if cfg.openrouter.default_model.starts_with("auto") {
+                let legacy = cfg.openrouter.default_model.clone();
+                cfg.openrouter.default_model = default_model();
+                if let Ok(serialized) = toml::to_string_pretty(&cfg) {
+                    let _ = fs::write(&path, serialized);
+                }
+                eprintln!(
+                    "[config] migrated legacy default_model={:?} -> {:?}",
+                    legacy, cfg.openrouter.default_model
+                );
+            }
+            cfg
+        }
         Err(_) => Config::default(),
     }
 }

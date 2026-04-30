@@ -297,25 +297,21 @@
   - Backend (filtered out of UI): `sonar` (web_search backbone)
 - **What got dropped:** kimi, qwen3.6, deepseek, qwen (qwen3-next-80b), gpt-oss, step, devstral, codestral, mercury, gpt5-mini, scout, grok-fast, minimax.
 
-#### 5.10 Verifier-cost audit
-- **Status:** NOT STARTED
-- **Issue:** Every agent turn (when verifier is on) fires a *second* model call for review. If the verifier defaults to Haiku ($1 in / $5 out), every chat turn is paying frontier-light prices twice. This is a likely silent driver of the OpenRouter burn.
-- **Action:**
-  1. Confirm the current verifier-default model in `src/agent.ts` (`verifierModel` field).
-  2. Switch to a cheaper verifier that's still rigorous enough to catch grounded-chat violations. Candidates: Qwen 235B (~$0.30/$0.90), GLM-5 (~$0.30/$1.50). The verifier doesn't need to be frontier; it reads structure.
-  3. Optional: make the verifier conditional \u2014 only run for grounded-chat turns or audit/build modes, not casual chat.
-- **Why this is high-leverage:** if verifier is defaulted to a $$$ model, switching to $ cuts review cost ~3\u20135\u00d7 across *every* turn that triggers it.
-- **Estimated scope:** ~10 LOC config change + a one-paragraph rationale in the commit. Real work is the calibration: verify the cheap verifier still catches the rigor-violation patterns.
+#### 5.10 Verifier-cost audit — model swap DONE; conditionality remaining
+- **Status:** PARTIAL (model swap shipped this session; conditional firing deferred)
+- **What shipped:** `default_verifier_model()` in `src-tauri/src/config.rs` switched from `anthropic/claude-haiku-4.5` ($1/$5) to `qwen/qwen3-235b-a22b-2507` (~$0.30/$0.90). On every long chat turn the verifier doubler now runs at ~5–10× lower cost than the previous Haiku-on-Haiku setup.
+- **Remaining (Fix 4, separate PR after data lands):** make the verifier conditional — only fire on `grounded` / `audit` / `build` / `test-gen` turns, not casual chat. Casual chat is the highest-volume path and almost never produces the kind of fabricated citations the verifier was designed to catch. Decision deferred until ~1 week of `usage.jsonl` data exists (Phase 5 v0) so we can quantify how many casual-turn verifier calls we'd be skipping.
 
-#### 5.11 Default-model + auto-thrifty preset review
-- **Status:** NOT STARTED
-- **Issue:** If the default chat model is GPT-5.4 or Haiku, every casual question costs premium rates. The `auto-thrifty` preset exists in `router.ts` and is supposed to route cheap-by-default \u2014 but it isn't currently the shipped default.
-- **Action:**
-  1. Audit what's set as the default in fresh installs (`src-tauri/src/config.rs` + first-run config write).
-  2. If GPT-5.4 or Haiku, switch to `auto-thrifty` so chat gets routed cheap.
-  3. Re-confirm `auto-thrifty`'s pool routes to the surviving 8 models post-trim (was probably referencing some of the removed ones).
-- **Why this is the bigger lever:** chat is the most frequent path. Cutting per-chat-turn cost by 3\u20135\u00d7 dwarfs anything else.
-- **Estimated scope:** ~30 LOC. Mostly auditing the current routing tables in `router.ts` and updating `auto-thrifty`'s pool to the 8-model set.
+#### 5.11 Default-model + auto-preset removal ✅ DONE (this session)
+- **Status:** IMPLEMENTED
+- **What changed:**
+  1. **Auto-preset router deleted entirely.** `src/router.ts` removed (was ~217 LOC: `PRESETS` table, `parseAutoSlug`, `route()`, `softPick()`). All call sites in `src/agent.ts` rewired around the simpler "override-or-session-model" path. The `frontier`/`agentic`/`thrifty` pools were referencing models trimmed in 5.9 (kimi, qwen3.6, deepseek, step, gpt-oss) so the slugs were silently bypassing calibration via OpenRouter passthrough — a latent footgun.
+  2. **Default chat model** flipped from `anthropic/claude-haiku-4.5` ($3/$15) to `google/gemini-2.5-flash` ($0.30/$2.50). Gemini Flash has 1M context, vision, thinking mode, and is ~10× cheaper. `UNIVERSAL_TOOL_FALLBACK` in `src/agent.ts` updated to match (was a removed kimi slug).
+  3. **Migration on app start:** `load_or_init` in `src-tauri/src/config.rs` now detects any `default_model` starting with `"auto"` (legacy users), rewrites to the concrete default, persists, and logs. Saved configs carrying `auto-thrifty` / `auto-frontier` / etc. would otherwise be sent verbatim to OpenRouter and rejected.
+  4. **First-run template** in `load_or_init` updated to `"google/gemini-2.5-flash"` so fresh installs get the cheap default.
+  5. **`resolveModel` comment in `src/models.ts`** updated to reflect the removal (was claiming `parseAutoSlug` still honored auto slugs downstream).
+- **Why this is the bigger lever:** chat is the most frequent path. Cutting per-chat-turn cost ~10× (Haiku→Flash) plus halving the doubler (5.10) means the typical casual turn dropped from ~$0.001–0.005 to a fraction of that.
+- **Net diff:** ~250 LOC removed, ~30 LOC added, both `tsc --noEmit` + `cargo check --lib` clean.
 
 ---
 
@@ -578,6 +574,13 @@ The alternative (one-shot per call) was considered and rejected: it forces the L
 - Final default-on set: gpt-5.4, gemini-2.5-pro, gemini-flash-latest, gemini-2.5-flash, grok-4-fast, haiku, glm-5, qwen-235b
 - Policy: registry = endorsed set. No `enabled: false` parking lot.
 - Power-user escape hatch: `/model provider/full-slug` still passes any OpenRouter slug through verbatim
+
+✅ **Auto-preset removal + default model + verifier swap** (this session, item 5.11 DONE / 5.10 partial)
+- Deleted `src/router.ts` and the auto-preset routing block in `src/agent.ts`. Auto presets had been bypassing calibration via OpenRouter passthrough since 5.9 trimmed several models the pools still referenced.
+- Default chat: `anthropic/claude-haiku-4.5` → `google/gemini-2.5-flash` (~10× cheaper, 1M ctx, vision, thinking).
+- Default verifier: `anthropic/claude-haiku-4.5` → `qwen/qwen3-235b-a22b-2507` (~5–10× cheaper for the doubler that fires on every long turn).
+- Migration in `load_or_init` rewrites legacy `auto-*` configs to the concrete default and persists.
+- Verifier conditionality (only fire on grounded/audit/build) deferred to Fix 4 — separate PR after Phase 5 v0 usage data lands.
 
 ### Skills (Phase 7, foundation/curation)
 
