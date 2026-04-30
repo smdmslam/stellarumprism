@@ -3141,6 +3141,20 @@ export class Workspace {
     addItem("Rename", "✏", () => {
       void this.promptRenameTreeItem(path);
     });
+    // Delete is files-only for now \u2014 the Rust `remove_file` command
+    // refuses directories, and recursive dir delete is intentionally
+    // deferred to a dedicated tree-removal command (see file_ref.rs:737).
+    // Hiding the option for dirs is friendlier than letting it fail.
+    if (kind === "file") {
+      addItem(
+        "Delete",
+        "\u2421", // DELETE SYMBOL \u2014 monochrome, matches sibling icons
+        () => {
+          void this.promptDeleteTreeItem(path);
+        },
+        true,
+      );
+    }
 
     // -- Backdrop + positioning + escape ------------------------------------
     const backdrop = document.createElement("div");
@@ -3288,6 +3302,45 @@ export class Workspace {
       void this.refreshFileTreeRoot();
     } catch (err) {
       window.alert(`Rename failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Prompt the user to confirm deleting a file, then call the Rust
+   * `remove_file` command. Confirmation goes through the same
+   * `askConfirm` modal used elsewhere so the user sees a familiar
+   * Yes/No card with the filename in the body. On success we close
+   * the editor (if the deleted file was open) and refresh the tree
+   * so the row disappears.
+   *
+   * Files-only \u2014 caller already gates by `kind === "file"`. We pass
+   * `kind` through anyway so the function is self-contained if
+   * the gate is ever loosened.
+   */
+  private async promptDeleteTreeItem(path: string): Promise<void> {
+    const name = path.split("/").pop() ?? path;
+    const decision = await this.askConfirm({
+      title: "Delete file?",
+      body: `${name} will be permanently deleted from disk. This can't be undone from Prism.`,
+    });
+    if (!decision.choice) return;
+    try {
+      await invoke("remove_file", { cwd: this.cwd, path });
+      // If the deleted file was open in the editor, close it so the
+      // stale path reference doesn't linger as a phantom buffer.
+      if (this.openFilePath === path) this.closeFileEditor();
+      // Drop cached children so the now-deleted row stops showing
+      // under any expanded parent. Mirrors the post-rename refresh.
+      this.fileTreeRootLoaded = false;
+      this.treeState = {
+        ...this.treeState,
+        childrenByPath: new Map(),
+        loadStateByPath: new Map(),
+      };
+      await this.refreshFileTreeRoot();
+      this.notify(`[files] deleted ${stripAnsi(path)}`);
+    } catch (err) {
+      window.alert(`Could not delete: ${String(err)}`);
     }
   }
 
