@@ -33,12 +33,7 @@ import {
   highlightActiveLine,
   keymap,
   lineNumbers,
-  // WidgetType,
-  // ViewPlugin,
-  // ViewUpdate,
 } from "@codemirror/view";
-// import { marked } from "marked";
-// import hljs from "highlight.js";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
   syntaxHighlighting,
@@ -221,124 +216,6 @@ const diagnosticsGutter = gutter({
   initialSpacer: () => new DiagnosticGutterMarker("info", ""),
 });
 
-/**
- * Widget that renders a rendered HTML preview of a markdown block (heading,
- * code block, etc.) directly in the editor flow.
- */
-/*
-class MarkdownPreviewWidget extends WidgetType {
-  constructor(readonly html: string) {
-    super();
-  }
-
-  toDOM() {
-    const div = document.createElement("div");
-    div.className = "markdown-preview-widget";
-    div.innerHTML = this.html;
-    return div;
-  }
-
-  ignoreEvent() {
-    return true; // Let the editor handle clicks for editing
-  }
-}
-*/
-
-/**
- * View plugin that scans the document for markdown structures and injects
- * preview widgets. Dynamic: re-scans on edit or viewport change.
- */
-// const markdownPreviewPlugin = ViewPlugin.fromClass(
-//   class {
-//     decorations: DecorationSet;
-// 
-//     constructor(view: EditorView) {
-//       this.decorations = this.buildDecorations(view);
-//     }
-// 
-//     update(update: ViewUpdate) {
-//       if (update.docChanged || update.viewportChanged) {
-//         this.decorations = this.buildDecorations(update.view);
-//       }
-//     }
-// 
-//     private buildDecorations(view: EditorView) {
-//       const builder = new RangeSetBuilder<Decoration>();
-//       const content = view.state.doc.toString();
-//       const lines = content.split("\n");
-//       let pos = 0;
-// 
-//       for (let i = 0; i < lines.length; i++) {
-//         const line = lines[i];
-//         const lineStart = pos;
-// 
-//         // Render headings (H1-H6)
-//         if (line.match(/^#{1,6}\s/)) {
-//           try {
-//             const html = marked.parse(line) as string;
-//             builder.add(
-//               lineStart,
-//               lineStart,
-//               Decoration.widget({
-//                 widget: new MarkdownPreviewWidget(html),
-//                 side: -1,
-//                 block: true,
-//               }),
-//             );
-//           } catch (e) {
-//             console.warn("Markdown preview error", e);
-//           }
-//         }
-// 
-//         // Render code block starts
-//         if (line.trim().startsWith("```")) {
-//           const lang = line.trim().slice(3);
-//           let codeLines: string[] = [];
-//           let j = i + 1;
-//           while (j < lines.length && !lines[j].trim().startsWith("```")) {
-//             codeLines.push(lines[j]);
-//             j++;
-//           }
-//           if (j < lines.length) {
-//             const code = codeLines.join("\n");
-//             let highlighted = code;
-//             try {
-//               if (lang && hljs.getLanguage(lang)) {
-//                 highlighted = hljs.highlight(code, { language: lang }).value;
-//               } else {
-//                 highlighted = hljs.highlightAuto(code).value;
-//               }
-//             } catch (e) {
-//               /* fallback to raw */
-//             }
-//             const html = `<pre class="markdown-code-block"><code>${highlighted}</code></pre>`;
-//             builder.add(
-//               lineStart,
-//               lineStart,
-//               Decoration.widget({
-//                 widget: new MarkdownPreviewWidget(html),
-//                 side: -1,
-//                 block: true,
-//               }),
-//             );
-//             
-//             // Skip the content of the code block in the main loop to avoid
-//             // redundant scans, but we must update 'pos' and 'i' correctly.
-//             // Actually, it's safer to just let the loop continue but we
-//             // already have the logic to only trigger on '```' starts.
-//           }
-//         }
-// 
-//         pos += line.length + 1;
-//       }
-//       return builder.finish();
-//     }
-//   },
-//   {
-//     decorations: (v) => v.decorations,
-//   },
-// );
-
 /** Callbacks the FileEditor invokes back into its host. */
 export interface FileEditorCallbacks {
   /**
@@ -427,7 +304,6 @@ export class FileEditor {
     this.originalContent = content;
 
     const languageExt = getLanguageExtension(filePath);
-    // const isMarkdown = filePath.toLowerCase().endsWith(".md") || filePath.toLowerCase().endsWith(".markdown");
 
     // Theme tweaks layered on top of oneDark. Color tokens mirror the
     // agent pane (`.agent-stage`, `.markdown-body`, `.input-row`):
@@ -447,7 +323,7 @@ export class FileEditor {
         },
         ".cm-content": {
           fontFamily:
-            '"JetBrainsMono NF", "MesloLGS NF", "SF Mono", Menlo, Monaco, Consolas, monospace',
+            '"JetBrains Mono", "SF Mono", "Menlo", "Monaco", "Consolas", monospace',
           padding: "12px 0",
           caretColor: "#7dd3fc",
         },
@@ -506,12 +382,6 @@ export class FileEditor {
         
         // Language support
         languageExt,
-        
-        // NOTE: Markdown preview plugin disabled - it was hiding text content.
-        // The preview widgets were rendering but the source text disappeared.
-        // Re-enable only if the widget rendering can be fixed to preserve
-        // text visibility (e.g., use line-breaks or rendering mode that doesn't hide source).
-        // ...(isMarkdown ? [markdownPreviewPlugin] : []),
         
         // Syntax highlighting. oneDark paints baseline colors; the
         // Prism overlay wins for markdown heading/code tags so the

@@ -22,7 +22,7 @@ import {
 } from "./agent";
 import { AgentView } from "./agent-view";
 import { resolveModel, renderModelListAnsi, modelSupportsVision } from "./models";
-import { renderHelpAnsi } from "./slash-commands";
+import { renderHelpAnsi, renderHelpMarkdown, renderModelsMarkdown } from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { settings } from "./settings";
 import { findMode, type Mode } from "./modes";
@@ -843,8 +843,10 @@ export class Workspace {
       queueMicrotask(() => this.input.focus());
     });
 
+    const editorHost = this.root.querySelector<HTMLElement>(".editor-host")!;
+
     // Global-feel keyboard shortcuts when the editor is focused.
-    editorHost.addEventListener("keydown", (e) => {
+    editorHost.addEventListener("keydown", (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
       if (e.key === "t" || e.key === "T") {
         e.preventDefault();
@@ -859,7 +861,7 @@ export class Workspace {
     });
   }
 
-  private handleSubmit(text: string, intent: IntentResult): void {
+  public handleSubmit(text: string, intent: IntentResult): void {
     // Slash commands (order matters).
     if (/^\s*\/models\s*$/i.test(text)) {
       if (this.agentView) {
@@ -2015,7 +2017,7 @@ export class Workspace {
       const rel = formatRelativeTime(b.generated_at);
       const statusIcon = b.status === "completed" ? "✅" : "⚠️";
       out.push(
-        `| **build** | ${rel} | ${statusIcon} ${b.status} (${b.rounds_used} rounds) | \`${b.feature}\` |`,
+        `| **build** | ${rel} | ${statusIcon} ${b.status} | \`${b.feature}\` |`,
       );
     } else {
       out.push("| build | - | _none_ | - |");
