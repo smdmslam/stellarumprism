@@ -71,16 +71,55 @@ export const MODEL_LIBRARY: ModelEntry[] = [
   // Devstral, etc.) live in the Explore tier below so the default
   // picker stays trustworthy and recognizable.
   //
-  // NOTE: Gemini 2.5 Flash has been pulled from the library while we
-  // focus on more thoughtful models. Kept commented-out for easy revert.
-  // {
-  //   aliases: ["flash", "gemini", "gemini-flash"],
-  //   slug: "google/gemini-2.5-flash",
-  //   description: "Google Gemini 2.5 Flash \u2014 fast, reliable chat + vision",
-  //   tier: "main",
-  //   vision: true,
-  //   cost: 2,
-  // },
+  // -------- Google Gemini family ----------------------------------------
+  //
+  // Re-added to the lineup after the calibration sweep that disabled
+  // higher-hallucinating models. If a Gemini variant starts producing
+  // unbacked claims under our tool loop, flip its `enabled: false` the
+  // same way we did for the others; don't comment it out.
+  {
+    aliases: ["gemini-pro", "gemini-2.5-pro"],
+    slug: "google/gemini-2.5-pro",
+    description:
+      "Google Gemini 2.5 Pro \u2014 frontier reasoning, 1M context, multimodal",
+    tier: "main",
+    vision: true,
+    cost: 3,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 1050000,
+  },
+  {
+    // `google/gemini-flash-latest` auto-redirects to whatever Google's
+    // newest Flash variant is. Useful for users who want "latest
+    // workhorse" without chasing version slugs, but the underlying
+    // model can change underfoot \u2014 a turn that worked yesterday may
+    // behave differently after a Google-side bump. Pinned siblings
+    // (Pro, 2.5 Flash) avoid this if predictability matters.
+    aliases: ["gemini-flash-latest", "flash-latest"],
+    slug: "google/gemini-flash-latest",
+    description:
+      "Google Gemini Flash (latest) \u2014 auto-redirects to newest Flash, cheap workhorse, 1M context",
+    tier: "main",
+    vision: true,
+    cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 1050000,
+  },
+  {
+    aliases: ["gemini-flash", "gemini-2.5-flash", "flash"],
+    slug: "google/gemini-2.5-flash",
+    description:
+      "Google Gemini 2.5 Flash \u2014 workhorse with thinking mode, 1M context, cheap",
+    tier: "main",
+    vision: true,
+    cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 1050000,
+  },
+
   {
     aliases: ["gpt-5.4", "gpt5.4", "gpt-5"],
     slug: "openai/gpt-5.4",
@@ -112,6 +151,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "main",
     vision: true,
     cost: 2,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
@@ -123,6 +163,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "Qwen 3.6 Plus \u2014 78.8 SWE-bench Verified, hybrid MoE, strong code",
     tier: "main",
     cost: 2,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
@@ -144,6 +185,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "DeepSeek V3.2 \u2014 modern, cheap, solid at code",
     tier: "main",
     cost: 1,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
@@ -183,6 +225,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "Qwen3 Next 80B A3B \u2014 strong open-weights instruct",
     tier: "main",
     cost: 2,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
@@ -194,12 +237,20 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "GPT OSS 120B Exacto \u2014 cheap fast reasoning, OpenAI open-weights",
     tier: "main",
     cost: 1,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
   },
 
   // -------- Explore (less-common alternates) ----------------------------
+  //
+  // Most Explore-tier entries currently ship with `enabled: false` after
+  // calibration testing identified them as more prone to hallucination
+  // than the kept set. Users can re-enable any of them via Settings \u2192
+  // Models if they want to re-evaluate. The registry stays the source
+  // of truth for what we've evaluated, even if we don't ship it on by
+  // default. Re-enabling is a one-line flag flip.
   {
     aliases: ["step", "step-flash", "step-3.5-flash"],
     slug: "stepfun/step-3.5-flash",
@@ -207,6 +258,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "StepFun Step 3.5 Flash \u2014 reasoning MoE, cheap, #2 in programming",
     tier: "explore",
     cost: 1,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
@@ -218,6 +270,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "Devstral Small \u2014 Mistral's agentic code model, cheap + proactive",
     tier: "explore",
     cost: 1,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
@@ -228,6 +281,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "Codestral 2508 \u2014 Mistral's code-focused model",
     tier: "explore",
     cost: 2,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 256000,
@@ -239,6 +293,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "Inception Mercury 2 \u2014 diffusion LLM, extremely fast",
     tier: "explore",
     cost: 2,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: false,
     jsonMode: false,
     maxContext: 32000,
@@ -250,6 +305,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "explore",
     vision: true,
     cost: 2,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 400000,
@@ -273,6 +329,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     tier: "explore",
     vision: true,
     cost: 1,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
@@ -283,6 +340,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "Grok 4.1 Fast \u2014 xAI general-purpose alt",
     tier: "explore",
     cost: 2,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
@@ -293,6 +351,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     description: "MiniMax M2.5 \u2014 code-focused alternative to Codestral",
     tier: "explore",
     cost: 3,
+    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
