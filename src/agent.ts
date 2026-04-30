@@ -741,6 +741,7 @@ export class AgentController {
     tool: string;
     args: string;
     preview: string;
+    allow_session_approval?: boolean;
     round: number;
   }): void {
     // The agent is waiting on us — reset the stall timer so we don't
@@ -771,7 +772,9 @@ export class AgentController {
       `<pre class="approval-preview">${coloredPreview}</pre>` +
       `<div class="approval-buttons">` +
       `<button class="btn btn-approve" data-decision="approve">Approve</button>` +
-      `<button class="btn btn-approve-session" data-decision="approve-session">Approve all (session)</button>` +
+      (info.allow_session_approval === false
+        ? ""
+        : `<button class="btn btn-approve-session" data-decision="approve-session">Approve all (session)</button>`) +
       `<button class="btn btn-reject" data-decision="reject">Reject</button>` +
       `</div>` +
       `</div>`;

@@ -1677,10 +1677,13 @@ pub async fn agent_query(
                     for call in &calls {
                         let needs_approval =
                             crate::tools::requires_approval(&call.function.name);
+                        let session_allowed_for_tool =
+                            crate::tools::allows_session_approval(&call.function.name);
                         let session_ok = approval_session
                             .get(&chat_id_for_task)
                             .map_or(false, |v| *v);
-                        let decision = if !needs_approval || session_ok {
+                        let decision = if !needs_approval || (session_ok && session_allowed_for_tool)
+                        {
                             ApprovalDecision::Approve
                         } else {
                             let preview = crate::tools::preview_write(
@@ -1696,6 +1699,7 @@ pub async fn agent_query(
                                     "tool": call.function.name,
                                     "args": call.function.arguments,
                                     "preview": preview,
+                                    "allow_session_approval": session_allowed_for_tool,
                                     "round": round,
                                 }),
                             );
@@ -1708,7 +1712,7 @@ pub async fn agent_query(
                             }
                         };
 
-                        if decision == ApprovalDecision::ApproveSession {
+                        if decision == ApprovalDecision::ApproveSession && session_allowed_for_tool {
                             approval_session.insert(chat_id_for_task.clone(), true);
                         }
 

@@ -1,10 +1,9 @@
 //! Tool definitions and dispatcher for the agent's function-calling loop.
 //!
 //! Read tools (`read_file`, `list_directory`, `get_cwd`) are auto-approved.
-//! Write tools (`write_file`, `edit_file`) currently also auto-execute, but
-//! are gated on safety rails (workspace scoping, size caps, atomic writes).
-//! The approval UI is the next increment — when it lands, this file's
-//! `requires_approval()` helper is the hook the tool loop will check.
+//! Filesystem mutation tools (`write_file`, `edit_file`, delete/move/mkdir)
+//! and `run_shell` are gated by the approval flow in `agent.rs`.
+//! This file's `requires_approval()` is the policy source of truth.
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -57,6 +56,15 @@ pub fn requires_approval(tool_name: &str) -> bool {
             | "move_path"
             | "create_directory"
     )
+}
+
+/// Whether "approve all (session)" is allowed for this tool.
+///
+/// Trust/safety policy: filesystem-mutation tools must always show an
+/// explicit per-call approval prompt. Session-wide approval is limited to
+/// non-filesystem tools.
+pub fn allows_session_approval(tool_name: &str) -> bool {
+    matches!(tool_name, "run_shell")
 }
 
 /// Generate a human-readable preview of what a write tool would do.
@@ -2856,12 +2864,31 @@ mod tests {
     }
 
     #[test]
-    fn requires_approval_matches_writers() {
+    fn requires_approval_matches_mutating_tools() {
         assert!(requires_approval("write_file"));
         assert!(requires_approval("edit_file"));
+        assert!(requires_approval("run_shell"));
+        assert!(requires_approval("delete_file"));
+        assert!(requires_approval("delete_directory"));
+        assert!(requires_approval("move_path"));
+        assert!(requires_approval("create_directory"));
         assert!(!requires_approval("read_file"));
         assert!(!requires_approval("list_directory"));
         assert!(!requires_approval("get_cwd"));
+        assert!(!requires_approval("grep"));
+        assert!(!requires_approval("run_tests"));
+    }
+
+    #[test]
+    fn session_approval_policy_blocks_filesystem_mutations() {
+        assert!(!allows_session_approval("write_file"));
+        assert!(!allows_session_approval("edit_file"));
+        assert!(!allows_session_approval("delete_file"));
+        assert!(!allows_session_approval("delete_directory"));
+        assert!(!allows_session_approval("move_path"));
+        assert!(!allows_session_approval("create_directory"));
+        assert!(allows_session_approval("run_shell"));
+        assert!(!allows_session_approval("read_file"));
     }
 
     // ---- Phase 4 audit tools ----------------------------------------
