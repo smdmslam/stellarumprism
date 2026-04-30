@@ -356,25 +356,30 @@ export class Workspace {
           <button class="sidebar-tab active" data-tab="files" role="tab" aria-selected="true">Files</button>
           <button class="sidebar-tab" data-tab="blocks" role="tab" aria-selected="false">Blocks <span class="sidebar-tab-count blocks-count">0</span></button>
           <span class="sidebar-tabs-spacer"></span>
-          <button class="sidebar-tab-action" data-action="new-file" type="button" title="New file (in cwd root)" aria-label="New file">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 12v6"/><path d="M9 15h6"/></svg>
-          </button>
-          <button class="sidebar-tab-action" data-action="new-folder" type="button" title="New folder (in cwd root)" aria-label="New folder">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>
-          </button>
           <button class="sidebar-tab-action" data-action="refresh-files" type="button" title="Refresh file tree" aria-label="Refresh files">\u21bb</button>
           <button class="sidebar-tab-action" data-action="toggle-hidden" type="button" title="Show hidden files (.git, .env, \u2026)" aria-label="Show hidden files" aria-pressed="false">\u25cb</button>
-          <button class="sidebar-tab-action" data-action="toggle-file-view-options" type="button" title="File view options" aria-label="File view options" aria-haspopup="menu" aria-expanded="false">
+          <button class="sidebar-tab-action" data-action="toggle-file-view-options" type="button" title="File options" aria-label="File options" aria-haspopup="menu" aria-expanded="false">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-.33-1A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1-.33A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8c0 .39.14.76.4 1 .26.26.62.4 1 .4H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1 .33c-.26.24-.4.61-.51 1.27z"/></svg>
           </button>
           <div class="file-view-options-menu" role="menu" hidden>
-            <label class="file-view-options-item">
+            <div class="file-menu-section-label">Create</div>
+            <button class="file-menu-item" data-action="new-file" type="button" role="menuitem">
+              <svg class="file-menu-item-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 12v6"/><path d="M9 15h6"/></svg>
+              <span class="file-menu-item-label">New file</span>
+            </button>
+            <button class="file-menu-item" data-action="new-folder" type="button" role="menuitem">
+              <svg class="file-menu-item-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M12 11v6"/><path d="M9 14h6"/></svg>
+              <span class="file-menu-item-label">New folder</span>
+            </button>
+            <div class="file-menu-divider" role="separator"></div>
+            <div class="file-menu-section-label">View</div>
+            <label class="file-menu-item file-menu-item-toggle">
               <input type="checkbox" data-view-option="size" />
-              <span>Show file sizes</span>
+              <span class="file-menu-item-label">Show file sizes</span>
             </label>
-            <label class="file-view-options-item">
+            <label class="file-menu-item file-menu-item-toggle">
               <input type="checkbox" data-view-option="modified" />
-              <span>Show modified dates</span>
+              <span class="file-menu-item-label">Show modified dates</span>
             </label>
           </div>
         </div>
@@ -2661,8 +2666,11 @@ export class Workspace {
     if (!tabsEl) return;
     tabsEl.addEventListener("click", (e) => {
       const target = e.target as HTMLElement | null;
-      const action = target?.closest<HTMLButtonElement>(
-        ".sidebar-tab-action[data-action]",
+      // Toolbar actions live on `.sidebar-tab-action[data-action]`;
+      // gear-menu actions live on `.file-menu-item[data-action]`.
+      // Both share the data-action contract so we collapse handling.
+      const action = target?.closest<HTMLElement>(
+        ".sidebar-tab-action[data-action], .file-menu-item[data-action]",
       );
       if (action) {
         const a = action.dataset.action;
@@ -2674,8 +2682,10 @@ export class Workspace {
         } else if (a === "refresh-files") {
           this.refreshFileTreeFull();
         } else if (a === "new-file") {
+          this.hideFileViewOptionsMenu();
           void this.createNewFile(null);
         } else if (a === "new-folder") {
+          this.hideFileViewOptionsMenu();
           void this.createNewFolder(null);
         }
         return;
