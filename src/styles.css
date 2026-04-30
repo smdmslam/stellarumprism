@@ -794,6 +794,36 @@ body {
   border-color: #374151;
 }
 
+/* Master "All models" row at the top of the Models settings panel.
+ * Visually distinct so it reads as a control over the list below,
+ * not as another model entry. Subtle violet/cyan gradient pulls the
+ * eye and matches the rest of the chrome's accent language. */
+.model-setting-card-master {
+  background: rgba(125, 211, 252, 0.06);
+  border-color: rgba(125, 211, 252, 0.30);
+  margin-bottom: 16px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+  position: relative;
+}
+.model-setting-card-master:hover {
+  border-color: rgba(125, 211, 252, 0.50);
+}
+.model-setting-card-master::after {
+  content: "";
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -10px;
+  height: 1px;
+  background: #1f2937;
+}
+.model-setting-card-master .model-setting-name {
+  color: #f9fafb;
+  font-weight: 700;
+}
+
 .model-setting-info {
   flex: 1 1 auto;
 }

@@ -125,6 +125,21 @@ export class SettingsManager {
     this.setModelEnabled(slug, !this.isModelEnabled(slug));
   }
 
+  /**
+   * Bulk-set every slug in `slugs` to the same enabled state. One
+   * `prism-settings-changed` event fires (rather than N), and one
+   * localStorage write happens, so callers wiring a master
+   * "all on / all off" UI toggle don't pay the cost of N
+   * single-slug writes. Mirrors `setFamilyEnabled` for skills.
+   */
+  setAllModelsEnabled(slugs: string[], enabled: boolean): void {
+    for (const slug of slugs) {
+      this.current.enabledModels[slug] = enabled;
+    }
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
   // -- Skill Library ---------------------------------------------------------
 
   isSkillEnabled(path: string): boolean {

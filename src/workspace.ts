@@ -3125,16 +3125,8 @@ export class Workspace {
    */
   private toggleShowHiddenFiles(): void {
     this.showHiddenFiles = !this.showHiddenFiles;
-    // Force a fresh load on next view.
-    this.fileTreeRootLoaded = false;
-    // Drop cached children so re-expanded dirs re-fetch under the new filter.
-    this.treeState = {
-      ...this.treeState,
-      childrenByPath: new Map(),
-      loadStateByPath: new Map(),
-    };
     this.updateHiddenToggleVisualState();
-    void this.refreshFileTreeRoot();
+    void this.refreshFileTreeFull();
   }
 
   private setShowFileSizes(next: boolean): void {
@@ -3243,17 +3235,40 @@ export class Workspace {
 
   /**
    * Manual refresh of the file tree. Drops cached subtrees to force
-   * re-fetching from disk, preserving the expanded set so the user
-   * can re-expand and see new files.
+   * re-fetching from disk, preserving the expanded set and immediately
+   * re-loading them so the user doesn't lose their place.
    */
-  private refreshFileTreeFull(): void {
+  private async refreshFileTreeFull(): Promise<void> {
+    const expanded = Array.from(this.treeState.expanded);
     this.fileTreeRootLoaded = false;
     this.treeState = {
       ...this.treeState,
       childrenByPath: new Map(),
       loadStateByPath: new Map(),
     };
-    void this.refreshFileTreeRoot();
+    
+    await this.refreshFileTreeRoot();
+    
+    // Re-load all previously expanded subtrees in parallel.
+    if (expanded.length > 0) {
+      await Promise.all(expanded.map(path => this.loadDirectorySubtree(path)));
+    }
+  }
+
+  private async loadDirectorySubtree(path: string): Promise<void> {
+    this.treeState = setTreeLoading(this.treeState, path);
+    this.renderFileTree();
+    try {
+      const listing = await invoke<RawTreeListing>("list_directory_tree", {
+        cwd: this.cwd,
+        path,
+        showHidden: this.showHiddenFiles,
+      });
+      this.treeState = setChildren(this.treeState, path, listing);
+    } catch (err) {
+      this.treeState = setTreeError(this.treeState, path, String(err));
+    }
+    this.renderFileTree();
   }
 
   private syncFileViewOptionsMenuState(): void {
@@ -3741,13 +3756,7 @@ export class Workspace {
         content: "",
         expectedMtimeSecs: null,
       });
-      this.fileTreeRootLoaded = false;
-      this.treeState = {
-        ...this.treeState,
-        childrenByPath: new Map(),
-        loadStateByPath: new Map(),
-      };
-      await this.refreshFileTreeRoot();
+      await this.refreshFileTreeFull();
       void this.openFileInEditor(target);
     } catch (err) {
       window.alert(`Could not create file: ${String(err)}`);
@@ -3777,13 +3786,7 @@ export class Workspace {
     const target = parent && parent.length > 0 ? `${parent}/${trimmed}` : trimmed;
     try {
       await invoke("create_dir", { cwd: this.cwd, path: target });
-      this.fileTreeRootLoaded = false;
-      this.treeState = {
-        ...this.treeState,
-        childrenByPath: new Map(),
-        loadStateByPath: new Map(),
-      };
-      await this.refreshFileTreeRoot();
+      await this.refreshFileTreeFull();
     } catch (err) {
       window.alert(`Could not create folder: ${String(err)}`);
     }
@@ -3836,18 +3839,7 @@ export class Workspace {
     const r = toggleExpanded(this.treeState, path, true);
     this.treeState = r.state;
     if (r.needsLoad) {
-      this.treeState = setTreeLoading(this.treeState, path);
-      this.renderFileTree();
-      try {
-        const listing = await invoke<RawTreeListing>("list_directory_tree", {
-          cwd: this.cwd,
-          path,
-          showHidden: this.showHiddenFiles,
-        });
-        this.treeState = setChildren(this.treeState, path, listing);
-      } catch (err) {
-        this.treeState = setTreeError(this.treeState, path, String(err));
-      }
+      await this.loadDirectorySubtree(path);
     }
     this.renderFileTree();
   }

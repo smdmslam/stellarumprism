@@ -197,12 +197,29 @@ export class SettingsUI {
 
   private renderModels(): void {
     const models = MODEL_LIBRARY.filter(m => m.tier !== "backend");
-    
+    // Aggregate state for the master toggle: ON only when every model
+    // is currently enabled. A mixed state (some on, some off) reads as
+    // OFF \u2014 clicking flips everything to ON. Clicking again from a
+    // fully-on state turns everything OFF. Simpler than a tristate.
+    const allEnabled =
+      models.length > 0 &&
+      models.every(m => settings.isModelEnabled(m.slug, m.enabled !== false));
+
     let html = `
       <h2 class="settings-section-title">AI Model Curation</h2>
-      <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 24px;">
+      <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 16px;">
         Toggle models to enable/disable them in the global command bar. Disabling poor-performing models streamlines your workflow.
       </p>
+      <div class="model-setting-card model-setting-card-master">
+        <div class="model-setting-info">
+          <div class="model-setting-name">All models</div>
+          <div class="model-setting-desc">Master switch \u2014 enables or disables every model below in one click.</div>
+        </div>
+        <label class="prism-toggle">
+          <input type="checkbox" id="all-models-toggle" ${allEnabled ? "checked" : ""}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
       <div class="model-settings-list">
     `;
 
@@ -233,10 +250,25 @@ export class SettingsUI {
     html += `</div>`;
     this.content.innerHTML = html;
 
-    // Wire toggles
+    // Wire the master toggle. On flip, bulk-update all per-slug
+    // overrides via the dedicated helper (one localStorage write,
+    // one settings-changed event), then re-render so the individual
+    // toggles below reflect the new state without flicker.
+    const masterToggle = this.content.querySelector<HTMLInputElement>("#all-models-toggle");
+    masterToggle?.addEventListener("change", () => {
+      const slugs = models.map(m => m.slug);
+      settings.setAllModelsEnabled(slugs, masterToggle.checked);
+      this.renderModels();
+    });
+
+    // Wire per-model toggles. Each individual change might invalidate
+    // the master's aggregate state (e.g. user flips one off when all
+    // were on \u2192 master should now read OFF), so we re-render after
+    // every change so the master stays honest.
     this.content.querySelectorAll<HTMLInputElement>("input[data-slug]").forEach(input => {
       input.addEventListener("change", () => {
         settings.setModelEnabled(input.dataset.slug!, input.checked);
+        this.renderModels();
       });
     });
   }
