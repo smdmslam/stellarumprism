@@ -2970,8 +2970,12 @@ input:checked + .toggle-slider:before {
   right: 0;
   z-index: 100;
   min-width: 200px;
-  max-height: 300px;
+  /* Grow tall enough to fit the model library on most viewports;
+     fall back to 70vh on short screens so the menu never escapes
+     the window. The list stays scrollable for very small heights. */
+  max-height: min(70vh, 520px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -2982,6 +2986,21 @@ input:checked + .toggle-slider:before {
   backdrop-filter: blur(8px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
+
+/* macOS hides overlay scrollbars by default, which made the bottom
+   rows look cut off with no scroll affordance. Render a thin, always-
+   visible track inside the menu so users can see there's more. */
+.model-selector-menu::-webkit-scrollbar,
+.intent-selector-menu::-webkit-scrollbar { width: 8px; }
+.model-selector-menu::-webkit-scrollbar-track,
+.intent-selector-menu::-webkit-scrollbar-track { background: transparent; }
+.model-selector-menu::-webkit-scrollbar-thumb,
+.intent-selector-menu::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 4px;
+}
+.model-selector-menu::-webkit-scrollbar-thumb:hover,
+.intent-selector-menu::-webkit-scrollbar-thumb:hover { background: #374151; }
 
 .model-selector-menu[hidden],
 .intent-selector-menu[hidden] {
@@ -3001,6 +3020,11 @@ input:checked + .toggle-slider:before {
 .model-selector-item:hover,
 .intent-selector-item:hover {
   background: rgba(125, 211, 252, 0.08);
+}
+
+.model-selector-item-active {
+  background: rgba(125, 211, 252, 0.12);
+  outline: 1px solid rgba(125, 211, 252, 0.35);
 }
 
 .model-item-label,

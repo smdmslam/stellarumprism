@@ -22,7 +22,12 @@ import {
 } from "./agent";
 import { AgentView } from "./agent-view";
 import { resolveModel, renderModelListAnsi, modelSupportsVision } from "./models";
-import { renderHelpAnsi, renderHelpMarkdown, renderModelsMarkdown } from "./slash-commands";
+import {
+  modelCompletions,
+  renderHelpAnsi,
+  renderHelpMarkdown,
+  renderModelsMarkdown,
+} from "./slash-commands";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { settings } from "./settings";
 import { findMode, type Mode } from "./modes";
@@ -878,7 +883,12 @@ export class Workspace {
       if (modelItem) {
         const slug = modelItem.dataset.slug;
         if (slug) {
-          void this.handleSlashCommand(`/model ${slug}`);
+          // Route through handleSubmit so the `/model <slug>` branch in
+          // the slash-command dispatcher is the single source of truth
+          // (resolveModel + agent.setModel + notify). Mirrors how the
+          // recipe runner dispatches slashes via handleSubmit.
+          const cmd = `/model ${slug}`;
+          this.handleSubmit(cmd, { intent: "command", explicit: true, payload: cmd });
           this.hidePillMenus();
         }
         return;
@@ -2787,18 +2797,6 @@ export class Workspace {
     }
   }
 
-  private toggleShowFileSizes(): void {
-    this.showFileSizes = !this.showFileSizes;
-    const btn = this.root.querySelector<HTMLButtonElement>(
-      '.sidebar-tab-action[data-action="toggle-size"]',
-    );
-    if (btn) {
-      btn.setAttribute("aria-pressed", this.showFileSizes ? "true" : "false");
-      btn.classList.toggle("sidebar-tab-action-on", this.showFileSizes);
-    }
-    this.renderFileTree();
-  }
-
   private toggleModelMenu(): void {
     const menu = this.root.querySelector<HTMLElement>(".model-selector-menu");
     const badge = this.root.querySelector<HTMLElement>(".model-badge");
@@ -2838,14 +2836,27 @@ export class Workspace {
   private renderModelMenu(): void {
     const menu = this.root.querySelector<HTMLElement>(".model-selector-menu");
     if (!menu) return;
-    
+
+    const currentModel = this.agent.getModel();
     const completions = modelCompletions();
-    menu.innerHTML = completions.map(m => `
-      <div class="model-selector-item" data-slug="${escapeAttr(m.label)}">
-        <span class="model-item-label">${escapeHtml(m.label)}</span>
-        <span class="model-item-detail">${escapeHtml(m.detail)}</span>
-      </div>
-    `).join("");
+    menu.innerHTML = completions
+      .map((m: { label: string; detail: string; info: string }) => {
+        // detail is either "<slug>" or "<slug> [img]"; the slug is the
+        // first token. Highlight the row matching the active model so
+        // users can see what they're switching from.
+        const slug = m.detail.split(" ")[0];
+        const isActive = slug === currentModel;
+        const cls = isActive
+          ? "model-selector-item model-selector-item-active"
+          : "model-selector-item";
+        return (
+          `<div class="${cls}" data-slug="${escapeAttr(m.label)}">` +
+          `<span class="model-item-label">${escapeHtml(m.label)}</span>` +
+          `<span class="model-item-detail">${escapeHtml(m.detail)}</span>` +
+          `</div>`
+        );
+      })
+      .join("");
   }
 
   /**
