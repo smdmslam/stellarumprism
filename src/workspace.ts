@@ -28,7 +28,8 @@ import {
   renderHelpMarkdown,
   renderModelsMarkdown,
 } from "./slash-commands";
-import { listSkills, renderSkillsMarkdown } from "./skills";
+import { listSkills, readSkill, renderSkillsMarkdown, type SkillBody } from "./skills";
+import { decideEngagement, formatKB } from "./skill-limits";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { settings } from "./settings";
 import { findMode, type Mode } from "./modes";
@@ -250,6 +251,14 @@ export class Workspace {
    */
   private openFileMtime = 0;
   /**
+   * Per-tab engaged-skills state (Track A intentional engagement, see
+   * `MASTER-Plan-II#7.2` and `docs/skills.md`). Map keys are slugs;
+   * values are the full body + metadata so we don't re-read from disk
+   * on every agent turn. Engagement is intentionally NOT persisted to
+   * `state.json` or `localStorage` \u2014 ephemeral per `docs/skills.md`.
+   */
+  private engagedSkills: Map<string, SkillBody> = new Map();
+  /**
    * Filter state for the Problems panel. Held on the workspace so a
    * user-toggled chip stays toggled across re-renders.
    */
@@ -414,6 +423,7 @@ export class Workspace {
             <div class="input-meta">
               <span class="input-prefix" data-intent="command">\u276f</span>
               <span class="cwd-badge" title="Current working directory"></span>
+              <div class="skill-chips" aria-label="Engaged skills"></div>
               <span class="input-meta-spacer"></span>
               <div class="pill-group">
                 <span class="model-badge" title="Agent model" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="Active model">...</span>
@@ -1007,21 +1017,44 @@ export class Workspace {
       return;
     }
     // /skills \u2014 list everything under `.prism/skills/` as a markdown
-    // table. Discovery surface for the upcoming engagement features
-    // (Track A intentional Load chip + Track B LLM-aware toggle); the
-    // command itself only reads the manifest, so it is safe and cheap.
-    if (/^\s*\/skills\s*$/i.test(text)) {
-      void listSkills(this.cwd)
-        .then((skills) => {
-          if (this.agentView) {
-            this.agentView.appendReport(renderSkillsMarkdown(skills));
-          } else {
-            this.notify(`[skills] ${skills.length} skill(s) in .prism/skills/`);
-          }
-        })
-        .catch((err) => {
-          this.notifyError(`[skills] ${String(err)}`);
-        });
+    // table. Subcommands:
+    //   /skills                 list the corpus
+    //   /skills load <slug>     engage a skill for this tab (chip + body in systemPrefix)
+    //   /skills unload <slug>   disengage an engaged skill
+    //
+    // Engagement is intentionally per-tab and ephemeral; closing the
+    // tab discards the engaged set. See `docs/skills.md`.
+    const skillsMatch = /^\s*\/skills(?:\s+(.+))?\s*$/i.exec(text);
+    if (skillsMatch) {
+      const args = (skillsMatch[1] ?? "").trim();
+      if (args.length === 0) {
+        // Bare /skills \u2014 list the corpus.
+        void listSkills(this.cwd)
+          .then((skills) => {
+            if (this.agentView) {
+              this.agentView.appendReport(renderSkillsMarkdown(skills));
+            } else {
+              this.notify(`[skills] ${skills.length} skill(s) in .prism/skills/`);
+            }
+          })
+          .catch((err) => {
+            this.notifyError(`[skills] ${String(err)}`);
+          });
+        return;
+      }
+      const loadMatch = /^load\s+(\S.*)$/i.exec(args);
+      if (loadMatch) {
+        void this.engageSkill(loadMatch[1].trim());
+        return;
+      }
+      const unloadMatch = /^unload\s+(\S.*)$/i.exec(args);
+      if (unloadMatch) {
+        this.disengageSkill(unloadMatch[1].trim());
+        return;
+      }
+      this.notifyError(
+        `[skills] unknown subcommand \"${stripAnsi(args)}\". Use /skills, /skills load <slug>, or /skills unload <slug>.`,
+      );
       return;
     }
     // /last \u2014 print a compact summary of the persisted workspace
@@ -1475,6 +1508,16 @@ export class Workspace {
           `\u2192 [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched \u201c${stripAnsi(trigger.matched)}\u201d)`,
         );
       }
+    }
+    // Engaged skills apply to EVERY turn (including mode-driven ones
+    // like /audit and /build) per `docs/skills.md`. Prepend before the
+    // grounded-chat block so the skills frame the protocol rather than
+    // the other way around.
+    const skillsBlock = this.composeEngagedSkillsBlock();
+    if (skillsBlock.length > 0) {
+      systemPrefix = systemPrefix
+        ? `${skillsBlock}\n\n${systemPrefix}`
+        : skillsBlock;
     }
 
     const refs = extractFileRefs(prompt);
@@ -2551,6 +2594,151 @@ export class Workspace {
       this.cb.onTitleChange(this.id, this.title);
       this.notify("[agent] new session \u2014 history cleared and title reset");
     });
+  }
+
+  // -- Track A: intentional skill engagement -------------------------------
+
+  /**
+   * Sum of `sizeBytes` across the currently engaged skills. Used as
+   * the `alreadyEngagedBytes` argument to `decideEngagement` so the
+   * per-session budget check (128 KB by default) sees the live total.
+   */
+  private getEngagedSkillsTotalBytes(): number {
+    let total = 0;
+    for (const s of this.engagedSkills.values()) total += s.sizeBytes;
+    return total;
+  }
+
+  /**
+   * Engage a skill: read its body, run it through the size-discipline
+   * gate (`decideEngagement` in `src/skill-limits.ts`), and add it to
+   * `this.engagedSkills` on success. Re-renders the input-bar chip(s)
+   * and notifies the user. Idempotent on already-engaged slugs.
+   *
+   * Does NOT persist anything \u2014 engagement is per-tab + ephemeral by
+   * design. See `docs/skills.md` for the curation-vs-engagement split.
+   */
+  private async engageSkill(slug: string): Promise<void> {
+    if (slug.length === 0) {
+      this.notifyError("[skills] usage: /skills load <slug>");
+      return;
+    }
+    if (!this.cwd) {
+      this.notifyError("[skills] cwd unknown \u2014 wait for the shell prompt");
+      return;
+    }
+    if (this.engagedSkills.has(slug)) {
+      this.notify(`[skills] ${stripAnsi(slug)} already engaged`);
+      return;
+    }
+    let skill: SkillBody;
+    try {
+      skill = await readSkill(this.cwd, slug);
+    } catch (err) {
+      this.notifyError(`[skills] ${stripAnsi(String(err))}`);
+      return;
+    }
+    const decision = decideEngagement({
+      candidatePath: `${slug}.md`,
+      candidateBytes: skill.sizeBytes,
+      alreadyEngagedBytes: this.getEngagedSkillsTotalBytes(),
+    });
+    if (decision.kind === "block") {
+      this.notifyError(`[skills] ${stripAnsi(decision.reason)}`);
+      return;
+    }
+    if (decision.kind === "warn") {
+      this.notify(`[skills] warning: ${stripAnsi(decision.reason)}`);
+    }
+    this.engagedSkills.set(slug, skill);
+    this.renderSkillChips();
+    this.notify(
+      `[skills] engaged ${stripAnsi(skill.name)} (${formatKB(skill.sizeBytes)})`,
+    );
+  }
+
+  /**
+   * Disengage an engaged skill. No-op (with a friendly notice) if the
+   * slug isn't engaged. Re-renders chips and notifies on success.
+   */
+  private disengageSkill(slug: string): void {
+    if (slug.length === 0) {
+      this.notifyError("[skills] usage: /skills unload <slug>");
+      return;
+    }
+    const skill = this.engagedSkills.get(slug);
+    if (!skill) {
+      this.notify(`[skills] ${stripAnsi(slug)} is not engaged`);
+      return;
+    }
+    this.engagedSkills.delete(slug);
+    this.renderSkillChips();
+    this.notify(`[skills] disengaged ${stripAnsi(skill.name)}`);
+  }
+
+  /**
+   * Build the system-prefix block injected on every agent turn while
+   * skills are engaged. Returns the empty string when no skills are
+   * engaged so the caller can short-circuit without conditionally
+   * concatenating an empty section.
+   *
+   * Section order is the engagement order (Map preserves insertion);
+   * earlier engagements appear first in the prefix so they read like
+   * a stable persona rather than a stack.
+   */
+  private composeEngagedSkillsBlock(): string {
+    if (this.engagedSkills.size === 0) return "";
+    const out: string[] = [];
+    out.push("## Engaged skills");
+    out.push(
+      "The user has explicitly engaged the following skill(s) for this turn. Treat each as durable guidance the user wants you to apply.",
+    );
+    for (const skill of this.engagedSkills.values()) {
+      out.push(`### ${skill.name}`);
+      out.push(skill.body.trim());
+    }
+    return out.join("\n\n");
+  }
+
+  /**
+   * (Re)render the chips in the input-meta row. Called after every
+   * engage/disengage; idempotent with respect to the live engaged set.
+   * Each chip carries the skill's slug as its label and a `\u00d7`
+   * close button that disengages on click.
+   */
+  private renderSkillChips(): void {
+    const container = this.root.querySelector<HTMLElement>(".skill-chips");
+    if (!container) return;
+    container.replaceChildren();
+    for (const skill of this.engagedSkills.values()) {
+      const chip = document.createElement("span");
+      chip.className = "skill-chip";
+      chip.title = `${skill.name} \u2014 ${formatKB(skill.sizeBytes)}\nClick \u00d7 to disengage`;
+
+      const glyph = document.createElement("span");
+      glyph.className = "skill-chip-glyph";
+      glyph.textContent = "\u25b8";
+      chip.appendChild(glyph);
+
+      const labelEl = document.createElement("span");
+      labelEl.className = "skill-chip-label";
+      labelEl.textContent = skill.slug;
+      chip.appendChild(labelEl);
+
+      const closeBtn = document.createElement("button");
+      closeBtn.type = "button";
+      closeBtn.className = "skill-chip-close";
+      closeBtn.setAttribute("aria-label", `Disengage ${skill.name}`);
+      closeBtn.textContent = "\u00d7";
+      closeBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.disengageSkill(skill.slug);
+      });
+      chip.appendChild(closeBtn);
+
+      container.appendChild(chip);
+    }
   }
 
   /** Emit a one-time nudge once the chat grows beyond ~40 turns. */

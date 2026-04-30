@@ -92,9 +92,10 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   },
   {
     label: "/skills",
-    detail: "List skills in `.prism/skills/`",
+    detail: "List or load/unload skills",
     info:
-      "Print the project's skill library: every `.md` file under `.prism/skills/`, with its derived name, one-line description, and size. Skills are durable behavioral guides the agent can pull into context. Authoring rules + size caps live in `docs/skills.md`. Engagement (intentional Load chip + LLM-aware mode) is being wired separately; for now `/skills` is the discovery surface.",
+      "Bare `/skills` lists the project's skill library (every `.md` under `.prism/skills/`). Subcommands: `/skills load <slug>` engages a skill for this tab \u2014 a chip appears in the input bar and the skill's body is prepended to every agent turn until you `/skills unload <slug>` (or click the chip's \u00d7). Engagement is per-tab and ephemeral; closing the tab discards it. Authoring rules + size caps live in `docs/skills.md`.",
+    takesArg: true,
   },
   {
     label: "/last",

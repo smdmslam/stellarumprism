@@ -499,6 +499,81 @@ function slashCompletions(
     };
   }
 
+  // Sub-completer: after `/skills load ` or `/skills unload `, suggest
+  // skill slugs by querying `list_skills` against the active cwd. Async
+  // because the skill corpus lives on disk and changes between turns.
+  // Description backfills `DESC_BY_LABEL` so the row's second-line
+  // subtitle renders just like models / recipes do.
+  const skillsArgMatch = /^\s*\/skills\s+(?:load|unload)\s+(\S*)$/.exec(before);
+  if (skillsArgMatch) {
+    const partial = skillsArgMatch[1];
+    const from = context.pos - partial.length;
+    const opts = OPTIONS_BY_VIEW.get(context.view!);
+    const cwd = opts?.getCwd?.() ?? "";
+    return (async () => {
+      try {
+        const skills = await invoke<
+          { slug: string; name: string; description: string; sizeBytes: number }[]
+        >("list_skills", { cwd });
+        for (const s of skills) {
+          if (s.description) DESC_BY_LABEL.set(s.slug, s.description);
+        }
+        if (skills.length === 0) {
+          return {
+            from,
+            filter: false,
+            options: [
+              {
+                label: "(no skills in .prism/skills/)",
+                detail: "",
+                type: "text",
+                apply: () => {},
+              },
+            ],
+          };
+        }
+        return {
+          from,
+          filter: true,
+          options: skills.map((s) => ({
+            label: s.slug,
+            detail: s.name,
+            type: "variable",
+          })),
+        };
+      } catch {
+        return null;
+      }
+    })();
+  }
+
+  // Sub-completer: after a bare `/skills `, suggest the load/unload
+  // keywords. Sits BELOW the load/unload-with-arg matcher above so
+  // partial typing doesn't fall back to this menu prematurely.
+  const skillsSubMatch = /^\s*\/skills\s+(\S*)$/.exec(before);
+  if (skillsSubMatch) {
+    const partial = skillsSubMatch[1];
+    const from = context.pos - partial.length;
+    return {
+      from,
+      filter: true,
+      options: [
+        {
+          label: "load",
+          detail: "engage a skill for this tab",
+          apply: "load ",
+          type: "keyword",
+        },
+        {
+          label: "unload",
+          detail: "disengage an engaged skill",
+          apply: "unload ",
+          type: "keyword",
+        },
+      ],
+    };
+  }
+
   // Sub-completer: after `/protocol <space>`, suggest recipe ids. Same
   // pattern as the model sub-completer above so the popup feels
   // consistent across slash commands that take a known-set argument.
