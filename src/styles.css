@@ -2120,21 +2120,62 @@ input:checked + .toggle-slider:before {
   transform: translateY(1px);
 }
 
-/* ---------- engaged-skill chips (Track A) ----------
+/* ---------- engaged-skill chips (Track A + B) ----------
  *
- * One chip per skill engaged for the current tab. Lives in the
- * input-meta row between the cwd-badge and the meta spacer, so the
- * user sees their engaged "persona" alongside the cwd. Family-matched
- * to the model/intent pills (10px label, 10px radius, monochrome
- * accent) but uses the violet brand color so the eye reads them as
- * "agent context" rather than "input mode". */
-.skill-chips {
-  flex: 0 1 auto;
+ * One chip per skill engaged for the current tab. Lives on its own
+ * row directly below the input-meta line so chips can collect
+ * left-to-right and wrap to additional lines as the engaged set
+ * grows, without crowding the model/intent pills.
+ *
+ * The row hides itself entirely (via `hidden` attribute toggled in
+ * renderSkillChips) when no skills are engaged \u2014 keeps the input bar
+ * compact in the common case.
+ *
+ * Family-matched to the model/intent pills (10px label, 10px radius,
+ * monochrome accent) but uses the violet brand color so the eye reads
+ * them as "agent context" rather than "input mode". */
+.skill-chips-row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
+  padding: 6px 0 2px;
   min-width: 0;
+}
+
+.skill-chips-row[hidden] { display: none; }
+
+/* Compact session-budget indicator at the end of the chips row. Tells
+ * the user how much of the 128 KB skill budget is in play right now,
+ * so stacking many skills feels visible rather than invisible. Pushed
+ * to the right by `margin-left: auto` so it sits at the visual end of
+ * the last line of chips (works through wrap because flex baselines
+ * stay aligned). */
+.skill-chips-size {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2px 8px;
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border-radius: 8px;
+  background: rgba(148, 163, 184, 0.06);
+  color: #6b7280;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.skill-chips-size[data-state="warn"] {
+  color: var(--prism-amber);
+  background: rgba(var(--prism-amber-rgb), 0.10);
+  border-color: rgba(var(--prism-amber-rgb), 0.28);
+}
+.skill-chips-size[data-state="near"] {
+  color: var(--prism-rose);
+  background: rgba(var(--prism-rose-rgb), 0.12);
+  border-color: rgba(var(--prism-rose-rgb), 0.36);
 }
 
 .skill-chip {

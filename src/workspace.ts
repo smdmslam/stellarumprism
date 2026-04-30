@@ -29,7 +29,7 @@ import {
   renderModelsMarkdown,
 } from "./slash-commands";
 import { listSkills, readSkill, renderSkillsMarkdown, type SkillBody, type SkillSummary } from "./skills";
-import { decideEngagement, formatKB } from "./skill-limits";
+import { decideEngagement, formatKB, SESSION_SKILL_BUDGET_BYTES } from "./skill-limits";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { settings } from "./settings";
 import { findMode, type Mode } from "./modes";
@@ -435,7 +435,6 @@ export class Workspace {
             <div class="input-meta">
               <span class="input-prefix" data-intent="command">\u276f</span>
               <span class="cwd-badge" title="Current working directory"></span>
-              <div class="skill-chips" aria-label="Engaged skills"></div>
               <span class="input-meta-spacer"></span>
               <div class="pill-group">
                 <span class="model-badge" title="Agent model" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="Active model">...</span>
@@ -460,6 +459,7 @@ export class Workspace {
                 </div>
               </div>
             </div>
+            <div class="skill-chips-row" aria-label="Engaged skills" hidden></div>
           </div>
         </div>
       </div>
@@ -2848,16 +2848,33 @@ export class Workspace {
   }
 
   /**
-   * (Re)render the chips in the input-meta row. Called after every
+   * (Re)render the chips row below the input-meta. Called after every
    * engage/disengage; idempotent with respect to the live engaged set.
-   * Each chip carries the skill's slug as its label and a `\u00d7`
-   * close button that disengages on click.
+   *
+   * Layout: chips collect left-to-right and wrap onto additional rows
+   * as the engaged set grows; a compact size indicator (`<used> /
+   * <budget>`) sits at the end so the user always sees how much of
+   * the 128 KB session budget is in play. The whole row hides itself
+   * when no skills are engaged so the input bar stays compact in the
+   * common case.
+   *
+   * The size indicator gets a `[data-state]` attribute so CSS can flip
+   * its color when the user is approaching the budget cap (warn at
+   * \u226575%, near at \u226590%) without us doing manual style writes here.
    */
   private renderSkillChips(): void {
-    const container = this.root.querySelector<HTMLElement>(".skill-chips");
-    if (!container) return;
-    container.replaceChildren();
+    const row = this.root.querySelector<HTMLElement>(".skill-chips-row");
+    if (!row) return;
+    row.replaceChildren();
+    if (this.engagedSkills.size === 0) {
+      row.hidden = true;
+      return;
+    }
+    row.hidden = false;
+
+    let totalBytes = 0;
     for (const skill of this.engagedSkills.values()) {
+      totalBytes += skill.sizeBytes;
       const chip = document.createElement("span");
       chip.className = "skill-chip";
       chip.title = `${skill.name} \u2014 ${formatKB(skill.sizeBytes)}\nClick \u00d7 to disengage`;
@@ -2884,8 +2901,24 @@ export class Workspace {
       });
       chip.appendChild(closeBtn);
 
-      container.appendChild(chip);
+      row.appendChild(chip);
     }
+
+    // Compact size indicator. Integer KB rounding so the badge stays
+    // tight at narrow widths and lines up nicely with the chip baseline.
+    // State attribute drives color: `ok` (<75%), `warn` (75\u201389%),
+    // `near` (\u226590%). The hard cap itself is enforced by
+    // `decideEngagement`; this is just visual headroom feedback.
+    const usedKb = Math.round(totalBytes / 1024);
+    const budgetKb = Math.round(SESSION_SKILL_BUDGET_BYTES / 1024);
+    const ratio = totalBytes / SESSION_SKILL_BUDGET_BYTES;
+    const state = ratio >= 0.9 ? "near" : ratio >= 0.75 ? "warn" : "ok";
+    const size = document.createElement("span");
+    size.className = "skill-chips-size";
+    size.dataset.state = state;
+    size.title = `${formatKB(totalBytes)} of ${formatKB(SESSION_SKILL_BUDGET_BYTES)} session budget used`;
+    size.textContent = `${usedKb}K / ${budgetKb}K`;
+    row.appendChild(size);
   }
 
   /** Emit a one-time nudge once the chat grows beyond ~40 turns. */
