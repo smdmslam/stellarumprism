@@ -2,9 +2,11 @@
 
 KEEP GOOD
 - GLM 5
-
+- HAIKU
+- GROK 4 FAST (fast and good)
 
 KEEP OK
+- STEP (good, but)
 - Kimi 2.5
 
 
@@ -12,7 +14,10 @@ KEEP OK
 REMOVE
 - GPT OSS
 - QWEN 3.6 PLUS
-
+- DEEPSEEK (hallucintes)
+- CODESTRAL (hallucinates)
+- MERCURY 2
+- SCOUT
 
 
 

@@ -15,8 +15,10 @@ import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { oneDark, oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
 import { syntaxHighlighting } from "@codemirror/language";
 import {
+  acceptCompletion,
   autocompletion,
   completionKeymap,
+  completionStatus,
   startCompletion,
   type CompletionContext,
   type CompletionResult,
@@ -119,6 +121,17 @@ export class PrismInput {
         {
           key: "Enter",
           run: () => {
+            // If the autocomplete popup is open, prefer accepting the
+            // highlighted suggestion over submitting. Without this,
+            // arrowing to a model in the `/model ` menu and pressing
+            // Enter would submit the unfiltered text (e.g. `/model gpt`)
+            // instead of inserting the highlighted alias.
+            if (
+              completionStatus(this.view.state) === "active" &&
+              acceptCompletion(this.view)
+            ) {
+              return true;
+            }
             this.submit();
             return true;
           },
@@ -159,13 +172,25 @@ export class PrismInput {
           mac: "Ctrl-z",
           run: () => this.opts.onControlKey?.("SIGTSTP") === true,
         },
+        // ArrowUp / ArrowDown: when the autocomplete popup is open we
+        // want CodeMirror's completionKeymap to move the selection
+        // through the suggestion list (e.g. to pick a model after
+        // `/model `). Returning `false` here lets the lower-precedence
+        // completionKeymap handle the key. Otherwise fall through to
+        // command-history navigation.
         {
           key: "ArrowUp",
-          run: () => this.tryHistoryPrev(),
+          run: () => {
+            if (completionStatus(this.view.state) === "active") return false;
+            return this.tryHistoryPrev();
+          },
         },
         {
           key: "ArrowDown",
-          run: () => this.tryHistoryNext(),
+          run: () => {
+            if (completionStatus(this.view.state) === "active") return false;
+            return this.tryHistoryNext();
+          },
         },
         // Cmd+Backspace (Mac) / Ctrl+Backspace (other): delete one path
         // segment when the user is mid-typing a `/cd` or `@` path. This
