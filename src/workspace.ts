@@ -221,6 +221,8 @@ export class Workspace {
   private lastChatTopicKeywords: string[] = [];
   /** Prevent repeated "topic changed" nudges in one conversation. */
   private topicShiftNudged = false;
+  /** Prevent repeated "long thread" nudges in one conversation. */
+  private longThreadNudged = false;
   /**
    * Tracks the most recently interacted-with divider so the
    * Cmd+Opt+[/] keyboard nudge knows what to move when no divider has
@@ -1380,6 +1382,7 @@ export class Workspace {
     // Contextual nudge: if a plain chat prompt looks like a topic pivot in a
     // long thread, suggest starting a fresh chat.
     if (!options.mode) {
+      this.maybeNudgeLongThread();
       this.maybeNudgeTopicShift(prompt);
     }
     // Grounded-Chat protocol: when this is a regular chat turn (no
@@ -2480,9 +2483,23 @@ export class Workspace {
       this.autoTitleDone = false;
       this.lastChatTopicKeywords = [];
       this.topicShiftNudged = false;
+      this.longThreadNudged = false;
       this.cb.onTitleChange(this.id, this.title);
       this.notify("[agent] new session \u2014 history cleared and title reset");
     });
+  }
+
+  /** Emit a one-time nudge once the chat grows beyond ~40 turns. */
+  private maybeNudgeLongThread(): void {
+    if (this.longThreadNudged) return;
+    // `getMessageCount()` includes both user + assistant messages.
+    // 80 messages ~= 40 turns.
+    if (this.agent.getMessageCount() < 80) return;
+    this.longThreadNudged = true;
+    this.agentView?.appendNotice(
+      "router",
+      "This conversation is getting long. Consider starting a new chat (New button or `/clear`) to keep context sharp.",
+    );
   }
 
   /**
