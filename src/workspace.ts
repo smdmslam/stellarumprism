@@ -385,6 +385,7 @@ export class Workspace {
               <span class="input-prefix" data-intent="command">\u276f</span>
               <span class="cwd-badge" title="Current working directory"></span>
               <span class="input-meta-spacer"></span>
+              <button class="new-chat-btn" type="button" title="Start a new chat" aria-label="Start a new chat">New</button>
               <span class="model-badge" title="Agent model" role="status" aria-label="Active model">...</span>
               <button class="busy-pill" type="button" title="Cancel agent request" aria-label="Cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
               <span class="intent-badge" data-intent="command" role="status" aria-label="Input mode">CMD</span>
@@ -813,6 +814,7 @@ export class Workspace {
   private setupBadges(): void {
     const modelBadge = this.root.querySelector<HTMLElement>(".model-badge")!;
     const intentBadge = this.root.querySelector<HTMLElement>(".intent-badge")!;
+    const newChatBtn = this.root.querySelector<HTMLButtonElement>(".new-chat-btn");
 
     intentBadge.addEventListener("click", (e) => {
       e.preventDefault();
@@ -828,6 +830,11 @@ export class Workspace {
         this.agentView.appendReport(renderModelsMarkdown());
       }
     });
+    newChatBtn?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.startNewConversation();
+    });
 
     // Click anywhere in the input bar (but outside the badges) refocuses.
     // Critical carve-out: skip the manual refocus when the click is
@@ -841,6 +848,7 @@ export class Workspace {
     this.root.querySelector(".input-bar")?.addEventListener("mousedown", (e) => {
       const t = e.target as HTMLElement;
       if (t.classList.contains("intent-badge") || t.classList.contains("model-badge")) return;
+      if (t.classList.contains("new-chat-btn")) return;
       if (t.closest(".editor-host")) return;
       queueMicrotask(() => this.input.focus());
     });
@@ -894,12 +902,7 @@ export class Workspace {
       return;
     }
     if (/^\s*\/(new|clear)\s*$/i.test(text)) {
-      void this.agent.newSession().then(() => {
-        this.title = "New Tab";
-        this.autoTitleDone = false;
-        this.cb.onTitleChange(this.id, this.title);
-        this.notify("[agent] new session \u2014 history cleared and title reset");
-      });
+      this.startNewConversation();
       return;
     }
     if (/^\s*\/history\s*$/i.test(text)) {
@@ -2454,6 +2457,16 @@ export class Workspace {
     this.title = truncated;
     this.autoTitleDone = true;
     this.cb.onTitleChange(this.id, this.title);
+  }
+
+  /** Shared reset path used by /new and the New button. */
+  private startNewConversation(): void {
+    void this.agent.newSession().then(() => {
+      this.title = "New Tab";
+      this.autoTitleDone = false;
+      this.cb.onTitleChange(this.id, this.title);
+      this.notify("[agent] new session \u2014 history cleared and title reset");
+    });
   }
 
   private updateModelBadge(): void {
