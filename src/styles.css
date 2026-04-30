@@ -24,8 +24,12 @@
    * The -rgb companion tokens exist so translucent variants can be
    * authored as `rgba(var(--prism-rose-rgb), 0.4)` without losing the
    * single source of truth. */
-  --prism-emerald: #7dd3fc;
-  --prism-emerald-rgb: 125, 211, 252;
+  /* Tailwind emerald-500. Must stay distinct from --prism-cyan so the
+     `confirmed` confidence tier (\u2713 Observed) doesn't render as the
+     same color as the `info` severity. The status-ok indicator's
+     box-shadow already hardcodes this RGB; the token now matches. */
+  --prism-emerald: #10b981;
+  --prism-emerald-rgb: 16, 185, 129;
   --prism-amber: #f59e0b;
   --prism-amber-rgb: 245, 158, 11;
   --prism-rose: #f43f5e;
