@@ -448,8 +448,9 @@ body {
   display: none !important;
 }
 
-.workspace.terminal-hidden .terminal-host,
-.workspace.terminal-hidden .layout-divider-preview {
+/* Hide the shell strip only; keep `.layout-divider-preview` so the user
+ * can still drag to resize the file viewer height when the terminal is off. */
+.workspace.terminal-hidden .terminal-host {
   display: none !important;
 }
 

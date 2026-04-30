@@ -365,7 +365,7 @@ export class Workspace {
           <div class="file-preview" data-visible="true" aria-hidden="false">
             <div class="file-preview-empty">No file open</div>
           </div>
-          <div class="layout-divider layout-divider-preview" data-divider="preview" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize terminal"></div>
+          <div class="layout-divider layout-divider-preview" data-divider="preview" role="separator" aria-orientation="horizontal" tabindex="0" aria-label="Resize file viewer and terminal"></div>
           <div class="terminal-host">
             <div class="terminal-stage"></div>
           </div>
@@ -469,6 +469,7 @@ export class Workspace {
     this.root.classList.toggle("preview-hidden", !this.previewVisible);
     if (this.terminalVisible) this.fitTerminal();
     void this.persistLayout();
+    this.syncPreviewDividerAccessibility();
     this.cb.onLayoutChange?.(this.id);
   }
 
@@ -478,6 +479,7 @@ export class Workspace {
     this.root.classList.toggle("terminal-hidden", !this.terminalVisible);
     if (this.terminalVisible) this.fitTerminal();
     void this.persistLayout();
+    this.syncPreviewDividerAccessibility();
     this.cb.onLayoutChange?.(this.id);
   }
 
@@ -1900,6 +1902,7 @@ export class Workspace {
       this.root.classList.toggle("preview-hidden", !this.previewVisible);
       this.root.classList.toggle("terminal-hidden", !this.terminalVisible);
       this.root.classList.toggle("agent-hidden", !this.agentVisible);
+      this.syncPreviewDividerAccessibility();
     }
   }
 
@@ -3372,6 +3375,21 @@ export class Workspace {
     document.addEventListener("keydown", onGlobalKey, { capture: true });
     this.disposers.push(() =>
       document.removeEventListener("keydown", onGlobalKey, { capture: true }),
+    );
+    this.syncPreviewDividerAccessibility();
+  }
+
+  /** Horizontal center-pane divider: label reflects whether the terminal strip is visible. */
+  private syncPreviewDividerAccessibility(): void {
+    const el = this.root.querySelector<HTMLElement>(
+      ".layout-divider-preview[data-divider=\"preview\"]",
+    );
+    if (!el) return;
+    el.setAttribute(
+      "aria-label",
+      this.terminalVisible
+        ? "Resize file viewer and terminal"
+        : "Resize file viewer",
     );
   }
 
