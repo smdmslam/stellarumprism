@@ -2527,7 +2527,10 @@ export class Workspace {
     }
     const overlap = keywordOverlapRatio(this.lastChatTopicKeywords, nextKeywords);
     this.lastChatTopicKeywords = nextKeywords;
-    if (overlap > 0.2) return;
+    // Suppress only when the topics meaningfully overlap. The denominator
+    // uses min(|a|,|b|) so a low threshold over-suppresses when one side
+    // is short (e.g. 1/3 keywords → 0.33). Require a majority overlap.
+    if (overlap >= 0.5) return;
     this.topicShiftNudged = true;
     this.agentView?.appendNotice(
       "router",
@@ -2658,6 +2661,23 @@ export class Workspace {
     this.root.ownerDocument.addEventListener("mousedown", onDocPointerDown);
     this.disposers.push(() =>
       this.root.ownerDocument.removeEventListener("mousedown", onDocPointerDown),
+    );
+    // Escape closes the menu and returns focus to its trigger so
+    // keyboard-only users don't lose context (standard ARIA disclosure
+    // pattern). We only refocus on Escape — click-outside via mouse
+    // intentionally lets the user's next click receive focus.
+    const onDocKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const btn = this.root.querySelector<HTMLButtonElement>(
+        '.sidebar-tab-action[data-action="toggle-file-view-options"]',
+      );
+      if (!btn || btn.getAttribute("aria-expanded") !== "true") return;
+      this.hideFileViewOptionsMenu();
+      btn.focus();
+    };
+    this.root.ownerDocument.addEventListener("keydown", onDocKeyDown);
+    this.disposers.push(() =>
+      this.root.ownerDocument.removeEventListener("keydown", onDocKeyDown),
     );
     this.syncFileViewOptionsMenuState();
     this.updateHiddenToggleVisualState();
