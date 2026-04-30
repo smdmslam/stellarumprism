@@ -45,6 +45,12 @@ const GIT_LOG_LIMIT_CAP: usize = 100;
 
 /// Tools that must NOT auto-execute. Consulted by the tool loop in
 /// `agent.rs` before each call. Wired to the approval UI.
+///
+/// `read_skill` requires approval not because it mutates anything, but
+/// because approving it has a sticky side effect on the frontend
+/// (engages the skill into the active tab; the body rides every
+/// subsequent turn). Surfacing the approval card makes that commitment
+/// explicit to the user. See `MASTER-Plan-II.md#7.3`.
 pub fn requires_approval(tool_name: &str) -> bool {
     matches!(
         tool_name,
@@ -55,6 +61,7 @@ pub fn requires_approval(tool_name: &str) -> bool {
             | "delete_directory"
             | "move_path"
             | "create_directory"
+            | "read_skill"
     )
 }
 
@@ -160,6 +167,17 @@ pub fn preview_write(tool_name: &str, args_json: &str) -> String {
         "create_directory" => {
             let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("?");
             format!("create_directory: {}", path)
+        }
+        "read_skill" => {
+            // Approving a `read_skill` call has a sticky side effect:
+            // the skill engages for the rest of the tab session. The
+            // preview makes that commitment explicit so the user isn't
+            // surprised when a chip appears in the input bar.
+            let slug = parsed.get("slug").and_then(|v| v.as_str()).unwrap_or("?");
+            format!(
+                "read_skill: {}\n\nThe agent wants to load this skill. Approving will:\n  \u{2022} return the skill body to the agent for this turn\n  \u{2022} engage the skill for this tab (chip appears; body rides every turn)\nDisengage anytime by clicking the chip\u{2019}s \u{00d7} or closing the tab.",
+                slug,
+            )
         }
         _ => args_json.to_string(),
     }
@@ -724,6 +742,23 @@ pub fn tool_schema() -> Value {
                     "required": ["path"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_skill",
+                "description": "Load a user-curated skill (markdown body from `.prism/skills/<slug>.md`) into the conversation context. ONLY available when the user has turned skills awareness ON. Each call surfaces an approval card to the user; on approval the skill body is returned for THIS turn AND the skill is engaged for the rest of the tab session (its body rides every subsequent turn until the user disengages). Use this when the available-skills manifest in the system prompt suggests a skill that genuinely applies to the current task. Do not call speculatively \u{2014} every call costs the user an approval click. Returns the skill body as the tool result so you can immediately apply its guidance.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "slug": {
+                            "type": "string",
+                            "description": "Skill slug (filename without `.md`), exactly as it appears in the system-prompt manifest."
+                        }
+                    },
+                    "required": ["slug"]
+                }
+            }
         }
     ])
 }
@@ -800,6 +835,7 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
         "delete_directory" => tool_delete_directory(args_json, cwd),
         "move_path" => tool_move_path(args_json, cwd),
         "create_directory" => tool_create_directory(args_json, cwd),
+        "read_skill" => tool_read_skill(args_json, cwd),
         other => Err(format!("unknown tool: {}", other)),
     };
     match result {
@@ -2672,6 +2708,34 @@ fn tool_create_directory(args_json: &str, cwd: &str) -> Result<(String, String),
     Ok((summary, payload))
 }
 
+#[derive(Deserialize)]
+struct ReadSkillArgs {
+    slug: String,
+}
+
+/// `read_skill` LLM tool. Delegates to `crate::skills::read_skill`
+/// (the same function the Tauri command exposes to the frontend), so
+/// the size cap + frontmatter handling stay in one place. The agent
+/// loop emits the standard `agent-tool-${requestId}` event after this
+/// returns; the frontend listens for `name: "read_skill"` to engage
+/// the skill into the active tab. See `MASTER-Plan-II.md#7.3`.
+///
+/// Payload is the full SkillBody (slug, name, description, body,
+/// sizeBytes), so the LLM has both the body to reason from and the
+/// metadata needed to acknowledge the engagement coherently.
+fn tool_read_skill(args_json: &str, cwd: &str) -> Result<(String, String), String> {
+    let args: ReadSkillArgs = serde_json::from_str(args_json)
+        .map_err(|e| format!("invalid arguments: {}", e))?;
+    let body = crate::skills::read_skill(cwd.to_string(), args.slug.clone())?;
+    let summary = format!(
+        "read_skill: {} ({} bytes)",
+        body.slug, body.size_bytes
+    );
+    let payload = serde_json::to_string(&body)
+        .map_err(|e| format!("cannot serialize skill payload: {}", e))?;
+    Ok((summary, payload))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2872,6 +2936,10 @@ mod tests {
         assert!(requires_approval("delete_directory"));
         assert!(requires_approval("move_path"));
         assert!(requires_approval("create_directory"));
+        // read_skill is the one non-mutating tool that requires approval,
+        // because approving it engages the skill for the session (sticky
+        // side effect). See `MASTER-Plan-II.md#7.3`.
+        assert!(requires_approval("read_skill"));
         assert!(!requires_approval("read_file"));
         assert!(!requires_approval("list_directory"));
         assert!(!requires_approval("get_cwd"));

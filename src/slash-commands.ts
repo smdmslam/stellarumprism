@@ -2,7 +2,7 @@
 // (eventually) a built-in /help listing. Keep these in sync with the handlers
 // in `workspace.ts`.
 
-import { MODEL_LIBRARY } from "./models";
+import { MODEL_LIBRARY, type ModelEntry } from "./models";
 import { MODES } from "./modes";
 import { RECIPES } from "./recipes";
 import { settings } from "./settings";
@@ -207,23 +207,89 @@ export function modelCompletions(): {
   }));
 }
 
-/** Render the model library as a Markdown table for the agent stage. */
-export function renderModelsMarkdown(): string {
+/**
+ * Build the inline tag string for a model row: `[img]` when the model
+ * is multimodal, plus a cost glyph (`$` / `$$` / `$$$`) tinted by tier.
+ * Each tag is wrapped in a `.model-tag-*` span so the agent panel's
+ * markdown renderer can color them via CSS \u2014 mirrors the same idea
+ * the ANSI version of `/models` uses in the terminal, but applied to
+ * the in-app HTML surface so users can scan capabilities at a glance
+ * without relying on emoji icons.
+ */
+function modelTagsMarkdown(m: ModelEntry): string {
+  const parts: string[] = [];
+  if (m.vision) {
+    parts.push('<span class="model-tag-img">[img]</span>');
+  }
+  if (m.cost === 1) {
+    parts.push('<span class="model-tag-cost-1">$</span>');
+  } else if (m.cost === 2) {
+    parts.push('<span class="model-tag-cost-2">$$</span>');
+  } else if (m.cost === 3) {
+    parts.push('<span class="model-tag-cost-3">$$$</span>');
+  }
+  return parts.join(" ");
+}
+
+/**
+ * Render the model library as Markdown for the agent stage. Mirrors
+ * the ANSI version's section split (Main / Explore) and inline tags
+ * (`[img]` for vision, `$/$$/$$$` for cost) so the in-app surface and
+ * the terminal surface speak the same visual language.
+ *
+ * `current` is the active model slug; the matching row gets a `\u25cf`
+ * marker prepended so the user can spot "what am I using right now?"
+ * without scanning the description column. Pass undefined or empty
+ * string to render with no marker (e.g. when called from a context
+ * that doesn't track an active model).
+ */
+export function renderModelsMarkdown(current?: string): string {
+  const sections: { title: string; entries: ModelEntry[] }[] = [
+    {
+      title: "Main",
+      entries: MODEL_LIBRARY.filter(
+        (m) =>
+          m.tier === "main" &&
+          settings.isModelEnabled(m.slug, m.enabled !== false),
+      ),
+    },
+    {
+      title: "Explore",
+      entries: MODEL_LIBRARY.filter(
+        (m) =>
+          m.tier === "explore" &&
+          settings.isModelEnabled(m.slug, m.enabled !== false),
+      ),
+    },
+  ];
+
   const out: string[] = [];
   out.push("### Available Models\n\n");
-  out.push("| Alias | Provider / Slug | Description |\n");
-  out.push("| :--- | :--- | :--- |\n");
-
-  const models = MODEL_LIBRARY.filter(
-    (m) =>
-      m.tier !== "backend" &&
-      settings.isModelEnabled(m.slug, m.enabled !== false),
+  // Legend mirrors the inline tags so the user sees the same rendering
+  // they'll find in each row \u2014 not an unrelated key.
+  out.push(
+    `_use_ \`/model <alias|slug>\` \u2014 ` +
+      `<span class="model-tag-img">[img]</span> = vision, ` +
+      `<span class="model-tag-cost-1">$</span> cheap, ` +
+      `<span class="model-tag-cost-2">$$</span> mid, ` +
+      `<span class="model-tag-cost-3">$$$</span> premium\n\n`,
   );
 
-  for (const m of models) {
-    const alias = `\`${m.aliases[0]}\``;
-    const vision = m.vision ? " 🖼️" : "";
-    out.push(`| ${alias} | ${m.slug}${vision} | ${m.description} |\n`);
+  for (const section of sections) {
+    if (section.entries.length === 0) continue;
+    out.push(`#### ${section.title}\n\n`);
+    out.push("| Alias | Provider / Slug | Tags | Description |\n");
+    out.push("| :--- | :--- | :--- | :--- |\n");
+    for (const m of section.entries) {
+      const isActive = !!current && m.slug === current;
+      const marker = isActive
+        ? `<span class="model-tag-active">\u25cf</span> `
+        : "";
+      const alias = `${marker}\`${m.aliases[0]}\``;
+      const tags = modelTagsMarkdown(m);
+      out.push(`| ${alias} | ${m.slug} | ${tags} | ${m.description} |\n`);
+    }
+    out.push("\n");
   }
   return out.join("");
 }

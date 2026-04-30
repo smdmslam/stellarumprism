@@ -342,21 +342,41 @@
 #### 7.3 Track B — LLM-aware mode (toggle pill + manifest + `read_skill` tool)
 - **Status:** NOT STARTED
 - **What:** Ambient surfacing through the agent's own judgment. Solves the "I didn't know this skill existed but I'm glad it surfaced" case.
+
+**Two orthogonal axes** — don't conflate:
+1. **Skill awareness** (the pill): does the LLM even *know* what skills exist? Controls whether the manifest line is added to the system prompt every turn.
+2. **Engaged skills** (the chips, owned by Track A): whose bodies are *actually in context*?
+
+The two interact: when awareness is ON, the manifest line lists every skill **except already-engaged ones** so the LLM doesn't redundantly request bodies that are already in context.
+
+**Sticky-by-default semantics.** When the LLM calls `read_skill(slug)` and the user approves, the skill becomes **engaged exactly as if `/skills load <slug>` had been used**: a chip appears in the input bar, the body lands in every subsequent turn's `systemPrefix`, sticky until the user clicks the chip's `×` or the tab closes. Track B is therefore just a different *entry point* to Track A's engagement state — there is one engagement model, not two flavors.
+
+The alternative (one-shot per call) was considered and rejected: it forces the LLM to re-call `read_skill` every turn for the same skill, forcing the user to re-approve, which is thrash for skills like `vc-template` that the user wants persistent.
+
+**Approval card text** must be explicit about the sticky commitment so users aren't surprised:
+> Read skill `vc-template` and engage it for this tab? It will stay in context for every turn until you click the chip's × or close the tab.
+
+**Implementation:**
   1. **Pill near CMD/AGENT:** `skills off` / `skills on`. Same shape as intent badge. Per-tab state, not persisted across restarts (matches Track A's ephemeral engagement principle).
-  2. **When ON, system prompt gets a manifest line:** `Available skills (call read_skill if any apply): react-debugging — Use when debugging …`. Just name + description — cheap on context.
-  3. **`read_skill(slug)` tool** registered in agent toolset, `requires_approval: true`. Reuses the existing per-call approval card from commit `058fbbc`.
-  4. **User sees standard approval card:** "Read skill `react-debugging`?" with description as context. Yes → tool returns body. No → tool returns `"user declined"`, agent proceeds without it.
-  5. **Track A engagement is independent** — if a skill is already engaged via Track A, the LLM doesn't need to call `read_skill` for it; the body is already in `systemPrefix`. Manifest in B should reflect "already engaged" so the LLM doesn't redundantly request it.
-- **Why this track exists:** stored knowledge stays useful even when the user forgets it exists. Trades a per-turn manifest cost for serendipity.
-- **Default state:** toggle OFF. Opt-in to discover the feature.
-- **Trade-offs accepted:**
-  - Hit/miss on the LLM's part — user gates via Yes/No, this is fine.
-  - One extra round-trip when triggered.
-  - Manifest token cost per-turn when ON. Mitigated by short descriptions + the toggle.
-- **Estimated scope:**
-  - Pill + toggle state: ~40 LOC TS
-  - Manifest assembly: ~30 LOC TS (uses `list_skills` from 7.1)
-  - `read_skill` tool wiring + approval card text: ~70 LOC TS + ~30 LOC Rust
+  2. **When ON, system prompt gets a manifest line:** `Available skills (call read_skill if any apply): react-debugging — Use when debugging …`. Excludes already-engaged skills. Just name + description — cheap on context.
+  3. **`read_skill(slug)` LLM tool** registered in `tools.rs`, `requires_approval: true`. Reuses the existing per-call approval card from commit `058fbbc`.
+  4. **Approval flow:** user sees the card, clicks Approve → Rust executes the tool (returns body) AND emits a `agent-tool-${requestId}` event with `name: "read_skill"`. The frontend hooks this event to call `engageSkill(slug)`, which runs the same `decideEngagement` gate Track A uses. On block (over budget), the LLM still got the body for this turn but no chip appears — the engagement was correctly refused.
+  5. **Track A independence:** the manifest excludes engaged skills; the `read_skill` tool returns the cached engaged body if called for an already-engaged slug (no disk read, no re-approval).
+
+**Default state:** toggle OFF. Opt-in to discover the feature.
+
+**Trade-offs accepted:**
+- Hit/miss on the LLM's part — user gates via Yes/No, this is fine.
+- One extra round-trip when triggered.
+- Manifest token cost per-turn when ON. Mitigated by short descriptions + the toggle.
+- Sticky engagement after one approval — explicitly named in the approval card text so users aren't surprised.
+
+**Estimated scope:**
+- Pill + awareness state: ~50 LOC TS
+- Manifest assembly + injection: ~40 LOC TS (uses `list_skills` from 7.1, filters against engaged set)
+- Rust `read_skill` LLM tool: ~80 LOC Rust
+- Agent hook for post-approval engagement: ~25 LOC TS
+- CSS for awareness pill: ~30 LOC
 
 #### 7.4 Reconcile MASTER-Plan-II's old skill-runtime gap
 - **Status:** SUBSUMED by 7.1–7.3.

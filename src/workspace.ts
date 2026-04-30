@@ -28,7 +28,7 @@ import {
   renderHelpMarkdown,
   renderModelsMarkdown,
 } from "./slash-commands";
-import { listSkills, readSkill, renderSkillsMarkdown, type SkillBody } from "./skills";
+import { listSkills, readSkill, renderSkillsMarkdown, type SkillBody, type SkillSummary } from "./skills";
 import { decideEngagement, formatKB } from "./skill-limits";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { settings } from "./settings";
@@ -259,6 +259,18 @@ export class Workspace {
    */
   private engagedSkills: Map<string, SkillBody> = new Map();
   /**
+   * Track B awareness state (`MASTER-Plan-II#7.3`). When true, the
+   * agent's system prompt gets a manifest of available skills (slug +
+   * description, excluding already-engaged ones) plus the `read_skill`
+   * tool is meaningful in context. When false, the LLM has no idea
+   * skills exist \u2014 acts as a pure agent.
+   *
+   * Per-tab + ephemeral by design; not persisted across restarts.
+   * Default OFF so first-launch users aren't silently paying manifest
+   * tokens until they discover the feature.
+   */
+  private skillsAware = false;
+  /**
    * Filter state for the Problems panel. Held on the workspace so a
    * user-toggled chip stays toggled across re-renders.
    */
@@ -431,7 +443,9 @@ export class Workspace {
               </div>
 
               <button class="busy-pill" type="button" title="Cancel agent request" aria-label="Cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
-              
+
+              <button class="skills-toggle" type="button" data-aware="false" title="Toggle skills awareness \u2014 when on, the agent can request user-curated skills via the read_skill tool (each request is approved). Off by default." aria-label="Skills awareness" aria-pressed="false">skills off</button>
+
               <div class="pill-group">
                 <span class="intent-badge" data-intent="command" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="Input mode">CMD</span>
                 <div class="intent-selector-menu" role="menu" hidden>
@@ -737,6 +751,9 @@ export class Workspace {
       onStall: () => this.setStalledState(true),
       onAuditComplete: (info) => this.handleAuditComplete(info),
       onBuildComplete: (info) => this.handleBuildComplete(info),
+      onToolExecuted: (info) => {
+        void this.handleToolExecuted(info);
+      },
     });
     this.setupEditor();
     this.setupAttachments();
@@ -870,6 +887,7 @@ export class Workspace {
   private setupBadges(): void {
     const modelBadge = this.root.querySelector<HTMLElement>(".model-badge")!;
     const intentBadge = this.root.querySelector<HTMLElement>(".intent-badge")!;
+    const skillsToggle = this.root.querySelector<HTMLButtonElement>(".skills-toggle");
 
     intentBadge.addEventListener("click", (e) => {
       e.preventDefault();
@@ -881,6 +899,11 @@ export class Workspace {
       e.preventDefault();
       e.stopPropagation();
       this.toggleModelMenu();
+    });
+    skillsToggle?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggleSkillsAwareness();
     });
 
     // Delegate menu item clicks.
@@ -962,7 +985,9 @@ export class Workspace {
     // Slash commands (order matters).
     if (/^\s*\/models\s*$/i.test(text)) {
       if (this.agentView) {
-        this.agentView.appendReport(renderModelsMarkdown());
+        this.agentView.appendReport(
+          renderModelsMarkdown(this.agent.getModel()),
+        );
       } else {
         this.notify(renderModelListAnsi(this.agent.getModel()));
       }
@@ -1518,6 +1543,19 @@ export class Workspace {
       systemPrefix = systemPrefix
         ? `${skillsBlock}\n\n${systemPrefix}`
         : skillsBlock;
+    }
+    // Track B awareness manifest. Append AFTER any other prefix so the
+    // available-skills line is the last thing the model sees before the
+    // user query \u2014 closer to the conversational floor improves the odds
+    // it gets considered. Excludes already-engaged skills (their bodies
+    // are above; no need to re-advertise).
+    if (this.skillsAware) {
+      const manifest = await this.composeSkillsAwarenessManifest();
+      if (manifest.length > 0) {
+        systemPrefix = systemPrefix
+          ? `${systemPrefix}\n\n${manifest}`
+          : manifest;
+      }
     }
 
     const refs = extractFileRefs(prompt);
@@ -2594,6 +2632,104 @@ export class Workspace {
       this.cb.onTitleChange(this.id, this.title);
       this.notify("[agent] new session \u2014 history cleared and title reset");
     });
+  }
+
+  // -- Track B: skills awareness toggle + manifest -------------------------
+
+  /**
+   * Flip the per-tab awareness flag and update the pill UI. When ON,
+   * `dispatchAgentQuery` adds an "available skills" manifest to the
+   * system prompt and the LLM can call `read_skill(slug)` to request a
+   * skill body. Each call surfaces an approval card; on approval the
+   * skill engages (sticky) just like Track A's `/skills load`.
+   */
+  private toggleSkillsAwareness(): void {
+    this.skillsAware = !this.skillsAware;
+    this.updateSkillsToggleUI();
+    this.notify(
+      this.skillsAware
+        ? "[skills] awareness on \u2014 the agent will see available skills and may request to load one (each request is approved)"
+        : "[skills] awareness off",
+    );
+  }
+
+  /** Sync the skills-toggle pill's data attributes + label with the live state. */
+  private updateSkillsToggleUI(): void {
+    const btn = this.root.querySelector<HTMLButtonElement>(".skills-toggle");
+    if (!btn) return;
+    btn.dataset.aware = this.skillsAware ? "true" : "false";
+    btn.setAttribute("aria-pressed", this.skillsAware ? "true" : "false");
+    btn.textContent = this.skillsAware ? "skills on" : "skills off";
+  }
+
+  /**
+   * Build the awareness-manifest section of the system prefix.
+   * Returns "" when there's nothing to advertise (no cwd, empty
+   * corpus, or every skill is already engaged via Track A).
+   *
+   * Format mirrors the agent's own protocol style so the LLM treats
+   * it as instruction rather than user content. Each skill is one
+   * line: `- \`slug\` \u2014 description`.
+   */
+  private async composeSkillsAwarenessManifest(): Promise<string> {
+    if (!this.cwd) return "";
+    let skills: SkillSummary[];
+    try {
+      skills = await listSkills(this.cwd);
+    } catch {
+      // Best-effort: a transient list_skills failure shouldn't block
+      // the agent turn. The user just won't get LLM-aware suggestions
+      // this round.
+      return "";
+    }
+    const engagedSlugs = new Set(this.engagedSkills.keys());
+    const candidates = skills.filter((s) => !engagedSlugs.has(s.slug));
+    if (candidates.length === 0) return "";
+    const out: string[] = [];
+    out.push("## Available skills");
+    out.push(
+      "The user has skills awareness enabled. If any of the following user-curated skills would clearly help with the current task, call the `read_skill` tool with the matching slug. Each call surfaces an approval card to the user; on approval, the skill engages for the rest of the tab session and its body rides every subsequent turn. Do not call speculatively \u2014 a wrong call costs the user a click.",
+    );
+    for (const s of candidates) {
+      out.push(`- \`${s.slug}\` \u2014 ${s.description}`);
+    }
+    return out.join("\n");
+  }
+
+  /**
+   * Tool-execution observer hook. Wired into AgentController via
+   * `onToolExecuted`; fires once per completed tool call. We care
+   * specifically about `read_skill` here \u2014 a successful one means
+   * the user just approved engaging a skill, so we stickify it by
+   * routing through the same `engageSkill` path Track A uses.
+   *
+   * Failures (user rejected, args invalid, file too large) are
+   * silently ignored \u2014 the LLM already saw the error in the tool
+   * result and can adjust; we don't need to surface anything more.
+   */
+  private async handleToolExecuted(info: {
+    name: string;
+    args: string;
+    ok: boolean;
+  }): Promise<void> {
+    if (info.name !== "read_skill" || !info.ok) return;
+    let slug: string | null = null;
+    try {
+      const parsed = JSON.parse(info.args) as { slug?: unknown };
+      if (typeof parsed.slug === "string" && parsed.slug.length > 0) {
+        slug = parsed.slug;
+      }
+    } catch {
+      return; // Malformed args; nothing to engage.
+    }
+    if (!slug) return;
+    if (this.engagedSkills.has(slug)) return; // Already engaged; nothing to do.
+    // Engage via the standard path so the size-discipline gate runs
+    // and the chip renders. Note: the LLM ALREADY got the body for
+    // this turn via the tool result, so even if `decideEngagement`
+    // blocks (over budget), the current turn isn't degraded \u2014 the
+    // engagement is just refused for future turns.
+    await this.engageSkill(slug);
   }
 
   // -- Track A: intentional skill engagement -------------------------------

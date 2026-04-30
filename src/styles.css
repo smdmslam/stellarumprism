@@ -1935,6 +1935,83 @@ input:checked + .toggle-slider:before {
   cursor: pointer;
 }
 
+/* ---------- /models inline tags (markdown) ----------
+ *
+ * The /models slash command renders a markdown table; each row carries
+ * inline `<span class="model-tag-*">` tags so capabilities scan at a
+ * glance without emoji icons. Color discipline mirrors the ANSI
+ * version of /models so the terminal and the agent panel speak the
+ * same visual language:
+ *   [img] → violet (vision; matches the agent intent badge color)
+ *   $     → emerald (cheap)
+ *   $$    → amber (mid)
+ *   $$$   → rose (premium)
+ *   ●     → emerald (active-model marker)
+ */
+.model-tag-img,
+.model-tag-cost-1,
+.model-tag-cost-2,
+.model-tag-cost-3,
+.model-tag-active {
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  font-size: 0.95em;
+  letter-spacing: 0.02em;
+}
+.model-tag-img { color: #c084fc; }
+.model-tag-cost-1 { color: var(--prism-emerald); }
+.model-tag-cost-2 { color: var(--prism-amber); }
+.model-tag-cost-3 { color: var(--prism-rose); }
+.model-tag-active {
+  color: var(--prism-emerald);
+  font-size: 1em;
+  margin-right: 2px;
+}
+
+/* ---------- skills awareness toggle (Track B) ----------
+ *
+ * Pill near the intent badge. OFF state reads as a quiet, dim chip
+ * matching the off-tone of the other meta controls; ON flips to the
+ * same violet accent the engaged-skill chips use, signaling "agent
+ * context surface is live". The font face matches the model/intent
+ * pills so it visually belongs to the same family. */
+.skills-toggle {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(148, 163, 184, 0.06);
+  color: #6b7280;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  transition: background-color 120ms ease, border-color 120ms ease,
+              color 120ms ease, transform 80ms ease;
+}
+.skills-toggle:hover {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.32);
+  color: #cbd5e1;
+}
+.skills-toggle[data-aware="true"] {
+  background: rgba(192, 132, 252, 0.12);
+  color: #c084fc;
+  border-color: rgba(192, 132, 252, 0.40);
+}
+.skills-toggle[data-aware="true"]:hover {
+  background: rgba(192, 132, 252, 0.20);
+  border-color: rgba(192, 132, 252, 0.55);
+}
+.skills-toggle:active {
+  transform: translateY(1px);
+}
+
 /* ---------- engaged-skill chips (Track A) ----------
  *
  * One chip per skill engaged for the current tab. Lives in the

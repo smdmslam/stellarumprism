@@ -173,6 +173,20 @@ export interface AgentControllerOptions {
     model: string;
     mode: string;
   }) => void;
+  /**
+   * Fires after every tool call completes (success OR failure), with
+   * the tool name + raw JSON args + ok flag. The workspace uses this
+   * to react to specific tool executions \u2014 e.g. engaging a skill
+   * after a successful `read_skill` (Track B sticky engagement, see
+   * `MASTER-Plan-II.md#7.3`). Fires AFTER the in-controller bookkeeping
+   * (counts, write tracking, audit-probe capture) so observers see a
+   * consistent state.
+   */
+  onToolExecuted?: (info: {
+    name: string;
+    args: string;
+    ok: boolean;
+  }) => void;
 }
 
 /**
@@ -806,6 +820,17 @@ export class AgentController {
     round: number;
   }): void {
     this.resetStallTimer();
+    // Notify external observers (workspace) that a tool finished.
+    // Wrapped in try/catch so a buggy listener can't crash the turn.
+    try {
+      this.opts.onToolExecuted?.({
+        name: info.name,
+        args: info.args,
+        ok: info.ok,
+      });
+    } catch (e) {
+      console.error("onToolExecuted threw", e);
+    }
     // Count every tool call this turn (success OR failure \u2014 a failed
     // tool call still represents real tool work the model attempted,
     // and the rigor check only cares whether the model bothered to
