@@ -456,6 +456,7 @@ mod tests {
             sidebar_width: Some(280),
             problems_width: Some(420),
             preview_height: Some(360),
+            ..Default::default()
         });
         write_workspace_state(cwd.to_string_lossy().into_owned(), state).unwrap();
         let read = read_workspace_state(cwd.to_string_lossy().into_owned())

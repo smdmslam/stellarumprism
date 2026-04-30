@@ -91,6 +91,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     info: "Show the project file tree in the left sidebar and focus it for keyboard navigation (arrow keys, Enter to open). Click a file to preview its top \u223c80 lines inline above the terminal; click again to open it in the editor (phase 2). The tree honors .gitignore and lazy-loads each subdirectory on expand.",
   },
   {
+    label: "/skills",
+    detail: "List skills in `.prism/skills/`",
+    info:
+      "Print the project's skill library: every `.md` file under `.prism/skills/`, with its derived name, one-line description, and size. Skills are durable behavioral guides the agent can pull into context. Authoring rules + size caps live in `docs/skills.md`. Engagement (intentional Load chip + LLM-aware mode) is being wired separately; for now `/skills` is the discovery surface.",
+  },
+  {
     label: "/last",
     detail: "Show last audit + last build",
     info: "Print a compact summary of the workspace's persisted state.json: the most recent /audit and the most recent build/new/refactor/test-gen completion, with paths to their full reports under .prism/.",

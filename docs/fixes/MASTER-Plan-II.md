@@ -305,77 +305,75 @@
 
 ---
 
-### Phase 7 — Skills System (LLM-driven surfacing)
-**North star:** stored skills surface to the LLM as candidates; the LLM decides if any apply to the current turn and asks the user for permission to load one. Two distinct concepts that should NOT be conflated:
-  1. **Skill as knowledge** — markdown content the LLM can pull into context when relevant. Small. Ship first.
-  2. **Skill as executable** — runnable workflow that goes through the recipe lifecycle. Big. Defer until #1 is in users' hands and we have data on usage.
-
-7.1–7.4 are v1 (knowledge-only). Each step is independently shippable. Stop after 7.4, ship, watch real usage before opening 7.5+.
-
-**Why LLM-driven instead of keyword-matching:** users want stored knowledge to *surface* when relevant, not to manage a heuristic. The LLM already understands semantic intent better than any string-overlap scoring we'd hand-roll. Hit/miss is acknowledged — that's the cost of automation; users still control the final yes/no.
-
-#### 7.1 Define the v1 file format
+### Phase 7 — Skills System (two complementary tracks)
+**Existing foundation (already built, see DONE section):** `docs/skills.md` reference; `.prism/skills/` corpus of 19 real skills in plain markdown; `src/skill-limits.ts` (per-skill 18 KB warn / 32 KB hard cap; 128 KB session budget); `src/settings.ts` skill curation map + saved-search groups; Settings UI Skills tab. **What's missing is the runtime engagement half.**
+**Two intentional, complementary mechanisms** for getting skills into agent context. They are NOT alternatives — they solve different user problems and should both ship:
+  - **Track A — Intentional engagement.** "Load skill X now." User knows what they want and explicitly engages it. Persistent per-tab via a chip in the input bar; explicit disengage by clicking the chip's `×`. Spec'd in `docs/skills.md`.
+  - **Track B — LLM-aware mode.** "Skills awareness on." User opts in to letting the agent see the skill manifest and proactively suggest one when applicable. Approval-gated, lazy-loaded. The serendipitous "glad you suggested that" path.
+**Out of scope for v1 (both tracks):** executable skills (skills with `steps:`). Skills are knowledge-only for now. Recipes already cover runnable workflows.
+#### 7.1 Shared foundation: `list_skills` + `read_skill` Tauri commands + `/skills` browse
 - **Status:** NOT STARTED
-- **What:** A skill is a markdown file at `.prism/skills/<slug>.md` with a tiny YAML frontmatter:
-  - `name`: human-readable label
-  - `description`: one-line "when to use" hint (this is what the LLM sees — quality matters)
-  - body: free-form markdown that becomes the injected content when the skill is loaded
-- **Deliberate non-goals (v1):** no schema version, no validator, no `steps:`, no required fields beyond name + description.
-- **Description-style guidance (in the README):** lead with the trigger condition ("Use when …"), be specific about domain, keep under 100 chars. Vague descriptions cause over- or under-triggering by the LLM.
-- **Estimated scope:** docs only — `.prism/skills/README.md` describing format + description-style. ~40 lines.
+- **What:** Both tracks need backend access to the corpus. Build this once, both consume it.
+  - Tauri command `list_skills(cwd)` — scans `.prism/skills/*.md`, returns `[{slug, name, description, sizeBytes}]`. Body NOT included; this is the cheap manifest.
+  - Tauri command `read_skill(cwd, slug)` — returns the file body. Subject to size cap from `skill-limits.ts`. Used by both Track A's Load action and Track B's tool call.
+  - `/skills` slash command — calls `list_skills`, renders Discord-style table in agent panel. Mirrors `/models`. Doubles as a debug surface for what the LLM will see in Track B.
+- **Description derivation (no retrofit):** existing skills are plain markdown without frontmatter. Resolution order:
+  1. If YAML frontmatter has `description:`, use it.
+  2. Else use the first non-empty line after the H1 (typically the lead-in paragraph).
+  3. Else fall back to the slug itself.
+  Future skills MAY add frontmatter (`name:`, `description:`) if the derived line isn't tight enough; existing 19 files keep working untouched.
+- **Estimated scope:** ~50 LOC TS + ~80 LOC Rust (list + read commands + frontmatter parser + tests).
 
-#### 7.2 `/skills` slash command (list + browse)
+#### 7.2 Track A — Intentional engagement (Load modal + chip + body injection)
 - **Status:** NOT STARTED
-- **What:** New slash command that scans `.prism/skills/`, parses each file's frontmatter, renders a Discord-style table (name + description) in the agent panel.
-- **Mirrors:** `/models` (`renderModelsMarkdown` pattern in `slash-commands.ts`).
-- **Backend:** Tauri command `list_skills(cwd)` returning `[{slug, name, description}]`. Reading the body is deferred until the user actually uses one.
-- **Why before 7.3:** browsing is orthogonal to runtime use, gives users a way to confirm what's discoverable, and doubles as a debugging surface for the manifest the LLM will see.
-- **Estimated scope:** ~50 LOC TS + ~30 LOC Rust.
-
-#### 7.3 Skills toggle + LLM-driven `read_skill` tool (CORE FEATURE)
-- **Status:** NOT STARTED
-- **What:** The mechanism that makes skills surface ambiently:
-  1. New pill near CMD/AGENT: `skills off` / `skills on`. Same shape as the intent badge. State persisted per-tab in layout state.
-  2. When ON, the agent's system prompt gets a manifest line: `Available skills (call read_skill(slug) if any apply): react-debugging — Use when debugging a React component or hook; …`. Just name + description — cheap on context, no bodies.
-  3. New tool `read_skill(slug)` registered in the agent's toolset. Marked `requires_approval: true` so it slots into the existing per-call approval system (commit `058fbbc`).
-  4. When the LLM decides a skill applies, it calls the tool. User sees the standard approval card: "Read skill `react-debugging`?" with the description as context. Yes → tool returns the body, LLM continues with it in context. No → tool returns `"user declined"`, LLM proceeds without it.
-- **Why this design wins:**
-  - Replaces both keyword-matching and `@@<slug>` explicit invocation with one mechanism.
-  - Lazy: bodies only loaded when the LLM actually wants them; manifest is cheap.
-  - Reuses existing approval plumbing — no new consent UI to design.
-  - Self-explaining: the user sees WHICH skill and WHY (the description) before saying yes.
-- **Default state:** toggle OFF on first launch. Opt-in to keep the surface discoverable but never surprising.
-- **Trade-offs accepted:**
-  - One extra round-trip (~1s) when the LLM triggers a skill. Tolerable; only happens on confident matches.
-  - Manifest tokens per-turn when toggle is ON. Mitigated by short descriptions and the toggle.
-  - Hit/miss element on the LLM's part — acknowledged. Users still gate via Yes/No.
+- **What:** The model already documented in `docs/skills.md`:
+  1. **Load action** somewhere reachable (toolbar button, `/skills load <slug>`, or modal). Picks one or more skills.
+  2. **Engagement decision** runs through `decideEngagement` in `src/skill-limits.ts` — already built. Returns `ok` / `warn` / `block`.
+  3. **Chip rendered in input-bar meta row.** One chip per engaged skill: `▸ react-debugging ×`. Click `×` disengages.
+  4. **Bodies prepended to `systemPrefix`** for every turn while engaged. Pulled from `dispatchAgentQuery` plumbing; mirrors how `extractFileRefs` injects file refs.
+  5. **Per-tab + ephemeral.** Engagement state lives in tab runtime, not persisted to localStorage or `session.json`. (Curation choices in Settings persist; engagement choices don't — by design, per `docs/skills.md`.)
+- **Why this track exists:** explicit user intent. User has read the skill, knows it applies, doesn't want to wait for the LLM to discover it. Power-user fast path.
 - **Estimated scope:**
-  - Pill + toggle state + persistence: ~40 LOC TS
-  - Manifest assembly into systemPrefix: ~30 LOC TS
-  - `read_skill` tool registration + approval wiring: ~50 LOC TS + ~30 LOC Rust
-  - Approval card text rendering for the skill case: ~20 LOC TS
-- **Closes:** the original "wire skills into runtime" gap.
+  - Load entry point (slash + optional modal): ~80 LOC TS
+  - Chip component + click handlers in input-bar: ~60 LOC TS + CSS
+  - `systemPrefix` body injection in `dispatchAgentQuery`: ~30 LOC TS
+  - Engaged-skills state on Workspace + chip render: ~40 LOC TS
 
-#### 7.4 Per-skill enable/disable in settings
+#### 7.3 Track B — LLM-aware mode (toggle pill + manifest + `read_skill` tool)
 - **Status:** NOT STARTED
-- **What:** Settings UI already references skills but doesn't affect runtime. Add a per-skill toggle list. Disabled skills are excluded from the manifest the LLM sees in 7.3.
-- **Mirrors:** `settings.isModelEnabled` pattern (already in `settings.ts`).
-- **Why useful:** users can hide noisy or unused skills without deleting the file. Also useful for project-specific skill sets across multiple repos.
-- **Estimated scope:** ~10 LOC plumbing + per-row toggle UI in existing settings panel.
+- **What:** Ambient surfacing through the agent's own judgment. Solves the "I didn't know this skill existed but I'm glad it surfaced" case.
+  1. **Pill near CMD/AGENT:** `skills off` / `skills on`. Same shape as intent badge. Per-tab state, not persisted across restarts (matches Track A's ephemeral engagement principle).
+  2. **When ON, system prompt gets a manifest line:** `Available skills (call read_skill if any apply): react-debugging — Use when debugging …`. Just name + description — cheap on context.
+  3. **`read_skill(slug)` tool** registered in agent toolset, `requires_approval: true`. Reuses the existing per-call approval card from commit `058fbbc`.
+  4. **User sees standard approval card:** "Read skill `react-debugging`?" with description as context. Yes → tool returns body. No → tool returns `"user declined"`, agent proceeds without it.
+  5. **Track A engagement is independent** — if a skill is already engaged via Track A, the LLM doesn't need to call `read_skill` for it; the body is already in `systemPrefix`. Manifest in B should reflect "already engaged" so the LLM doesn't redundantly request it.
+- **Why this track exists:** stored knowledge stays useful even when the user forgets it exists. Trades a per-turn manifest cost for serendipity.
+- **Default state:** toggle OFF. Opt-in to discover the feature.
+- **Trade-offs accepted:**
+  - Hit/miss on the LLM's part — user gates via Yes/No, this is fine.
+  - One extra round-trip when triggered.
+  - Manifest token cost per-turn when ON. Mitigated by short descriptions + the toggle.
+- **Estimated scope:**
+  - Pill + toggle state: ~40 LOC TS
+  - Manifest assembly: ~30 LOC TS (uses `list_skills` from 7.1)
+  - `read_skill` tool wiring + approval card text: ~70 LOC TS + ~30 LOC Rust
 
---- v1 stops here. Ship and watch. ---
+#### 7.4 Reconcile MASTER-Plan-II's old skill-runtime gap
+- **Status:** SUBSUMED by 7.1–7.3.
+- **Note:** the original "wire skills into runtime" item is what 7.1+7.2 close. No separate tracking needed.
 
-#### 7.5 Structured executable skills (`prism-skill-v1`)
-- **Status:** NOT STARTED. **Do not start until 7.1–7.4 are shipped and used.**
-- **What:** Extend the spec with optional `steps:` block (same shape as recipes), reuse the recipe runner + ProtocolReportCard, add `/skill run <slug>`.
-- **Why deferred:** ~500 LOC of new validator + lifecycle, and may be the wrong abstraction. Recipes already exist for runnable workflows; if knowledge-skills + recipes covers 95% of use cases, this is dead weight.
-- **Decision gate:** revisit after 30 days of v1 usage. Are users repeatedly asking for runnable skills? Are they trying to put `steps:` in their markdown anyway?
+--- v1 stops here. Ship 7.1 → 7.2 → 7.3, in that order. Both tracks add real value; sequence is just risk-driven (foundation first, then explicit, then LLM-aware). ---
 
-#### 7.6 Agent-assisted skill builder
+#### 7.5 Structured executable skills (deferred)
+- **Status:** NOT STARTED. **Do not start until 7.1–7.3 are shipped and used.**
+- **What:** Extend skills with optional `steps:` block (same shape as recipes), reuse recipe runner + ProtocolReportCard, add `/skill run <slug>`.
+- **Why deferred:** ~500 LOC of new validator + lifecycle, may be the wrong abstraction. Recipes already cover runnable workflows.
+- **Decision gate:** revisit after 30 days of v1 usage. Are users asking for runnable skills? Are they trying to add steps anyway?
+
+#### 7.6 Agent-assisted skill builder (deferred)
 - **Status:** NOT STARTED
-- **What:** Agent helps formalize loose skills into structured runnable skills.
-- **Dependencies:** 7.5 must be shipped and used first.
-- **Note:** Lowest priority in this phase — nice-to-have for power users, not a needle-mover.
+- **Dependencies:** 7.5 must ship first.
+- **Note:** Lowest priority — nice-to-have for power users, not a needle-mover.
 
 ---
 
@@ -522,6 +520,26 @@
 - Unused `marked` and `highlight.js` dependencies removed
 - Font typo fixed (JetBrainsMono NF → JetBrains Mono)
 
+### Skills (Phase 7, foundation/curation)
+
+✅ **Skills reference doc** (`docs/skills.md`)
+- Defines curation vs engagement distinction
+- Per-skill caps (18 KB soft warn, 32 KB hard) + 128 KB session budget rationale
+- Authoring guidelines and re-calibration policy
+
+✅ **Skills corpus** (`.prism/skills/` — 19 files, ~113 KB)
+- Real plain-markdown skill content covering Prism patterns, VC pitch decks, UI search, etc.
+- Grouped by shared filename prefix (`vc-pitchdeck-*`, `ui-search-filtering-*`, etc.)
+
+✅ **Size discipline module** (`src/skill-limits.ts`)
+- `decideEngagement({candidate, alreadyEngagedBytes})` returns `ok` / `warn` / `block`
+- Used by curation UI today; will be used by both engagement tracks (7.2, 7.3)
+
+✅ **Curation persistence** (`src/settings.ts`)
+- `enabledSkills` map + `savedSearchGroups` virtual groupings
+- Settings Skills tab wired in `src/settings-ui.ts`
+- Localstorage-persisted; intentionally separate from runtime engagement state
+
 ---
 
 ## 📊 Summary by Phase
@@ -534,7 +552,7 @@
 | **4** Protocols | 5 | 1/5 DONE | Card polished + spinner glyph fixed; UI menu not started |
 | **5** AI Usage / Billing | 8 | 0/8 DONE | **CRITICAL PATH** — needs planning |
 | **6** Analysis Engine | 2 | 0/2 DONE | Requires verifier methodology work |
-| **7** Skills | 6 | 0/6 DONE | LLM-driven plan: 7.1–7.4 = v1, 7.5–7.6 deferred |
+| **7** Skills | 6 | curation DONE; runtime 0/3 | Two-track v1 (7.1–7.3); 7.5–7.6 deferred. Curation infra (`docs/skills.md`, `skill-limits.ts`, settings) already shipped. |
 | **8** Plumbing | 5 | 3/5 DONE | Mostly cleanup, minor issues remain |
 | **9** Backlog | 4 | 0/4 DONE | Nice-to-have, deprioritized |
 
@@ -571,5 +589,5 @@
 
 ---
 
-**Last Updated:** 2026-04-30 (skills LLM-driven plan + Cmd+F items)  
+**Last Updated:** 2026-04-30 (skills two-track plan + Cmd+F items)  
 **Format:** Reorganized from sequential to TODO ↔ DONE for clarity and planning

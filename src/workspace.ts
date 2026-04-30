@@ -28,6 +28,7 @@ import {
   renderHelpMarkdown,
   renderModelsMarkdown,
 } from "./slash-commands";
+import { listSkills, renderSkillsMarkdown } from "./skills";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { settings } from "./settings";
 import { findMode, type Mode } from "./modes";
@@ -1003,6 +1004,24 @@ export class Workspace {
     if (/^\s*\/files\s*$/i.test(text)) {
       this.setSidebarTab("files");
       this.notify("[files] sidebar \u2192 Files tab");
+      return;
+    }
+    // /skills \u2014 list everything under `.prism/skills/` as a markdown
+    // table. Discovery surface for the upcoming engagement features
+    // (Track A intentional Load chip + Track B LLM-aware toggle); the
+    // command itself only reads the manifest, so it is safe and cheap.
+    if (/^\s*\/skills\s*$/i.test(text)) {
+      void listSkills(this.cwd)
+        .then((skills) => {
+          if (this.agentView) {
+            this.agentView.appendReport(renderSkillsMarkdown(skills));
+          } else {
+            this.notify(`[skills] ${skills.length} skill(s) in .prism/skills/`);
+          }
+        })
+        .catch((err) => {
+          this.notifyError(`[skills] ${String(err)}`);
+        });
       return;
     }
     // /last \u2014 print a compact summary of the persisted workspace
