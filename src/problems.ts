@@ -316,6 +316,7 @@ function renderFindingRow(f: Finding): string {
   // A small copy button preserves the previous click-to-clipboard
   // affordance without making the whole row a copy target.
   const confidenceLabel = confidenceBadgeLabel(f.confidence);
+  const confidenceClass = `confidence-${f.confidence}`;
 
   return (
     `<li class="problems-row sev-${f.severity} conf-${f.confidence}" ` +
@@ -330,7 +331,7 @@ function renderFindingRow(f: Finding): string {
     `<span class="problems-line">${f.line > 0 ? f.line : "\u2014"}</span>` +
     `<span class="problems-desc">${escapeHtml(f.description || "(no description)")}</span>` +
     `<button class="problems-copy" data-row-action="copy" title="Copy ${escapeAttr(loc)}" tabindex="-1" aria-label="copy path:line">\u29c9</button>` +
-    `<span class="problems-meta">${confidenceLabel} (${escapeHtml(sources)})</span>` +
+    `<span class="problems-meta"><span class="problems-confidence ${confidenceClass}">${confidenceLabel}</span> (${escapeHtml(sources)})</span>` +
     fixHtml +
     `<div class="problems-snippet" data-snippet-host=""></div>` +
     `</li>`

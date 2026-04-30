@@ -2368,6 +2368,18 @@ input:checked + .toggle-slider:before {
   white-space: nowrap;
   align-self: center;
 }
+.problems-confidence {
+  font-weight: 600;
+}
+.problems-confidence.confidence-confirmed {
+  color: var(--prism-emerald);
+}
+.problems-confidence.confidence-probable {
+  color: var(--prism-amber);
+}
+.problems-confidence.confidence-candidate {
+  color: var(--prism-slate);
+}
 
 .problems-fix {
   grid-column: 3 / -1;

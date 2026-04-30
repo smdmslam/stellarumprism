@@ -217,6 +217,10 @@ test("renderProblemsPanel renders findings grouped by file with chip counts", ()
   // Each row has an id + loc for click-to-copy.
   assert.match(html, /data-finding-id="F1"/);
   assert.match(html, /data-loc="src\/a\.ts:3"/);
+  // Confidence labels are rendered with semantic tier classes.
+  assert.match(html, /problems-confidence confidence-confirmed/);
+  assert.match(html, /problems-confidence confidence-probable/);
+  assert.match(html, /problems-confidence confidence-candidate/);
 });
 
 test("renderProblemsPanel surfaces 'all filtered out' when chips zero out the list", () => {
