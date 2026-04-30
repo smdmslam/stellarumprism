@@ -1193,25 +1193,31 @@ input:checked + .toggle-slider:before {
 }
 .markdown-body li { margin: 2px 0; line-height: 1.55; }
 .markdown-body code {
-  font-family:
-    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-family: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
   font-size: 11.5px;
   background: rgba(125, 211, 252, 0.10);
   color: #7dd3fc;
   padding: 1px 5px;
   border-radius: 4px;
+  border: 1px solid rgba(125, 211, 252, 0.15);
 }
 .markdown-body pre {
-  margin: 8px 0;
-  padding: 10px 12px;
-  background: #0a0d13;
+  margin: 12px 0;
+  padding: 14px 16px;
+  background: #080a0f;
   border: 1px solid #1f2937;
-  border-radius: 6px;
+  border-radius: 10px;
   overflow-x: auto;
-  font-family:
-    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-family: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
   font-size: 11.5px;
-  line-height: 1.5;
+  line-height: 1.6;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  transition: border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease;
+}
+.markdown-body pre:hover {
+  background: #0a0c12;
+  border-color: rgba(125, 211, 252, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 .markdown-body pre code {
   background: transparent;
@@ -3428,18 +3434,18 @@ input:checked + .toggle-slider:before {
  * `.layout-divider:hover`) so every interactive surface speaks the same
  * accent language. */
 .file-preview-body .cm-activeLine {
-  background: rgba(var(--prism-cyan-rgb), 0.06) !important;
+  background: rgba(var(--prism-cyan-rgb), 0.10) !important;
 }
 
 .file-preview-body .cm-activeLineGutter {
-  background: rgba(var(--prism-cyan-rgb), 0.10) !important;
+  background: rgba(var(--prism-cyan-rgb), 0.15) !important;
   color: var(--prism-cyan) !important;
   font-weight: 600;
 }
 
 .file-preview-body .cm-selectionBackground,
 .file-preview-body .cm-content ::selection {
-  background: rgba(var(--prism-cyan-rgb), 0.22) !important;
+  background: rgba(var(--prism-cyan-rgb), 0.35) !important;
 }
 
 /* Improved scrollbar for editor */

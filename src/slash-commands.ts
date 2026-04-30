@@ -142,6 +142,23 @@ export function renderHelpAnsi(): string {
   return out.join("");
 }
 
+/** Render the help listing as Markdown for the agent stage. */
+export function renderHelpMarkdown(): string {
+  const out: string[] = [];
+  out.push("### Slash Commands\n\n");
+  out.push("| Command | Description |\n");
+  out.push("| :--- | :--- |\n");
+  for (const c of SLASH_COMMANDS) {
+    const label = `\`${c.label}${c.takesArg ? " <arg>" : ""}\``;
+    out.push(`| ${label} | ${c.detail} |\n`);
+  }
+  out.push("\n#### Tips\n");
+  out.push("- `?question` is shorthand for `/ask`\n");
+  out.push("- Trailing `?` on a sentence also triggers agent mode\n");
+  out.push("- `Ctrl+K` toggles sticky agent mode for the whole tab\n");
+  return out.join("");
+}
+
 /**
  * Recipe ids surfaced when the user types `/protocol <space>`. Each
  * entry's label is the recipe id (typed verbatim by the user); the
@@ -181,4 +198,25 @@ export function modelCompletions(): {
     detail: m.vision ? `${m.slug} [img]` : m.slug,
     info: m.description,
   }));
+}
+
+/** Render the model library as a Markdown table for the agent stage. */
+export function renderModelsMarkdown(): string {
+  const out: string[] = [];
+  out.push("### Available Models\n\n");
+  out.push("| Alias | Provider / Slug | Description |\n");
+  out.push("| :--- | :--- | :--- |\n");
+
+  const models = MODEL_LIBRARY.filter(
+    (m) =>
+      m.tier !== "backend" &&
+      settings.isModelEnabled(m.slug, m.enabled !== false),
+  );
+
+  for (const m of models) {
+    const alias = `\`${m.aliases[0]}\``;
+    const vision = m.vision ? " 🖼️" : "";
+    out.push(`| ${alias} | ${m.slug}${vision} | ${m.description} |\n`);
+  }
+  return out.join("");
 }

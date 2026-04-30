@@ -36,7 +36,10 @@ marked.setOptions({
 /** Render Markdown to a DocumentFragment. Returns a fragment so the
  *  caller doesn't care how many top-level elements parsed out. */
 function markdownToFragment(markdown: string): DocumentFragment {
-  const html = marked.parse(markdown, { async: false }) as string;
+  // Strip any terminal escape sequences so they don't render as
+  // replacement-glyph boxes or junk text.
+  const clean = stripAnsi(markdown);
+  const html = marked.parse(clean, { async: false }) as string;
   const tmp = document.createElement("div");
   tmp.innerHTML = html;
   const frag = document.createDocumentFragment();
@@ -318,7 +321,10 @@ export class AgentView implements AgentViewApi {
 
   private isPinnedToBottom(): boolean {
     const { scrollTop, scrollHeight, clientHeight } = this.scrollHost;
-    // Extremely forgiving margin to account for padding & rounding
-    return scrollHeight - (scrollTop + clientHeight) < 48;
+    // Reduced margin from 48px to 10px. 48px was too aggressive and would
+    // "fight" the user if they tried to scroll up just a few lines while
+    // the agent was streaming. 10px handles sub-pixel rounding while
+    // yielding to the user's intent to scroll back.
+    return Math.ceil(scrollTop + clientHeight) >= scrollHeight - 10;
   }
 }

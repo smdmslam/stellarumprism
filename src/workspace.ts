@@ -686,6 +686,7 @@ export class Workspace {
     this.setupProblemsPanel();
     this.setupLayoutDividers();
     this.setupFileEditorKeybindings();
+    this.setupBadges();
     this.updateModelBadge();
 
     const handleSettingsChange = () => {
@@ -805,12 +806,25 @@ export class Workspace {
       // Let the @path autocomplete source ask for our current cwd on demand.
       getCwd: () => this.cwd,
     });
+  }
 
-    badgeEl.addEventListener("click", (e) => {
+  private setupBadges(): void {
+    const modelBadge = this.root.querySelector<HTMLElement>(".model-badge")!;
+    const intentBadge = this.root.querySelector<HTMLElement>(".intent-badge")!;
+
+    intentBadge.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
       this.input.toggleAgentMode();
       queueMicrotask(() => this.input.focus());
+    });
+
+    modelBadge.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (this.agentView) {
+        this.agentView.appendReport(renderModelsMarkdown());
+      }
     });
 
     // Click anywhere in the input bar (but outside the badges) refocuses.
@@ -848,7 +862,11 @@ export class Workspace {
   private handleSubmit(text: string, intent: IntentResult): void {
     // Slash commands (order matters).
     if (/^\s*\/models\s*$/i.test(text)) {
-      this.notify(renderModelListAnsi(this.agent.getModel()));
+      if (this.agentView) {
+        this.agentView.appendReport(renderModelsMarkdown());
+      } else {
+        this.notify(renderModelListAnsi(this.agent.getModel()));
+      }
       return;
     }
     if (/^\s*\/(new|clear)\s*$/i.test(text)) {
@@ -862,7 +880,11 @@ export class Workspace {
     }
     if (/^\s*\/history\s*$/i.test(text)) {
       void this.agent.getHistory().then((msgs) => {
-        this.notify(renderHistoryAnsi(msgs));
+        if (this.agentView) {
+          this.agentView.appendReport(renderHistoryMarkdown(msgs));
+        } else {
+          this.notify(renderHistoryAnsi(msgs));
+        }
       });
       return;
     }
@@ -887,7 +909,11 @@ export class Workspace {
       return;
     }
     if (/^\s*\/help\s*$/i.test(text)) {
-      this.notify(renderHelpAnsi());
+      if (this.agentView) {
+        this.agentView.appendReport(renderHelpMarkdown());
+      } else {
+        this.notify(renderHelpAnsi());
+      }
       return;
     }
     // /files \u2014 switch sidebar to the Files tab and focus the tree.
@@ -899,7 +925,11 @@ export class Workspace {
     // /last \u2014 print a compact summary of the persisted workspace
     // state (last audit + last build pointers).
     if (/^\s*\/last\s*$/i.test(text)) {
-      this.notify(this.renderLastAnsi());
+      if (this.agentView) {
+        this.agentView.appendReport(this.renderLastMarkdown());
+      } else {
+        this.notify(this.renderLastAnsi());
+      }
       return;
     }
     // /verify on|off|<model> — control the reviewer pass.
@@ -1433,10 +1463,15 @@ export class Workspace {
   private isEditorFocused(): boolean {
     const active = document.activeElement;
     if (!active) return false;
-    const promptHost = this.root.querySelector(".editor-host");
-    if (promptHost && promptHost.contains(active)) return true;
-    const fileEditorHost = this.root.querySelector(".file-preview-body");
-    if (fileEditorHost && fileEditorHost.contains(active)) return true;
+
+    // 1. Check if focus is in any CodeMirror editor instance (prompt or file editor)
+    // within this workspace. CM6 wrapper uses .cm-editor.
+    if (active.closest(".cm-editor") && this.root.contains(active)) return true;
+
+    // 2. Check if focus is in the terminal (xterm.js uses a hidden textarea).
+    const termHost = this.root.querySelector(".terminal-host");
+    if (termHost && termHost.contains(active)) return true;
+
     return false;
   }
 
@@ -1954,6 +1989,41 @@ export class Workspace {
    * at `lastAuditReport` / `lastBuildReport` to exercise this without
    * IPC.
    */
+  private renderLastMarkdown(): string {
+    const out: string[] = [];
+    if (!this.lastAuditReport && !this.lastBuildReport) {
+      return "_No persisted state yet — run `/audit` or `/build` to populate `.prism/state.json`._";
+    }
+
+    out.push("### Last Activity\n\n");
+    out.push("| Command | When | Status / Summary | Scope |\n");
+    out.push("| :--- | :--- | :--- | :--- |\n");
+
+    if (this.lastAuditReport) {
+      const a = this.lastAuditReport;
+      const rel = formatRelativeTime(a.generated_at);
+      const summary = `❌ ${a.summary.errors} ⚠️ ${a.summary.warnings} ℹ️ ${a.summary.info}`;
+      out.push(
+        `| **audit** | ${rel} | ${summary} | ${a.scope ? `\`${a.scope}\`` : "-"} |`,
+      );
+    } else {
+      out.push("| audit | - | _none_ | - |");
+    }
+
+    if (this.lastBuildReport) {
+      const b = this.lastBuildReport;
+      const rel = formatRelativeTime(b.generated_at);
+      const statusIcon = b.status === "completed" ? "✅" : "⚠️";
+      out.push(
+        `| **build** | ${rel} | ${statusIcon} ${b.status} (${b.rounds_used} rounds) | \`${b.feature}\` |`,
+      );
+    } else {
+      out.push("| build | - | _none_ | - |");
+    }
+
+    return out.join("\n");
+  }
+
   private renderLastAnsi(): string {
     const RESET = "\x1b[0m";
     const DIM = "\x1b[2m";
@@ -4292,7 +4362,10 @@ function relativeToCwd(absolute: string, cwd: string): string {
 }
 
 function sanitize(s: string): string {
-  return s.replace(/\x1b|\x07/g, "");
+  return s
+    .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
+    .replace(/\x1b[@-Z\\-_]/g, "");
 }
 
 function escapeHtml(s: string): string {
@@ -4341,6 +4414,19 @@ function renderHistoryAnsi(msgs: { role: string; content: string }[]): string {
     out.push(`\r\n\u2500\u2500 ${label} \u2500\u2500\r\n${content}`);
   }
   return out.join("") + "\r\n";
+}
+
+function renderHistoryMarkdown(msgs: { role: string; content: string }[]): string {
+  if (msgs.length === 0) {
+    return "_No conversation yet._";
+  }
+  const out: string[] = ["### Conversation History\n\n"];
+  for (const m of msgs) {
+    const roleName =
+      m.role === "user" ? "**you**" : m.role === "assistant" ? "**agent**" : `_${m.role}_`;
+    out.push(`#### ${roleName}\n${m.content}\n\n`);
+  }
+  return out.join("");
 }
 
 /** Same visible truncation rules as the tab strip auto-title. */

@@ -210,9 +210,9 @@ function renderHeader(
     .join("");
   const confChips = (
     [
-      { conf: "confirmed" as const, label: "confirmed", n: counts.confirmed },
-      { conf: "probable" as const, label: "probable", n: counts.probable },
-      { conf: "candidate" as const, label: "candidate", n: counts.candidate },
+      { conf: "confirmed" as const, label: "\u2713 Observed", n: counts.confirmed },
+      { conf: "probable" as const, label: "? Probable", n: counts.probable },
+      { conf: "candidate" as const, label: "~ Inferred", n: counts.candidate },
     ]
   )
     .map((c) => {
@@ -307,6 +307,13 @@ function renderFindingRow(f: Finding): string {
   // click handler invokes `read_file_snippet` and fills it on demand.
   // A small copy button preserves the previous click-to-clipboard
   // affordance without making the whole row a copy target.
+  const confidenceLabel =
+    f.confidence === "confirmed"
+      ? "\u2713 Observed"
+      : f.confidence === "probable"
+        ? "? Probable"
+        : "~ Inferred";
+
   return (
     `<li class="problems-row sev-${f.severity} conf-${f.confidence}" ` +
     `data-finding-id="${escapeAttr(f.id)}" ` +
@@ -320,7 +327,7 @@ function renderFindingRow(f: Finding): string {
     `<span class="problems-line">${f.line > 0 ? f.line : "\u2014"}</span>` +
     `<span class="problems-desc">${escapeHtml(f.description || "(no description)")}</span>` +
     `<button class="problems-copy" data-row-action="copy" title="Copy ${escapeAttr(loc)}" tabindex="-1" aria-label="copy path:line">\u29c9</button>` +
-    `<span class="problems-meta">[${f.confidence}] (${escapeHtml(sources)})</span>` +
+    `<span class="problems-meta">${confidenceLabel} (${escapeHtml(sources)})</span>` +
     fixHtml +
     `<div class="problems-snippet" data-snippet-host=""></div>` +
     `</li>`

@@ -47,7 +47,16 @@ const GIT_LOG_LIMIT_CAP: usize = 100;
 /// Tools that must NOT auto-execute. Consulted by the tool loop in
 /// `agent.rs` before each call. Wired to the approval UI.
 pub fn requires_approval(tool_name: &str) -> bool {
-    matches!(tool_name, "write_file" | "edit_file" | "run_shell")
+    matches!(
+        tool_name,
+        "write_file"
+            | "edit_file"
+            | "run_shell"
+            | "delete_file"
+            | "delete_directory"
+            | "move_path"
+            | "create_directory"
+    )
 }
 
 /// Generate a human-readable preview of what a write tool would do.
@@ -129,6 +138,20 @@ pub fn preview_write(tool_name: &str, args_json: &str) -> String {
                 cwd,
                 timeout,
             )
+        }
+        "delete_file" | "delete_directory" => {
+            let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+            format!("{}: {}", tool_name, path)
+        }
+        "move_path" => {
+            let source = parsed.get("source").and_then(|v| v.as_str()).unwrap_or("?");
+            let destination =
+                parsed.get("destination").and_then(|v| v.as_str()).unwrap_or("?");
+            format!("move_path: {} \u{2192} {}", source, destination)
+        }
+        "create_directory" => {
+            let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("?");
+            format!("create_directory: {}", path)
         }
         _ => args_json.to_string(),
     }
@@ -621,6 +644,78 @@ pub fn tool_schema() -> Value {
                     "required": []
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "delete_file",
+                "description": "Delete a single file. Path must be inside the shell's current working directory tree. Gated on user approval.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path to delete, relative to cwd or absolute (but must resolve under it)."
+                        }
+                    },
+                    "required": ["path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "delete_directory",
+                "description": "Delete an entire directory and its contents (recursive). USE WITH CAUTION. Path must be inside the shell's current working directory tree. Gated on user approval.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Directory path to delete, relative to cwd or absolute (but must resolve under it)."
+                        }
+                    },
+                    "required": ["path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "move_path",
+                "description": "Move or rename a file or directory. Path must stay within the shell's current working directory tree. Gated on user approval.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "source": {
+                            "type": "string",
+                            "description": "Source path, relative to cwd or absolute."
+                        },
+                        "destination": {
+                            "type": "string",
+                            "description": "Destination path, relative to cwd or absolute."
+                        }
+                    },
+                    "required": ["source", "destination"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "create_directory",
+                "description": "Create a new directory (recursive). Path must be inside the shell's current working directory tree. Gated on user approval.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Directory path to create, relative to cwd or absolute."
+                        }
+                    },
+                    "required": ["path"]
+                }
+            }
         }
     ])
 }
@@ -693,6 +788,10 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
         "run_shell" => Err(
             "run_shell is async; dispatch via execute_run_shell instead of execute".into(),
         ),
+        "delete_file" => tool_delete_file(args_json, cwd),
+        "delete_directory" => tool_delete_directory(args_json, cwd),
+        "move_path" => tool_move_path(args_json, cwd),
+        "create_directory" => tool_create_directory(args_json, cwd),
         other => Err(format!("unknown tool: {}", other)),
     };
     match result {
@@ -2456,6 +2555,114 @@ fn tool_typecheck(
 // ---------------------------------------------------------------------------
 // tests
 // ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct DeletePathArgs {
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct MovePathArgs {
+    source: String,
+    destination: String,
+}
+
+fn tool_delete_file(args_json: &str, cwd: &str) -> Result<(String, String), String> {
+    let args: DeletePathArgs = serde_json::from_str(args_json)
+        .map_err(|e| format!("invalid arguments: {}", e))?;
+    let resolved = resolve_path(cwd, &args.path)?;
+    validate_write_path(cwd, &args.path, &resolved)?;
+
+    if !resolved.exists() {
+        return Err(format!("{} does not exist", args.path));
+    }
+    if !resolved.is_file() {
+        return Err(format!("{} is not a file", args.path));
+    }
+
+    fs::remove_file(&resolved)
+        .map_err(|e| format!("cannot delete {}: {}", args.path, e))?;
+
+    let summary = format!("deleted {}", args.path);
+    let payload = json!({ "path": args.path, "deleted": true }).to_string();
+    Ok((summary, payload))
+}
+
+fn tool_delete_directory(args_json: &str, cwd: &str) -> Result<(String, String), String> {
+    let args: DeletePathArgs = serde_json::from_str(args_json)
+        .map_err(|e| format!("invalid arguments: {}", e))?;
+    let resolved = resolve_path(cwd, &args.path)?;
+    validate_write_path(cwd, &args.path, &resolved)?;
+
+    if !resolved.exists() {
+        return Err(format!("{} does not exist", args.path));
+    }
+    if !resolved.is_dir() {
+        return Err(format!("{} is not a directory", args.path));
+    }
+
+    fs::remove_dir_all(&resolved)
+        .map_err(|e| format!("cannot delete directory {}: {}", args.path, e))?;
+
+    let summary = format!("deleted directory {}", args.path);
+    let payload = json!({ "path": args.path, "deleted": true }).to_string();
+    Ok((summary, payload))
+}
+
+fn tool_move_path(args_json: &str, cwd: &str) -> Result<(String, String), String> {
+    let args: MovePathArgs = serde_json::from_str(args_json)
+        .map_err(|e| format!("invalid arguments: {}", e))?;
+    let src_resolved = resolve_path(cwd, &args.source)?;
+    let dst_resolved = resolve_path(cwd, &args.destination)?;
+
+    // Source must be inside cwd.
+    validate_write_path(cwd, &args.source, &src_resolved)?;
+    // Destination must be inside cwd.
+    validate_write_path(cwd, &args.destination, &dst_resolved)?;
+
+    if !src_resolved.exists() {
+        return Err(format!("source {} does not exist", args.source));
+    }
+
+    // Ensure parent of destination exists.
+    if let Some(parent) = dst_resolved.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            fs::create_dir_all(parent).map_err(|e| {
+                format!("cannot create destination parent {}: {}", parent.display(), e)
+            })?;
+        }
+    }
+
+    fs::rename(&src_resolved, &dst_resolved).map_err(|e| {
+        format!(
+            "cannot move {} to {}: {}",
+            args.source, args.destination, e
+        )
+    })?;
+
+    let summary = format!("moved {} \u{2192} {}", args.source, args.destination);
+    let payload = json!({
+        "source": args.source,
+        "destination": args.destination,
+        "moved": true
+    })
+    .to_string();
+    Ok((summary, payload))
+}
+
+fn tool_create_directory(args_json: &str, cwd: &str) -> Result<(String, String), String> {
+    let args: DeletePathArgs = serde_json::from_str(args_json)
+        .map_err(|e| format!("invalid arguments: {}", e))?;
+    let resolved = resolve_path(cwd, &args.path)?;
+    validate_write_path(cwd, &args.path, &resolved)?;
+
+    fs::create_dir_all(&resolved)
+        .map_err(|e| format!("cannot create directory {}: {}", args.path, e))?;
+
+    let summary = format!("created directory {}", args.path);
+    let payload = json!({ "path": args.path, "created": true }).to_string();
+    Ok((summary, payload))
+}
 
 #[cfg(test)]
 mod tests {

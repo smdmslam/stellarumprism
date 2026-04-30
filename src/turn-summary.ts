@@ -16,6 +16,10 @@
 export const WRITE_TOOL_NAMES: ReadonlySet<string> = new Set([
   "write_file",
   "edit_file",
+  "delete_file",
+  "delete_directory",
+  "move_path",
+  "create_directory",
 ]);
 
 export interface WriteEntry {
@@ -40,9 +44,16 @@ export interface WriteEntry {
  */
 export function extractWritePath(argsJson: string): string | null {
   try {
-    const parsed = JSON.parse(argsJson) as { path?: unknown };
+    const parsed = JSON.parse(argsJson) as {
+      path?: unknown;
+      source?: unknown;
+      destination?: unknown;
+    };
     if (typeof parsed.path === "string" && parsed.path.trim().length > 0) {
       return parsed.path;
+    }
+    if (typeof parsed.source === "string" && parsed.source.trim().length > 0) {
+      return `${parsed.source} \u2192 ${parsed.destination ?? "?"}`;
     }
   } catch {
     /* fall through to null */
@@ -75,6 +86,10 @@ const PATH_TOOLS: ReadonlySet<string> = new Set([
   "edit_file",
   "list_directory",
   "list_directory_tree",
+  "delete_file",
+  "delete_directory",
+  "move_path",
+  "create_directory",
 ]);
 
 const PATH_SUMMARY_RE = /^(\w+)\s+.+?\s*\(([^()]+)\)\s*$/;

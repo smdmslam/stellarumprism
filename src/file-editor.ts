@@ -466,14 +466,14 @@ export class FileEditor {
           fontWeight: "600",
         },
         ".cm-activeLine": {
-          backgroundColor: "rgba(125, 211, 252, 0.06)",
+          backgroundColor: "rgba(125, 211, 252, 0.10)",
         },
         ".cm-cursor, .cm-dropCursor": {
           borderLeftColor: "#7dd3fc",
           borderLeftWidth: "2px",
         },
         ".cm-selectionBackground, ::selection": {
-          backgroundColor: "rgba(125, 211, 252, 0.22) !important",
+          backgroundColor: "rgba(125, 211, 252, 0.35) !important",
         },
         ".cm-scroller": { fontFamily: "inherit" },
         "&.cm-focused": { outline: "none" },

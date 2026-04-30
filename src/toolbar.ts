@@ -79,6 +79,15 @@ export class ToolbarManager {
     settingsBtn?.addEventListener("click", () => {
       this.settingsUI.open(this.tabs.getActiveWorkspace());
     });
+
+    const newChatBtn = document.getElementById("tb-new-chat");
+    newChatBtn?.addEventListener("click", () => {
+      const activeWs = this.tabs.getActiveWorkspace();
+      if (activeWs) {
+        // Trigger the internal /clear logic by simulating an input submission
+        activeWs.handleSubmit("/clear", { intent: "command", explicit: true, payload: "/clear" });
+      }
+    });
   }
 
   public updateLayoutButtons(): void {

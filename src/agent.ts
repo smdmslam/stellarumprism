@@ -212,6 +212,7 @@ export class AgentController {
   private currentMode: string | null = null;
   /** Resolved model slug for the in-flight request. Used for onAuditComplete metadata. */
   private currentResolvedModel: string | null = null;
+  private suggestedFork = false;
   /**
    * Every `http_fetch` tool call captured during the in-flight turn.
    * Reset at the start of each query and handed to the audit-complete
@@ -291,6 +292,7 @@ export class AgentController {
 
   /** Clear the rolling conversation so the next query starts fresh. */
   async newSession(): Promise<void> {
+    this.suggestedFork = false;
     try {
       await invoke("agent_new_session", { chatId: this.opts.chatId });
     } catch (e) {
@@ -981,7 +983,16 @@ export class AgentController {
       }
     }
     // Refresh session count so the UI badge stays accurate.
-    void this.refreshSessionInfo();
+    void this.refreshSessionInfo().then(() => {
+      // Suggest forking at ~40 turns (80 messages).
+      if (this.messageCount >= 80 && !this.suggestedFork) {
+        this.suggestedFork = true;
+        this.opts.view.appendNotice(
+          "stall",
+          "Thread is getting long (~40 turns). Consider starting a new chat (`/clear` or use the + button) to keep the agent focused.",
+        );
+      }
+    });
   }
 
   private onError(msg: string): void {
