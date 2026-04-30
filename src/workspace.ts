@@ -277,6 +277,7 @@ export class Workspace {
    * regardless of this flag (handled by the backend allowlist).
    */
   private showHiddenFiles = false;
+  private showFileSizes = true;
   private sidebarVisible = true;
   private previewVisible = true;
   private terminalVisible = true;
@@ -351,6 +352,7 @@ export class Workspace {
           </button>
           <button class="sidebar-tab-action" data-action="refresh-files" type="button" title="Refresh file tree" aria-label="Refresh files">\u21bb</button>
           <button class="sidebar-tab-action" data-action="toggle-hidden" type="button" title="Show hidden files (.git, .env, \u2026)" aria-label="Show hidden files" aria-pressed="false">\u25cb</button>
+          <button class="sidebar-tab-action" data-action="toggle-size" type="button" title="Toggle file sizes" aria-label="Toggle file sizes" aria-pressed="true">S</button>
         </div>
         <div class="sidebar-pane sidebar-pane-files" data-tab="files">
           <div class="file-tree" tabindex="0" role="tree" aria-label="Project files"></div>
@@ -847,16 +849,36 @@ export class Workspace {
 
     // Global-feel keyboard shortcuts when the editor is focused.
     editorHost.addEventListener("keydown", (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey)) return;
-      if (e.key === "t" || e.key === "T") {
+      const isMod = e.metaKey || e.ctrlKey;
+      if (!isMod) return;
+
+      const key = e.key.toLowerCase();
+
+      // Tab management (inherited)
+      if (key === "t") {
         e.preventDefault();
         this.cb.onRequestNewTab();
-      } else if (e.key === "w" || e.key === "W") {
+      } else if (key === "w") {
         e.preventDefault();
         this.cb.onRequestClose(this.id);
-      } else if (/^[1-9]$/.test(e.key)) {
+      } else if (/^[1-9]$/.test(key)) {
         e.preventDefault();
-        this.cb.onRequestSelectIndex(Number(e.key) - 1);
+        this.cb.onRequestSelectIndex(Number(key) - 1);
+      } 
+      // Layout toggles (new)
+      else if (key === "b") {
+        e.preventDefault();
+        this.toggleSidebar();
+      } else if (key === "j") {
+        e.preventDefault();
+        this.toggleTerminal();
+      } else if (key === "l") {
+        e.preventDefault();
+        this.toggleAgent();
+      } else if (key === "p" && e.shiftKey) {
+        // Cmd+Shift+P for preview (Cmd+P is usually file picker, so shift+P is safer)
+        e.preventDefault();
+        this.togglePreview();
       }
     });
   }
@@ -2501,6 +2523,8 @@ export class Workspace {
         const a = action.dataset.action;
         if (a === "toggle-hidden") {
           this.toggleShowHiddenFiles();
+        } else if (a === "toggle-size") {
+          this.toggleShowFileSizes();
         } else if (a === "refresh-files") {
           this.refreshFileTreeFull();
         } else if (a === "new-file") {
@@ -2537,6 +2561,18 @@ export class Workspace {
     };
     this.updateHiddenToggleVisualState();
     void this.refreshFileTreeRoot();
+  }
+
+  private toggleShowFileSizes(): void {
+    this.showFileSizes = !this.showFileSizes;
+    const btn = this.root.querySelector<HTMLButtonElement>(
+      '.sidebar-tab-action[data-action="toggle-size"]',
+    );
+    if (btn) {
+      btn.setAttribute("aria-pressed", this.showFileSizes ? "true" : "false");
+      btn.classList.toggle("sidebar-tab-action-on", this.showFileSizes);
+    }
+    this.renderFileTree();
   }
 
   /**
@@ -3124,7 +3160,7 @@ export class Workspace {
       icon = `<span class="file-tree-caret file-tree-caret-spacer">\u00a0</span>`;
     }
     const detail =
-      e.kind === "file" && typeof e.size === "number"
+      this.showFileSizes && e.kind === "file" && typeof e.size === "number"
         ? `<span class="file-tree-detail">${formatTreeBytes(e.size)}</span>`
         : "";
     let trailing = "";

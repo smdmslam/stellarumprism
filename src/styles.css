@@ -1202,11 +1202,11 @@ input:checked + .toggle-slider:before {
   border: 1px solid rgba(125, 211, 252, 0.15);
 }
 .markdown-body pre {
-  margin: 12px 0;
-  padding: 14px 16px;
-  background: #080a0f;
+  margin: 14px 0;
+  padding: 16px;
+  background: #050608;
   border: 1px solid #1f2937;
-  border-radius: 10px;
+  border-radius: 12px;
   overflow-x: auto;
   font-family: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
   font-size: 11.5px;
@@ -1215,9 +1215,9 @@ input:checked + .toggle-slider:before {
   transition: border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease;
 }
 .markdown-body pre:hover {
-  background: #0a0c12;
-  border-color: rgba(125, 211, 252, 0.35);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  background: #080a0f;
+  border-color: rgba(125, 211, 252, 0.45);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
 .markdown-body pre code {
   background: transparent;
@@ -3080,7 +3080,7 @@ input:checked + .toggle-slider:before {
 .layout-divider-preview::before {
   content: "";
   position: absolute;
-  inset: -3px 0;
+  inset: -6px 0;
 }
 .layout-divider-preview:hover,
 .layout-divider-preview.dragging,
@@ -3271,164 +3271,7 @@ input:checked + .toggle-slider:before {
   hyphens: auto;
 }
 
-/* ===== MARKDOWN PREVIEW (rendered headings + code blocks) =====
- *
- * Image-1 aesthetic: headings flow on the plain editor background as
- * if they were document chrome, NOT cards. Only code blocks keep a
- * surface treatment. Color tokens match the agent pane: cyan accents
- * for chrome, rose for inline code, slate/gray for prose. */
-.markdown-preview-widget {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  font-size: 14px;
-  line-height: 1.7;
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
-  border-radius: 0;
-  box-shadow: none;
-  color: #e5e7eb;
-}
 
-.markdown-preview-widget > *:first-child {
-  margin-top: 0;
-}
-
-.markdown-preview-widget > *:last-child {
-  margin-bottom: 0;
-}
-
-.markdown-preview-widget .markdown-heading {
-  font-weight: 700;
-  margin: 0.5em 0;
-  color: #f3f4f6;
-  line-height: 1.2;
-  letter-spacing: -0.015em;
-}
-
-/* H1 \u2014 hero. Display-weight, tight tracking, with a hairline cyan
- * rule under it (image 1's signature treatment). */
-.markdown-preview-widget h1 {
-  font-size: 2.5rem;
-  font-weight: 800;
-  letter-spacing: -0.025em;
-  line-height: 1.15;
-  margin: 24px 0 18px 0;
-  padding-bottom: 14px;
-  color: #f9fafb;
-  border-bottom: 1px solid rgba(var(--prism-cyan-rgb), 0.35);
-}
-.markdown-preview-widget h2 {
-  font-size: 1.875rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-  margin: 32px 0 12px 0;
-  padding-bottom: 8px;
-  color: #f3f4f6;
-  border-bottom: 1px solid rgba(var(--prism-cyan-rgb), 0.20);
-}
-.markdown-preview-widget h3 {
-  font-size: 1.375rem;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  line-height: 1.25;
-  margin: 24px 0 8px 0;
-  color: #e5e7eb;
-}
-.markdown-preview-widget h4 {
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin: 20px 0 6px 0;
-  color: #d1d5db;
-}
-.markdown-preview-widget h5,
-.markdown-preview-widget h6 {
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin: 16px 0 4px 0;
-  color: #9ca3af;
-}
-
-.markdown-preview-widget p {
-  margin: 0.9em 0;
-  color: #e5e7eb;
-}
-
-.markdown-preview-widget .markdown-code-block {
-  font-family: 'JetBrains Mono', 'SF Mono', 'Menlo', 'Monaco', monospace;
-  font-size: 12.5px;
-  line-height: 1.55;
-  background: #0a0d13;
-  color: #d1d5db;
-  padding: 14px 16px;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin: 1em 0;
-  border: 1px solid #1f2937;
-}
-
-/* Inline code spans use rose to echo the screenshot in image 1, where
- * literal identifiers (e.g. `structureType`) read as warm accents on
- * the cool body. The agent pane keeps cyan for its inline code; the
- * file editor leans rose so the two surfaces aren't visually identical. */
-.markdown-preview-widget code:not(.markdown-code-block code) {
-  font-family: 'JetBrains Mono', 'SF Mono', monospace;
-  font-size: 0.9em;
-  background: rgba(var(--prism-rose-rgb), 0.10);
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: var(--prism-rose);
-}
-
-.markdown-preview-widget ul,
-.markdown-preview-widget ol {
-  margin: 0.9em 0;
-  padding-left: 1.5em;
-  color: #e5e7eb;
-}
-
-.markdown-preview-widget ul li {
-  list-style-type: disc;
-  margin: 0.35em 0;
-}
-
-.markdown-preview-widget ol li {
-  list-style-type: decimal;
-  margin: 0.35em 0;
-}
-
-.markdown-preview-widget blockquote {
-  border-left: 3px solid rgba(var(--prism-cyan-rgb), 0.45);
-  margin: 1em 0;
-  padding: 4px 0 4px 14px;
-  color: #cbd5e1;
-  font-style: italic;
-  background: rgba(var(--prism-cyan-rgb), 0.04);
-}
-
-.markdown-preview-widget a {
-  color: var(--prism-cyan);
-  text-decoration: none;
-  border-bottom: 1px dashed rgba(var(--prism-cyan-rgb), 0.55);
-}
-
-.markdown-preview-widget a:hover {
-  color: #bae6fd;
-  border-bottom: 1px solid var(--prism-cyan);
-}
-
-.markdown-preview-widget hr {
-  border: none;
-  height: 1px;
-  background: linear-gradient(
-    to right,
-    transparent,
-    rgba(var(--prism-cyan-rgb), 0.35),
-    transparent
-  );
-  margin: 2em 0;
-}
 
 /* Active line + selection in the source view. Cyan-tinted to match the
  * agent pane's focus color (see `.input-row:focus-within` and

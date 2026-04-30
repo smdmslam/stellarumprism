@@ -1,11 +1,15 @@
 ### MODEL OPINIONS
 
-KEEP
+KEEP GOOD
+
+KEEP OK
+- Kimi 2.5
 
 
 
 REMOVE
-- GPT OSS 
+- GPT OSS
+- QWEN 3.6 PLUS
 
 
 
