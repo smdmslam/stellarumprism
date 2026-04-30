@@ -2846,6 +2846,7 @@ input:checked + .toggle-slider:before {
   flex: 0 0 auto;
   display: flex;
   align-items: stretch;
+  position: relative;
   gap: 2px;
   padding: 4px 6px 0 6px;
   background-color: #0a0c11;
@@ -2919,6 +2920,37 @@ input:checked + .toggle-slider:before {
   background: rgba(125, 211, 252, 0.1);
 }
 .sidebar-tab-action[hidden] { display: none; }
+
+.file-view-options-menu[hidden] { display: none; }
+.file-view-options-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 6px;
+  z-index: 20;
+  min-width: 170px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  background: #0d1117;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+}
+
+.file-view-options-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #d1d5db;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.file-view-options-item:hover { background: #111827; }
+.file-view-options-item input { accent-color: #7dd3fc; }
 
 .sidebar-pane {
   flex: 1 1 auto;

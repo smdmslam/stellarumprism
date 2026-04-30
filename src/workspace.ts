@@ -359,9 +359,19 @@ export class Workspace {
           </button>
           <button class="sidebar-tab-action" data-action="refresh-files" type="button" title="Refresh file tree" aria-label="Refresh files">\u21bb</button>
           <button class="sidebar-tab-action" data-action="toggle-hidden" type="button" title="Show hidden files (.git, .env, \u2026)" aria-label="Show hidden files" aria-pressed="false">\u25cb</button>
-          <button class="sidebar-tab-action" data-action="toggle-size" type="button" title="Toggle file sizes" aria-label="Toggle file sizes" aria-pressed="true">S</button>
-          <button class="sidebar-tab-action" data-action="toggle-modified" type="button" title="Toggle modified dates" aria-label="Toggle modified dates" aria-pressed="false">M</button>
-          <button class="sidebar-tab-action" data-action="toggle-preview" type="button" title="Hide file viewer" aria-label="Toggle file viewer" aria-pressed="true">P</button>
+          <button class="sidebar-tab-action" data-action="toggle-file-view-options" type="button" title="File view options" aria-label="File view options" aria-haspopup="menu" aria-expanded="false">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-.33-1A1.65 1.65 0 0 0 8 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1-.33A1.65 1.65 0 0 0 4.6 8a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 8c0 .39.14.76.4 1 .26.26.62.4 1 .4H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1 .33c-.26.24-.4.61-.51 1.27z"/></svg>
+          </button>
+          <div class="file-view-options-menu" role="menu" hidden>
+            <label class="file-view-options-item">
+              <input type="checkbox" data-view-option="size" />
+              <span>Show file sizes</span>
+            </label>
+            <label class="file-view-options-item">
+              <input type="checkbox" data-view-option="modified" />
+              <span>Show modified dates</span>
+            </label>
+          </div>
         </div>
         <div class="sidebar-pane sidebar-pane-files" data-tab="files">
           <div class="file-tree" tabindex="0" role="tree" aria-label="Project files"></div>
@@ -479,7 +489,6 @@ export class Workspace {
     this.previewVisible = !this.previewVisible;
     if (this.layout) this.layout.preview_visible = this.previewVisible;
     this.root.classList.toggle("preview-hidden", !this.previewVisible);
-    this.updatePreviewToggleVisualState();
     if (this.terminalVisible) this.fitTerminal();
     void this.persistLayout();
     this.syncPreviewDividerAccessibility();
@@ -1996,7 +2005,6 @@ export class Workspace {
       this.root.classList.toggle("preview-hidden", !this.previewVisible);
       this.root.classList.toggle("terminal-hidden", !this.terminalVisible);
       this.root.classList.toggle("agent-hidden", !this.agentVisible);
-      this.updatePreviewToggleVisualState();
       this.syncPreviewDividerAccessibility();
     }
   }
@@ -2608,14 +2616,11 @@ export class Workspace {
       );
       if (action) {
         const a = action.dataset.action;
-        if (a === "toggle-hidden") {
+        if (a === "toggle-file-view-options") {
+          e.stopPropagation();
+          this.toggleFileViewOptionsMenu();
+        } else if (a === "toggle-hidden") {
           this.toggleShowHiddenFiles();
-        } else if (a === "toggle-size") {
-          this.toggleShowFileSizes();
-        } else if (a === "toggle-modified") {
-          this.toggleShowFileModified();
-        } else if (a === "toggle-preview") {
-          this.togglePreview();
         } else if (a === "refresh-files") {
           this.refreshFileTreeFull();
         } else if (a === "new-file") {
@@ -2631,8 +2636,31 @@ export class Workspace {
       if (!tab) return;
       this.setSidebarTab(tab);
     });
-    this.updatePreviewToggleVisualState();
-    this.updateModifiedToggleVisualState();
+    tabsEl.addEventListener("change", (e) => {
+      const target = e.target as HTMLElement | null;
+      const opt = target?.closest<HTMLInputElement>("input[data-view-option]");
+      if (!opt) return;
+      if (opt.dataset.viewOption === "size") {
+        this.setShowFileSizes(opt.checked);
+      } else if (opt.dataset.viewOption === "modified") {
+        this.setShowFileModified(opt.checked);
+      }
+    });
+    const onDocPointerDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const insideMenu = !!target.closest(".file-view-options-menu");
+      const onButton = !!target.closest(
+        '.sidebar-tab-action[data-action="toggle-file-view-options"]',
+      );
+      if (!insideMenu && !onButton) this.hideFileViewOptionsMenu();
+    };
+    this.root.ownerDocument.addEventListener("mousedown", onDocPointerDown);
+    this.disposers.push(() =>
+      this.root.ownerDocument.removeEventListener("mousedown", onDocPointerDown),
+    );
+    this.syncFileViewOptionsMenuState();
+    this.updateHiddenToggleVisualState();
   }
 
   /**
@@ -2656,33 +2684,46 @@ export class Workspace {
     void this.refreshFileTreeRoot();
   }
 
-  private toggleShowFileSizes(): void {
-    this.showFileSizes = !this.showFileSizes;
+  private setShowFileSizes(next: boolean): void {
+    this.showFileSizes = next;
+    this.syncFileViewOptionsMenuState();
+    this.renderFileTree();
+  }
+
+  private setShowFileModified(next: boolean): void {
+    this.showFileModified = next;
+    this.syncFileViewOptionsMenuState();
+    this.renderFileTree();
+  }
+
+  private toggleFileViewOptionsMenu(): void {
+    const menu = this.root.querySelector<HTMLElement>(".file-view-options-menu");
     const btn = this.root.querySelector<HTMLButtonElement>(
-      '.sidebar-tab-action[data-action="toggle-size"]',
+      '.sidebar-tab-action[data-action="toggle-file-view-options"]',
     );
-    if (btn) {
-      btn.setAttribute("aria-pressed", this.showFileSizes ? "true" : "false");
-      btn.classList.toggle("sidebar-tab-action-on", this.showFileSizes);
+    if (!menu || !btn) return;
+    const isOpen = btn.getAttribute("aria-expanded") === "true";
+    this.setFileViewOptionsMenuOpen(!isOpen);
+    if (!isOpen) this.syncFileViewOptionsMenuState();
+  }
+
+  private hideFileViewOptionsMenu(): void {
+    this.setFileViewOptionsMenuOpen(false);
+  }
+
+  private setFileViewOptionsMenuOpen(open: boolean): void {
+    const menu = this.root.querySelector<HTMLElement>(".file-view-options-menu");
+    const btn = this.root.querySelector<HTMLButtonElement>(
+      '.sidebar-tab-action[data-action="toggle-file-view-options"]',
+    );
+    if (menu) {
+      if (open) menu.removeAttribute("hidden");
+      else menu.setAttribute("hidden", "");
     }
-    this.renderFileTree();
-  }
-
-  private toggleShowFileModified(): void {
-    this.showFileModified = !this.showFileModified;
-    this.updateModifiedToggleVisualState();
-    this.renderFileTree();
-  }
-
-  /** Sync the preview toggle's aria + pressed state with visibility. */
-  private updatePreviewToggleVisualState(): void {
-    const btn = this.root.querySelector<HTMLButtonElement>(
-      '.sidebar-tab-action[data-action="toggle-preview"]',
-    );
-    if (!btn) return;
-    btn.setAttribute("aria-pressed", this.previewVisible ? "true" : "false");
-    btn.classList.toggle("sidebar-tab-action-on", this.previewVisible);
-    btn.title = this.previewVisible ? "Hide file viewer" : "Show file viewer";
+    if (btn) {
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      btn.classList.toggle("sidebar-tab-action-on", open);
+    }
   }
 
   /**
@@ -2700,7 +2741,18 @@ export class Workspace {
     void this.refreshFileTreeRoot();
   }
 
-  /** Sync the toggle button's aria + glyph with the current state. */
+  private syncFileViewOptionsMenuState(): void {
+    const size = this.root.querySelector<HTMLInputElement>(
+      '.file-view-options-menu input[data-view-option="size"]',
+    );
+    const modified = this.root.querySelector<HTMLInputElement>(
+      '.file-view-options-menu input[data-view-option="modified"]',
+    );
+    if (size) size.checked = this.showFileSizes;
+    if (modified) modified.checked = this.showFileModified;
+  }
+
+  /** Sync the hidden-files toggle button's aria + glyph with state. */
   private updateHiddenToggleVisualState(): void {
     const btn = this.root.querySelector<HTMLButtonElement>(
       '.sidebar-tab-action[data-action="toggle-hidden"]',
@@ -2708,25 +2760,10 @@ export class Workspace {
     if (!btn) return;
     btn.setAttribute("aria-pressed", this.showHiddenFiles ? "true" : "false");
     btn.classList.toggle("sidebar-tab-action-on", this.showHiddenFiles);
-    // Filled circle when on; outlined when off. Compact glyph that
-    // doesn't lean too "eye"-iconographic since the metaphor is
-    // "include hidden" not "toggle visibility of the tree itself".
     btn.textContent = this.showHiddenFiles ? "\u25cf" : "\u25cb";
     btn.title = this.showHiddenFiles
       ? "Hide hidden files (.git, .env, \u2026 will be hidden again; .prism/ is always shown)"
       : "Show hidden files (.git, .env, \u2026; .prism/ is always shown)";
-  }
-
-  private updateModifiedToggleVisualState(): void {
-    const btn = this.root.querySelector<HTMLButtonElement>(
-      '.sidebar-tab-action[data-action="toggle-modified"]',
-    );
-    if (!btn) return;
-    btn.setAttribute("aria-pressed", this.showFileModified ? "true" : "false");
-    btn.classList.toggle("sidebar-tab-action-on", this.showFileModified);
-    btn.title = this.showFileModified
-      ? "Hide modified dates"
-      : "Show modified dates";
   }
 
   /**
@@ -2756,7 +2793,7 @@ export class Workspace {
         p.setAttribute("hidden", "");
       }
     });
-    // The hidden-files toggle only makes sense in the Files tab.
+    // Hidden-files toggle is only relevant when Files tab is visible.
     const hiddenBtn = this.root.querySelector<HTMLButtonElement>(
       '.sidebar-tab-action[data-action="toggle-hidden"]',
     );
