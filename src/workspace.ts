@@ -357,6 +357,7 @@ export class Workspace {
           <button class="sidebar-tab-action" data-action="refresh-files" type="button" title="Refresh file tree" aria-label="Refresh files">\u21bb</button>
           <button class="sidebar-tab-action" data-action="toggle-hidden" type="button" title="Show hidden files (.git, .env, \u2026)" aria-label="Show hidden files" aria-pressed="false">\u25cb</button>
           <button class="sidebar-tab-action" data-action="toggle-size" type="button" title="Toggle file sizes" aria-label="Toggle file sizes" aria-pressed="true">S</button>
+          <button class="sidebar-tab-action" data-action="toggle-preview" type="button" title="Hide file viewer" aria-label="Toggle file viewer" aria-pressed="true">P</button>
         </div>
         <div class="sidebar-pane sidebar-pane-files" data-tab="files">
           <div class="file-tree" tabindex="0" role="tree" aria-label="Project files"></div>
@@ -474,6 +475,7 @@ export class Workspace {
     this.previewVisible = !this.previewVisible;
     if (this.layout) this.layout.preview_visible = this.previewVisible;
     this.root.classList.toggle("preview-hidden", !this.previewVisible);
+    this.updatePreviewToggleVisualState();
     if (this.terminalVisible) this.fitTerminal();
     void this.persistLayout();
     this.syncPreviewDividerAccessibility();
@@ -1989,6 +1991,7 @@ export class Workspace {
       this.root.classList.toggle("preview-hidden", !this.previewVisible);
       this.root.classList.toggle("terminal-hidden", !this.terminalVisible);
       this.root.classList.toggle("agent-hidden", !this.agentVisible);
+      this.updatePreviewToggleVisualState();
       this.syncPreviewDividerAccessibility();
     }
   }
@@ -2590,6 +2593,8 @@ export class Workspace {
           this.toggleShowHiddenFiles();
         } else if (a === "toggle-size") {
           this.toggleShowFileSizes();
+        } else if (a === "toggle-preview") {
+          this.togglePreview();
         } else if (a === "refresh-files") {
           this.refreshFileTreeFull();
         } else if (a === "new-file") {
@@ -2605,6 +2610,7 @@ export class Workspace {
       if (!tab) return;
       this.setSidebarTab(tab);
     });
+    this.updatePreviewToggleVisualState();
   }
 
   /**
@@ -2638,6 +2644,17 @@ export class Workspace {
       btn.classList.toggle("sidebar-tab-action-on", this.showFileSizes);
     }
     this.renderFileTree();
+  }
+
+  /** Sync the preview toggle's aria + pressed state with visibility. */
+  private updatePreviewToggleVisualState(): void {
+    const btn = this.root.querySelector<HTMLButtonElement>(
+      '.sidebar-tab-action[data-action="toggle-preview"]',
+    );
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", this.previewVisible ? "true" : "false");
+    btn.classList.toggle("sidebar-tab-action-on", this.previewVisible);
+    btn.title = this.previewVisible ? "Hide file viewer" : "Show file viewer";
   }
 
   /**
