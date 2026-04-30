@@ -23,6 +23,14 @@ export interface ProblemsFilter {
   confidences: Set<Confidence>;
 }
 
+function confidenceBadgeLabel(conf: Confidence): string {
+  return conf === "confirmed"
+    ? "\u2713 Observed"
+    : conf === "probable"
+      ? "~ Inferred"
+      : "? Unverified";
+}
+
 /** Default filter: everything visible. */
 export function defaultFilter(): ProblemsFilter {
   return {
@@ -210,9 +218,9 @@ function renderHeader(
     .join("");
   const confChips = (
     [
-      { conf: "confirmed" as const, label: "\u2713 Observed", n: counts.confirmed },
-      { conf: "probable" as const, label: "? Probable", n: counts.probable },
-      { conf: "candidate" as const, label: "~ Inferred", n: counts.candidate },
+      { conf: "confirmed" as const, label: confidenceBadgeLabel("confirmed"), n: counts.confirmed },
+      { conf: "probable" as const, label: confidenceBadgeLabel("probable"), n: counts.probable },
+      { conf: "candidate" as const, label: confidenceBadgeLabel("candidate"), n: counts.candidate },
     ]
   )
     .map((c) => {
@@ -307,12 +315,7 @@ function renderFindingRow(f: Finding): string {
   // click handler invokes `read_file_snippet` and fills it on demand.
   // A small copy button preserves the previous click-to-clipboard
   // affordance without making the whole row a copy target.
-  const confidenceLabel =
-    f.confidence === "confirmed"
-      ? "\u2713 Observed"
-      : f.confidence === "probable"
-        ? "? Probable"
-        : "~ Inferred";
+  const confidenceLabel = confidenceBadgeLabel(f.confidence);
 
   return (
     `<li class="problems-row sev-${f.severity} conf-${f.confidence}" ` +
