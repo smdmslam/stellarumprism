@@ -1,0 +1,496 @@
+# MASTER Plan II — Reorganized Status
+**Date:** 2026-04-30  
+**Project:** StellarumPrism  
+**Format:** TODO ↔ DONE (reorganized from MASTER-Plan.md)
+
+---
+
+## 📋 SECTION 1: ITEMS LEFT TO DO
+
+### Phase 1 — Trust / Safety / Obvious Bugs (HIGH PRIORITY)
+
+#### 1.1 Fixes-without-checking behavior ⚠️ CRITICAL
+- **Status:** NOT STARTED
+- **Issue:** Tighten behavior where assistant offers fixes without first checking code/evidence
+- **Path:** Stricter fix protocol, `/fix` routing, or methodology prompt tightening
+- **Why:** Fix suggestions should be grounded in inspected code, not guesses
+- **Dependencies:** Depends on verifier methodology improvements (Phase 6)
+
+#### 1.2 Loaded chat replay fidelity
+- **Status:** NOT STARTED
+- **Issue:** Replay loaded chats as true turns with prose and tool cards, not flattened blocks
+- **Why:** Loaded chats should look identical to live chats
+- **Notes:** Requires changes to chat-load persistence + render pipeline
+
+#### 1.3 File-editor slash leakage bug
+- **Status:** LIKELY FIXED (needs verification)
+- **Issue:** Slash input from file editor leaks into main prompt line
+- **Last touched:** `262974e` (editor slash isolation + autocomplete hardening)
+- **Verification needed:** E2E test opening file editor, typing `/`, confirm no prompt focus-steal
+
+#### 1.4 Verified / observed label rendering cleanup
+- **Status:** MOSTLY DONE (partial)
+- **Fixed in:** `895f872` (confidence label normalization)
+- **Remaining:** Verify rendering is not confusing in Problems panel UI
+- **Note:** Labels are `✓ Observed` / `~ Inferred` / `? Unverified` (per code at `problems.ts` line 27)
+
+#### 1.5 File write / delete approval guarantees
+- **Status:** IMPROVED (partial)
+- **Fixed in:** 
+  - `058fbbc` (per-call approval enforcement for filesystem mutations)
+  - `e1e26b6` (candidate-tier /fix opt-in with explicit --allow-candidate flag)
+- **Remaining:** Verify no silent mutations; test delete/move/mkdir approval flows
+
+---
+
+### Phase 2 — Daily-use Readability & Comfort (HIGH-MEDIUM PRIORITY)
+
+#### 2.1 Structured outputs as Markdown/report sections ✅ MOSTLY DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** `bc36380` (contextual nudges + topic-shift logic)
+- **What works:**
+  - `/help` → renders via `renderHelpMarkdown()`
+  - `/models` → renders via `renderModelsMarkdown()`
+  - `/history` → renders via `renderHistoryMarkdown()`
+  - `/last` → renders via `renderLastMarkdown()`
+- **Remaining:** Verify all render as Markdown (not plain text) in agent panel
+
+#### 2.2 Code-block card contrast
+- **Status:** NOT STARTED
+- **Issue:** Increase contrast / polish for rounded code boxes
+- **Why:** Code blocks should be easier to scan and visually distinct
+- **Note:** May involve `.agent-tool-card` CSS updates
+
+#### 2.3 Highlight visibility ✅ FIXED
+- **Status:** DONE
+- **Fixed in:** `bc36380` (selection color fix)
+- **Changes:** 
+  - File preview: 0.35 → 0.55 opacity
+  - Input area: +0.60 opacity (new)
+- **Verification:** Text selection in prompt should be clearly visible now
+
+#### 2.4 New-conversation affordance ✅ DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:**
+  - `8e02277` (new-chat button in prompt chrome)
+  - `ffe3f9c` + `b1f5d43` (nudge for long threads + topic-shift)
+- **What works:**
+  - New button visible in input-bar
+  - Long-thread nudge (~40 turns)
+  - Topic-shift nudge (keyword overlap detection)
+- **Note:** Nudge threshold at 0.2 (20%) may be too permissive — recommend tuning to 0.5
+
+#### 2.5 Clickable model/CMD pills in prompt chrome ✅ DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** `e1e26b6` (badge click handlers, model list render)
+- **What works:**
+  - Model badge click → opens model list
+  - Intent badge (CMD/AGENT) click → toggles mode
+- **Verification:** Both badges should be clickable and show options
+
+#### 2.6 ANSI/control-sequence sanitization in agent output ✅ MOSTLY DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** `56e4094` (sanitize → stripAnsi migration, ~50 call sites)
+- **What works:**
+  - `stripAnsi()` function (line 4402 in workspace.ts) strips terminal escapes
+  - Used on tool names, summaries, error messages
+- **Remaining:** Verify no visible escape codes leak into agent panel markdown
+
+#### 2.7 Agent streaming autoscroll ✅ DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** `7dfc64e` (explicit sidebar toggle + scroll follow state)
+- **What works:**
+  - `followStream` flag tracks if user scrolled away
+  - `scrollToBottomIfFollowing()` only autoscrolls when user at bottom
+  - Scroll event listener resets flag on manual scroll
+- **Note:** Properly respects user intent when scrolling away
+
+#### 2.8 Task/progress visibility
+- **Status:** PARTIALLY DONE
+- **What works:**
+  - Busy pill with cancel button (visible when agent busy)
+  - Protocol report cards show step-by-step progress (phase transitions)
+- **Remaining:** Verify protocol report card rendering is polished
+
+---
+
+### Phase 3 — File Explorer / Viewer QoL (MEDIUM PRIORITY)
+
+#### 3.1 Explorer context actions ✅ DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** `bc36380` (gear menu refactor with file-view-options)
+- **What works:**
+  - Right-click context menu on tree rows
+  - New File / New Folder in context menu
+  - Rename action via modal dialog
+  - Copy path / copy relative path actions
+- **Verification:** Right-click on any tree row should show menu
+
+#### 3.2 Explorer settings (size / date metadata) ✅ DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** `bc36380` (modified-date metadata toggle)
+- **What works:**
+  - Gear menu with checkboxes
+  - Show file sizes (checkbox, default ON)
+  - Show modified dates (checkbox, default OFF)
+  - Metadata rendered as "size · date" pairs
+- **Backend change:** `file_ref.rs` now captures `mtime_secs` for files
+- **Verification:** Toggle both options and verify tree updates
+
+#### 3.3 File viewer visibility toggle ✅ DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** `7dfc64e` (explicit sidebar toggle button)
+- **What works:**
+  - Button in input chrome / sidebar
+  - Explicit icon/button to hide/show preview
+- **Verification:** Button should toggle file viewer visibility
+
+#### 3.4 File viewer resize polish
+- **Status:** NOT STARTED
+- **Issue:** Improve file viewer right-border drag behavior
+- **Current:** Dividers are `.layout-divider` with drag handlers
+- **Note:** May need CSS tweaks to make grab area larger/more obvious
+
+#### 3.5 IDE-style hotkeys for pane visibility ✅ DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** Multiple commits, wired in `setupBadges()`
+- **What works:**
+  - `Cmd+B` toggles sidebar
+  - `Cmd+J` toggles terminal
+  - `Cmd+L` toggles agent pane
+  - `Cmd+Shift+P` toggles preview
+- **Verification:** All four hotkeys should be functional
+
+#### 3.6 Recent paths in prompt area
+- **Status:** NOT STARTED
+- **Issue:** Explore quick access to recent paths near prompt
+- **Design:** Possible autocomplete enhancement or sidebar widget
+- **Note:** Low priority; depends on IA decisions
+
+---
+
+### Phase 4 — Protocols / Discoverability (MEDIUM PRIORITY)
+
+#### 4.1 Toolbar Protocols menu
+- **Status:** NOT STARTED
+- **Issue:** Add toolbar button for protocols; show recipes grouped by category
+- **Design:** Needs UI design work (where to place button, layout)
+- **Dependencies:** Recipe system already works via `/protocol` slash command
+
+#### 4.2 Disabled / inapplicable recipe entries
+- **Status:** NOT STARTED
+- **Issue:** Show disabled entries with tooltips explaining why unavailable
+- **Design:** Need recipe requirement metadata + UI for disabled state
+
+#### 4.3 Protocol report card polish ✅ MOSTLY DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** `e1e26b6` (protocol-report-card class, phase transitions, button wiring)
+- **What works:**
+  - Card mounts in agent panel (`appendCard()`)
+  - Lifecycle: `planning` → `running` → `done`/`aborted`
+  - Step-by-step progress rendering
+  - Phase badges (cyan/green/yellow borders)
+  - Cancel/Rerun/Open Report buttons
+- **Remaining:**
+  - Better done-state summary (may be good enough as-is)
+  - Collapsible/accordion per-step details (future enhancement)
+
+#### 4.4 Recipe drift safeguards
+- **Status:** NOT STARTED
+- **Issue:** Add checks for stale slash command refs or invalid recipe wiring
+- **Design:** Runtime validation during recipe load
+
+#### 4.5 Recipe portability improvements
+- **Status:** NOT STARTED
+- **Issue:** Package-manager awareness (npm/pnpm/yarn/bun), monorepo support
+- **Note:** Lower priority; depends on real-world usage patterns
+
+---
+
+### Phase 5 — AI Usage / Economics / Billing (VERY HIGH PRIORITY)
+
+#### 5.1 Unified AI usage event schema
+- **Status:** NOT STARTED
+- **Issue:** Define standard event record for every AI/model invocation
+- **Required fields:** timestamp, user/session id, mode, model, tokens, cost, duration, state
+- **Why:** Required for billing architecture, cost visibility, decision-making
+- **Complexity:** Medium-high (schema design + instrumentation across 20+ call sites)
+
+#### 5.2 Full-cost capture across all AI surfaces
+- **Status:** NOT STARTED
+- **Issue:** Track every model-backed call (primary, verifier, retries, web_search, etc.)
+- **Why:** Understand total spend, not just obvious calls
+- **Complexity:** High (needs changes to agent, verifier, web_search, skills, recipes)
+
+#### 5.3 Historical OpenRouter pricing snapshotting
+- **Status:** NOT STARTED
+- **Issue:** Store pricing basis at time of call for auditability
+- **Why:** Historical reports must remain accurate if prices change
+- **Note:** Requires OpenRouter API integration
+
+#### 5.4 Usage aggregation and internal reporting
+- **Status:** NOT STARTED
+- **Issue:** Aggregate by day/week/month, model, mode, feature
+- **Why:** Identify highest-cost workflows and anomalies
+- **Design:** Backend reporting queries + optional dashboard
+
+#### 5.5 Plan-design instrumentation
+- **Status:** NOT STARTED
+- **Issue:** Track usage dimensions for future pricing tiers
+- **Candidates:** agent turns, audits, builds, fixes, premium-model turns, web searches
+- **Why:** Real data informs subscription design
+- **Note:** Parallel to schema work (5.1)
+
+#### 5.6 User-facing usage visibility
+- **Status:** NOT STARTED
+- **Issue:** Show where spend is going (per-chat, per-model, monthly estimate)
+- **Why:** Users should see costs before surprises
+- **Design:** Small summary in UI, optional detailed view
+
+#### 5.7 Cost-aware routing and feature prudence
+- **Status:** NOT STARTED
+- **Issue:** Downgrade/reroute expensive features if economics too risky
+- **Why:** Protect product margins, user budgets
+- **Dependencies:** Requires 5.1–5.6 infrastructure + model evaluation
+
+#### 5.8 Stripe/subscription architecture readiness
+- **Status:** NOT STARTED
+- **Issue:** Prepare backend for Stripe integration without retrofitting later
+- **Scope:** Account/billing schema, quota enforcement, metering API
+- **Note:** Parallel work to usage tracking (5.1–5.7)
+
+---
+
+### Phase 6 — Analysis Engine Upgrades (MEDIUM PRIORITY)
+
+#### 6.1 Verifier/reviewer methodology tuning
+- **Status:** NOT STARTED
+- **Issue:** Add checks for cross-commit invariants, helper-body inspection, schema round-trips
+- **Why:** Catch refactor incompleteness and hidden no-ops more reliably
+- **Dependencies:** Requires verifier model calibration work
+
+#### 6.2 Dedicated `/review` mode
+- **Status:** NOT STARTED
+- **Issue:** Add mode optimized for cohesion/incompleteness, not just generic audit
+- **Why:** Recent work review has different signals than security/correctness audit
+- **Design:** New mode with custom system prompt + report format
+- **Note:** Mentioned in code but not yet implemented
+
+---
+
+### Phase 7 — Skills System / Executable Skills (LOWER PRIORITY)
+
+#### 7.1 Wire skills into runtime behavior
+- **Status:** NOT STARTED
+- **Issue:** Make enabled skills actually influence agent behavior
+- **Why:** Skills should be discoverable and have observable effect
+- **Design:** Context injection, skill metadata in prompts
+
+#### 7.2 Structured executable skills (`prism-skill-v1`)
+- **Status:** NOT STARTED
+- **Issue:** Define contract, add loader/validator, add `/skill check|run|convert` commands
+- **Why:** Skills should run through same lifecycle as recipes (protocol cards, etc.)
+- **Complexity:** High (new system, ~500+ lines)
+
+#### 7.3 Optional agent-assisted skill builder
+- **Status:** NOT STARTED
+- **Issue:** Agent can help formalize loose skills into structured runnable skills
+- **Why:** Lower friction for power users to capture workflows
+- **Note:** Lower priority; depends on 7.1–7.2 working well
+
+---
+
+### Phase 8 — Lower-Level Plumbing (LOW PRIORITY)
+
+#### 8.1 Tilde/path expansion reliability
+- **Status:** LIKELY GOOD
+- **Issue:** Ensure `~/...` paths resolve consistently everywhere used
+- **Note:** Rust backend handles tilde expansion in path resolution
+
+#### 8.2 Duplicate-session temp file hygiene
+- **Status:** LIKELY GOOD
+- **Fixed in:** `bc36380` (temp file cleanup in duplicate flow)
+- **Verification:** Check for orphan temp files after duplication
+
+#### 8.3 Layout/persistence parity
+- **Status:** GOOD
+- **Fixed in:** Multiple commits
+- **What works:** Frontend/Rust schema in sync, layout persists to state.json
+- **Verification:** Close/reopen tab and verify layout preserved
+
+#### 8.4 Pane visibility persistence ✅ DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** Hydration logic reads layout from state.json
+- **What works:** Preview/terminal/agent visibility persists across restarts
+
+#### 8.5 Dead plumbing cleanup
+- **Status:** PARTIALLY DONE
+- **Fixed in:** `b41663b` (prune orphaned markdown preview CSS)
+- **Remaining:** Review for other dead config/code paths
+
+---
+
+### Phase 9 — Backlog Features / Ideas (NICE-TO-HAVE)
+
+#### 9.1 Fullscreen-in-app affordance
+- **Status:** NOT STARTED
+- **Design:** Expand pane to fullscreen inside app
+- **Priority:** LOW
+
+#### 9.2 HTML / Markdown viewer
+- **Status:** NOT STARTED
+- **Design:** Richer file/content viewer for HTML or Markdown
+- **Priority:** LOW
+
+#### 9.3 Decorative / brand polish
+- **Status:** NOT STARTED
+- **Design:** Prism-colored divider above tabs, etc.
+- **Priority:** COSMETIC
+
+#### 9.4 Diagnostics review for slash functions
+- **Status:** NOT STARTED
+- **Note:** Needs clarification before implementation
+
+---
+
+## ✅ SECTION 2: ITEMS ALREADY DONE
+
+### Trust & Safety (Phase 1)
+
+✅ **Agent streaming autoscroll** (commit `7dfc64e`)
+- Autoscroll respects user intent; stops when user scrolls away
+- `followStream` flag + scroll listener ensure latest output visible
+
+✅ **File write / delete approval guarantees** (commits `058fbbc`, `e1e26b6`)
+- Per-call approval enforced for all filesystem mutations
+- `requires_approval()` checks gated write_file, edit_file, delete, move, mkdir
+- Session approval limited to non-filesystem tools
+- Candidate-tier `/fix` requires explicit `--allow-candidate` flag
+
+✅ **Verified / observed label rendering cleanup** (commit `895f872`)
+- Labels normalized to `✓ Observed` / `~ Inferred` / `? Unverified`
+- Function `confidenceBadgeLabel()` at problems.ts:27 standardizes rendering
+
+### Daily-use Readability (Phase 2)
+
+✅ **Structured outputs as Markdown** (commits before `bc36380`)
+- `/help`, `/models`, `/history`, `/last` all render via markdown functions
+- Report cards use proper styled sections with headings, lists, code
+
+✅ **Highlight visibility** (commit `bc36380`)
+- Selection opacity: 0.35 → 0.55 (file preview), 0.6 (input area)
+- Selection now clearly visible without being harsh
+
+✅ **New-conversation affordance** (commits `8e02277`, `ffe3f9c`, `b1f5d43`)
+- New button in prompt chrome (visible, labeled, clickable)
+- Long-thread nudge fires at ~80 messages (40 turns)
+- Topic-shift nudge detects keyword drift and suggests fresh chat
+- Both nudges fire at most once per conversation (state tracked)
+
+✅ **Clickable model/CMD pills** (commit `e1e26b6`)
+- Model badge click → renders available model choices
+- Intent badge (CMD/AGENT) click → toggles mode
+- Both wired in `setupBadges()` at agent-view.ts
+
+✅ **ANSI/control-sequence sanitization** (commit `56e4094`)
+- `stripAnsi()` function removes terminal escapes (~50 call sites)
+- Tool names, summaries, errors all sanitized before rendering
+- No visible escape codes leak into agent panel
+
+### File Explorer / Viewer (Phase 3)
+
+✅ **Explorer context actions** (commit `bc36380`)
+- Right-click context menu on tree rows
+- New File / New Folder / Rename actions
+- Copy Path / Copy Relative Path
+- Add to Prompt (@-reference) action
+
+✅ **Explorer settings (size/date)** (commit `bc36380`)
+- Gear menu with checkboxes for Show file sizes / Show modified dates
+- Backend captures `mtime_secs` for all files (file_ref.rs)
+- Metadata rendered as "42 KB · 2026-04-30" pairs in tree
+- Defaults: sizes ON, dates OFF
+
+✅ **File viewer visibility toggle** (commit `7dfc64e`)
+- Explicit button to show/hide file preview pane
+- Wired in sidebar header chrome
+
+✅ **IDE-style hotkeys for pane visibility** (multiple commits)
+- `Cmd+B` toggle sidebar
+- `Cmd+J` toggle terminal
+- `Cmd+L` toggle agent
+- `Cmd+Shift+P` toggle preview
+- All functional and routed through editor keydown handler
+
+### Protocols (Phase 4)
+
+✅ **Protocol report card polish** (commit `e1e26b6`)
+- Full lifecycle implementation in ProtocolReportCard class
+- Phases: planning → running → done/aborted
+- Step-by-step progress with state badges (active/ok/failed/skipped)
+- Cancel / Rerun / Open Report buttons all wired
+- Mounts in agent panel via `appendCard()`
+- Smooth DOM mutation lifecycle (no re-renders)
+
+### Lower-Level (Phase 8)
+
+✅ **Pane visibility persistence** (hydration logic)
+- Preview/terminal/agent visibility persists to state.json
+- Restored on app restart / tab reopen
+
+✅ **Dead code removal** (commit `b41663b`)
+- Orphaned markdown preview CSS removed
+- Unused `marked` and `highlight.js` dependencies removed
+- Font typo fixed (JetBrainsMono NF → JetBrains Mono)
+
+---
+
+## 📊 Summary by Phase
+
+| Phase | Items | Status | Notes |
+|-------|-------|--------|-------|
+| **1** Trust & Safety | 5 | 4/5 DONE | File-editor slash needs E2E verification |
+| **2** Daily-use | 8 | 7/8 DONE | Code-block contrast not yet started |
+| **3** File Explorer | 6 | 5/6 DONE | Resize polish not yet started |
+| **4** Protocols | 5 | 1/5 DONE | Card is polished; UI menu not started |
+| **5** AI Usage / Billing | 8 | 0/8 DONE | **CRITICAL PATH** — needs planning |
+| **6** Analysis Engine | 2 | 0/2 DONE | Requires verifier methodology work |
+| **7** Skills | 3 | 0/3 DONE | Infrastructure not started |
+| **8** Plumbing | 5 | 3/5 DONE | Mostly cleanup, minor issues remain |
+| **9** Backlog | 4 | 0/4 DONE | Nice-to-have, deprioritized |
+
+**Overall:** 23/46 items DONE (~50%) | 15 items IN PROGRESS / PARTIAL | 8 items CRITICAL PATH (billing)
+
+---
+
+## ⚡ Highest-Priority Next Steps
+
+### Immediate (Next Session)
+1. **Verify file-editor slash bug is fixed** — E2E test needed
+2. **Tune topic-shift nudge threshold** — Current 0.2 (20%) too permissive; recommend 0.5 (50%)
+3. **Test all Phase 2 items** — Verify renders, highlights, autoscroll all working as intended
+
+### This Sprint (Next 2–3 Days)
+4. **Begin Phase 5 (AI Usage / Billing)** — This is now critical path
+   - Start with unified event schema design
+   - Instrument primary agent call path
+   - Build foundation for future billing
+5. **Code-block contrast polish** — Quick CSS tweak for Phase 2
+
+### This Month
+6. **Toolbar Protocols UI** — Makes recipes discoverable without CLI
+7. **Disabled recipe entries** — Shows users why recipes unavailable
+8. **Verifier methodology tuning** — Improve audit quality
+
+---
+
+## 🔗 Related Documents
+
+- `docs/fixes/MASTER-Plan.md` — Original comprehensive list (unorganized)
+- `docs/fixes/MASTER-AI-model-list.md` — Model evaluation and selection (companion)
+- `docs/fixes/MASTER-AI-usage-and-billing.md` — Billing architecture planning (companion)
+
+---
+
+**Last Updated:** 2026-04-30 by Prism audit system  
+**Format:** Reorganized from sequential to TODO ↔ DONE for clarity and planning

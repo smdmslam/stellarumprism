@@ -73,10 +73,6 @@ normal daily use.
 - Acceptance goal: code blocks are easier to scan and visually distinct from
   surrounding prose.
 
-### 2.4 Highlight visibility
-- Improve the visibility of highlights that are currently too faint.
-- Acceptance goal: highlights are obvious without feeling harsh.
-
 ### 2.5 New-conversation affordance
 - Add a clearer “start a new chat” affordance.
 - Add an agent-window prompt around long conversations (for example at ~40
@@ -91,8 +87,6 @@ normal daily use.
 - Make the model badge/pill clickable.
 - Clicking the model pill should open the currently available model choices,
   aligned with whatever the settings toggles currently allow.
-- Make the `CMD` / agent-mode pill clickable.
-- Clicking the `CMD` / agent pill should toggle the active mode directly.
 - Acceptance goal: the prompt chrome pills are interactive, discoverable
   controls rather than passive labels.
 
@@ -110,26 +104,6 @@ normal daily use.
 
 These are practical IDE-surface improvements that will be felt constantly.
 
-### 3.1 File explorer settings
-- Add a settings icon to the file explorer.
-- Allow toggling metadata visibility such as:
-  - file size
-  - modified date
-- Acceptance goal: explorer metadata is user-configurable.
-
-### 3.2 Explorer context actions
-- Add right-click actions for:
-  - new file
-  - new folder
-- Acceptance goal: common file-tree actions are discoverable and mouse-friendly.
-
-### 3.3 File viewer drag/resize polish
-- Improve the file viewer right-border drag behavior.
-- Acceptance goal: resizing feels reliable and easy to grab.
-
-### 3.4 File viewer visibility toggle
-- Add an explicit icon/button to hide/show the file viewer.
-- Acceptance goal: the preview/file-view surface is easier to control.
 
 ### 3.5 Recent paths in prompt area
 - Explore quick access to recent paths near the prompt area.
@@ -389,9 +363,6 @@ These are valid ideas, but should not outrank the categories above.
 
 ### 8.3 Quick model / command toggles from chrome
 - Let users click the CMD/model UI to bring up options.
-
-### 8.4 Decorative / brand polish
-- Consider adding the Prism-colored divider above tabs.
 
 ### 8.5 Diagnostics review for slash functions
 - Needs clarification before implementation.

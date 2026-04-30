@@ -405,9 +405,27 @@ export class Workspace {
               <span class="cwd-badge" title="Current working directory"></span>
               <span class="input-meta-spacer"></span>
               <button class="new-chat-btn" type="button" title="Start a new chat" aria-label="Start a new chat">New</button>
-              <span class="model-badge" title="Agent model" role="status" aria-label="Active model">...</span>
+              
+              <div class="pill-group">
+                <span class="model-badge" title="Agent model" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="Active model">...</span>
+                <div class="model-selector-menu" role="menu" hidden></div>
+              </div>
+
               <button class="busy-pill" type="button" title="Cancel agent request" aria-label="Cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
-              <span class="intent-badge" data-intent="command" role="status" aria-label="Input mode">CMD</span>
+              
+              <div class="pill-group">
+                <span class="intent-badge" data-intent="command" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="Input mode">CMD</span>
+                <div class="intent-selector-menu" role="menu" hidden>
+                  <div class="intent-selector-item" data-intent="command">
+                    <span class="intent-item-label">CMD</span>
+                    <span class="intent-item-detail">Run shell commands</span>
+                  </div>
+                  <div class="intent-selector-item" data-intent="agent">
+                    <span class="intent-item-label">ASK</span>
+                    <span class="intent-item-detail">Talk to the AI agent</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -838,16 +856,13 @@ export class Workspace {
     intentBadge.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this.input.toggleAgentMode();
-      queueMicrotask(() => this.input.focus());
+      this.toggleIntentMenu();
     });
 
     modelBadge.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (this.agentView) {
-        this.agentView.appendReport(renderModelsMarkdown());
-      }
+      this.toggleModelMenu();
     });
     newChatBtn?.addEventListener("click", (e) => {
       e.preventDefault();
@@ -855,9 +870,31 @@ export class Workspace {
       this.startNewConversation();
     });
 
-    // Click anywhere in the input bar (but outside the badges) refocuses.
-    // Critical carve-out: skip the manual refocus when the click is
-    // already inside the editor itself. CodeMirror handles its own
+    // Delegate menu item clicks.
+    this.root.querySelector(".input-meta")?.addEventListener("click", (e) => {
+      const target = e.target as HTMLElement | null;
+      
+      const modelItem = target?.closest<HTMLElement>(".model-selector-item");
+      if (modelItem) {
+        const slug = modelItem.dataset.slug;
+        if (slug) {
+          void this.handleSlashCommand(`/model ${slug}`);
+          this.hidePillMenus();
+        }
+        return;
+      }
+
+      const intentItem = target?.closest<HTMLElement>(".intent-selector-item");
+      if (intentItem) {
+        const intent = intentItem.dataset.intent as "command" | "agent";
+        const isAgent = intent === "agent";
+        if (this.input.isAgentMode() !== isAgent) {
+          this.input.toggleAgentMode();
+        }
+        this.hidePillMenus();
+        return;
+      }
+    });
     // focus-on-click natively, and a focus() call landing mid-drag on
     // a contenteditable surface collapses any in-progress text
     // selection on WebKit/macOS \u2014 which broke drag-select inside the
@@ -2656,7 +2693,11 @@ export class Workspace {
       const onButton = !!target.closest(
         '.sidebar-tab-action[data-action="toggle-file-view-options"]',
       );
+      const onPill = !!target.closest(".model-badge, .intent-badge");
+      const insidePillMenu = !!target.closest(".model-selector-menu, .intent-selector-menu");
+      
       if (!insideMenu && !onButton) this.hideFileViewOptionsMenu();
+      if (!onPill && !insidePillMenu) this.hidePillMenus();
     };
     this.root.ownerDocument.addEventListener("mousedown", onDocPointerDown);
     this.disposers.push(() =>
@@ -2744,6 +2785,67 @@ export class Workspace {
       btn.setAttribute("aria-expanded", open ? "true" : "false");
       btn.classList.toggle("sidebar-tab-action-on", open);
     }
+  }
+
+  private toggleShowFileSizes(): void {
+    this.showFileSizes = !this.showFileSizes;
+    const btn = this.root.querySelector<HTMLButtonElement>(
+      '.sidebar-tab-action[data-action="toggle-size"]',
+    );
+    if (btn) {
+      btn.setAttribute("aria-pressed", this.showFileSizes ? "true" : "false");
+      btn.classList.toggle("sidebar-tab-action-on", this.showFileSizes);
+    }
+    this.renderFileTree();
+  }
+
+  private toggleModelMenu(): void {
+    const menu = this.root.querySelector<HTMLElement>(".model-selector-menu");
+    const badge = this.root.querySelector<HTMLElement>(".model-badge");
+    if (!menu || !badge) return;
+    
+    const isOpen = badge.getAttribute("aria-expanded") === "true";
+    this.hidePillMenus(); // Close others
+    
+    if (!isOpen) {
+      this.renderModelMenu();
+      badge.setAttribute("aria-expanded", "true");
+      menu.removeAttribute("hidden");
+    }
+  }
+
+  private toggleIntentMenu(): void {
+    const menu = this.root.querySelector<HTMLElement>(".intent-selector-menu");
+    const badge = this.root.querySelector<HTMLElement>(".intent-badge");
+    if (!menu || !badge) return;
+
+    const isOpen = badge.getAttribute("aria-expanded") === "true";
+    this.hidePillMenus(); // Close others
+
+    if (!isOpen) {
+      badge.setAttribute("aria-expanded", "true");
+      menu.removeAttribute("hidden");
+    }
+  }
+
+  private hidePillMenus(): void {
+    const menus = this.root.querySelectorAll(".model-selector-menu, .intent-selector-menu");
+    menus.forEach(m => m.setAttribute("hidden", ""));
+    const badges = this.root.querySelectorAll(".model-badge, .intent-badge");
+    badges.forEach(b => b.setAttribute("aria-expanded", "false"));
+  }
+
+  private renderModelMenu(): void {
+    const menu = this.root.querySelector<HTMLElement>(".model-selector-menu");
+    if (!menu) return;
+    
+    const completions = modelCompletions();
+    menu.innerHTML = completions.map(m => `
+      <div class="model-selector-item" data-slug="${escapeAttr(m.label)}">
+        <span class="model-item-label">${escapeHtml(m.label)}</span>
+        <span class="model-item-detail">${escapeHtml(m.detail)}</span>
+      </div>
+    `).join("");
   }
 
   /**
