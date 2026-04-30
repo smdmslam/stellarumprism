@@ -370,3 +370,119 @@ The immediate business need is:
 - reduce surprise
 - support prudent feature/default decisions
 - prepare for future subscriptions without retrofitting the whole app later
+
+---
+
+## Implementation kickoff (the irreversible-ish decisions)
+
+The sections above describe *what* to track and *why*. This section pins down
+the decisions that, if left open, would let the work stall in design discussions.
+Make these calls now so Phase A can start the same day.
+
+### Storage
+
+- **Location:** `~/Library/Application Support/prism/usage.jsonl` on macOS
+  (XDG-equivalent paths on Linux). One append-only file per machine, not per
+  workspace — events carry workspace id so cross-workspace aggregation works
+  without scanning N files.
+- **Format:** newline-delimited JSON (`.jsonl`). One event per line. Trivial
+  to append (no schema migrations), trivial to grep, trivial to stream into
+  whatever aggregation we build later. Do NOT start with SQLite — the schema
+  isn't stable enough yet to pay the migration tax.
+- **Retention:** keep everything until we hit 100 MB, then rotate to
+  `usage.jsonl.1` and start fresh. Older rotations are kept until disk gets
+  tight. v0 doesn't need a sophisticated rotation policy; this is good enough
+  for the first quarter of data.
+- **Failure mode:** event-write must NEVER block or fail an agent call. If the
+  write errors (disk full, perms, etc.), log a warning to the existing agent
+  error stream and proceed. We'd rather lose a few events than degrade the
+  product.
+
+### Pricing data source
+
+- **v0:** hardcoded constants in `src-tauri/src/pricing.rs`, one entry per
+  default-on model in the registry (the 8 we kept after the calibration sweep,
+  plus the Sonar backend). Updated by hand when OpenRouter prices change.
+  Fine for now — 8 models, infrequent price changes.
+- **Eventually (Phase 5.3):** poll OpenRouter's `/v1/models` endpoint daily,
+  cache pricing snapshots with timestamps so historical events stay accurate
+  even when prices drift. Out of scope for v0.
+
+### Instrumentation points
+
+Events are emitted from the Rust side, not the frontend, because that's where
+the actual model HTTP calls live and where token counts arrive in the
+response. The frontend never sees raw token counts.
+
+Four call sites need an `emit_usage_event` invocation:
+
+1. **Primary agent call** — `src-tauri/src/agent.rs`, after each successful
+   OpenRouter completion (success path AND retry path).
+2. **Verifier/reviewer call** — `src-tauri/src/second_pass.rs` or wherever
+   the verifier dispatches; same pattern.
+3. **Tool-backed model calls** — `web_search` via `perplexity/sonar` in
+   `src-tauri/src/tools.rs`. Any future tool whose backend is model-powered
+   gets the same hook.
+4. **Failure / cancellation** — emit an event with `success: false` or
+   `cancelled: true` so retries and abandoned turns are visible. Tokens may
+   be zero; cost may be zero; the point is visibility.
+
+### v0 MVP (1 day, ~150 LOC)
+
+The smallest shippable thing that gives us actionable data:
+
+1. Add `src-tauri/src/usage.rs` with:
+   - `UsageEvent` struct (the field list from "Per-model-call event data" above,
+     starting with the must-haves: timestamp, account-id, chat-id, mode, model,
+     provider, prompt_tokens, completion_tokens, total_tokens, duration_ms,
+     success, estimated_cost_usd, pricing_basis).
+   - `emit_usage_event(event)` — appends one JSON line to `usage.jsonl`.
+     Best-effort, never blocks, never errors out the caller.
+2. Add `src-tauri/src/pricing.rs` with hardcoded per-model pricing for the
+   current 8 default-on models + Sonar.
+3. Wire the four call sites from above.
+4. Add a `/usage` slash command on the frontend that runs `tail -200` on the
+   file and renders a quick summary (count by model, count by mode, sum cost
+   estimate). One read, no aggregation engine. Just enough so the user can
+   see the data starting to land.
+
+That's the entire v0. After a week of running this, the *real* burn pattern
+is visible and the aggregation surfaces (Phase B) can be designed against
+actual data instead of imagined patterns.
+
+### What v0 explicitly does NOT include
+
+- No aggregation queries (Phase B).
+- No user-facing usage panel beyond `/usage` (Phase C).
+- No quota enforcement (Phase E).
+- No Stripe (Phase E).
+- No retroactive backfill of past chats. Forward-only — don't dig through
+  `.prism/chats/` looking for token counts that may not even be there.
+- No SQLite migration. JSONL is fine for the first 100K events and the first
+  quarter of usage.
+- No remote telemetry. Events stay on the user's machine. If we ever need
+  cross-user analytics, that's a separate, opt-in decision.
+
+### Source of truth
+
+This document is the source of truth for usage tracking. `MASTER-Plan-II.md`
+Phase 5 entries (5.1–5.11) are the *project-plan view* of the same work —
+shorter, ordered, and cross-referenced for sprint planning. When the two
+disagree, this document wins; update Phase 5 to match. Avoid editing both
+in parallel.
+
+### After v0 lands
+
+With one week of real `usage.jsonl` data we can answer the actual questions:
+
+- Is the verifier loop the silent driver? (count events by mode — if `verifier`
+  matches `chat` 1:1, that's it; switch to a cheaper verifier model per
+  Phase 5.10).
+- Is the chat default too expensive? (group by model, find the modal model;
+  if it's GPT-5.4 or Haiku for casual chat, switch to `auto-thrifty` per
+  Phase 5.11).
+- Are tool loops blowing the budget on `/audit` and `/build`? (group by
+  parent action id, look at multi-round tasks).
+
+Those are the three concrete decisions waiting on data. Everything else in
+Phase B/C/D/E builds on top of v0 once the data is flowing.
