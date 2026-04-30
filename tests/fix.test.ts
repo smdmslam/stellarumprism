@@ -54,6 +54,7 @@ test("empty selector defaults to all + include=confirmed", () => {
   const r = parseFixArgs("");
   assert.equal(r.selector.kind, "all");
   assert.equal(r.include, "confirmed");
+  assert.equal(r.allowCandidate, false);
   assert.equal(r.error, undefined);
 });
 
@@ -66,11 +67,20 @@ test("--include=probable widens the policy", () => {
 test("--include=all maps to candidate (broadest)", () => {
   const r = parseFixArgs("all --include=all");
   assert.equal(r.include, "candidate");
+  assert.match(r.error ?? "", /requires --allow-candidate/);
 });
 
 test("--include=candidate is accepted as a synonym for all", () => {
   const r = parseFixArgs("all --include=candidate");
   assert.equal(r.include, "candidate");
+  assert.match(r.error ?? "", /requires --allow-candidate/);
+});
+
+test("--allow-candidate explicitly unlocks candidate policy", () => {
+  const r = parseFixArgs("all --include=all --allow-candidate");
+  assert.equal(r.include, "candidate");
+  assert.equal(r.allowCandidate, true);
+  assert.equal(r.error, undefined);
 });
 
 test("--include rejects unknown values", () => {

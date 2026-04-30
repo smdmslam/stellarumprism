@@ -36,6 +36,8 @@ export interface ParsedFixArgs {
    * widens via `--include=probable` or `--include=all`.
    */
   include: IncludePolicy;
+  /** Required ack when widening to candidate-tier findings. */
+  allowCandidate: boolean;
   maxToolRounds?: number;
   reportPath?: string;
   error?: string;
@@ -47,11 +49,18 @@ export interface ParsedFixArgs {
  * the caller can render them without throwing.
  */
 export function parseFixArgs(raw: string): ParsedFixArgs {
-  if (!raw) return { selector: { kind: "all" }, include: "confirmed" };
+  if (!raw) {
+    return {
+      selector: { kind: "all" },
+      include: "confirmed",
+      allowCandidate: false,
+    };
+  }
   const tokens = raw.split(/\s+/).filter(Boolean);
   let maxToolRounds: number | undefined;
   let reportPath: string | undefined;
   let include: IncludePolicy = "confirmed";
+  let allowCandidate = false;
   const selectorTokens: string[] = [];
 
   for (let i = 0; i < tokens.length; i++) {
@@ -63,6 +72,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
         return {
           selector: { kind: "all" },
           include,
+          allowCandidate,
           error: `--max-rounds expects a positive integer, got "${eqRounds[1]}"`,
         };
       }
@@ -75,6 +85,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
         return {
           selector: { kind: "all" },
           include,
+          allowCandidate,
           error: "--max-rounds expects a value (e.g. --max-rounds=80)",
         };
       }
@@ -83,6 +94,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
         return {
           selector: { kind: "all" },
           include,
+          allowCandidate,
           error: `--max-rounds expects a positive integer, got "${next}"`,
         };
       }
@@ -101,6 +113,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
         return {
           selector: { kind: "all" },
           include: "confirmed",
+          allowCandidate,
           error:
             "--report expects a path (e.g. --report=.prism/second-pass/audit-2026-01-01T00-00-00.json)",
         };
@@ -118,6 +131,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
         return {
           selector: { kind: "all" },
           include: "confirmed",
+          allowCandidate,
           error:
             "--include expects one of: confirmed, probable, all (or candidate)",
         };
@@ -127,6 +141,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
         return {
           selector: { kind: "all" },
           include: "confirmed",
+          allowCandidate,
           error: `--include expects one of: confirmed, probable, all (or candidate); got "${valueRaw}"`,
         };
       }
@@ -134,14 +149,40 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       if (!eqInclude) i++;
       continue;
     }
+    if (t === "--allow-candidate") {
+      allowCandidate = true;
+      continue;
+    }
     selectorTokens.push(t);
   }
 
+  if (include === "candidate" && !allowCandidate) {
+    return {
+      selector: { kind: "all" },
+      include,
+      allowCandidate,
+      error:
+        "--include=all (candidate tier) requires --allow-candidate due to speculative-fix risk",
+    };
+  }
+
   if (selectorTokens.length === 0) {
-    return { selector: { kind: "all" }, include, maxToolRounds, reportPath };
+    return {
+      selector: { kind: "all" },
+      include,
+      allowCandidate,
+      maxToolRounds,
+      reportPath,
+    };
   }
   if (selectorTokens.length === 1 && selectorTokens[0].toLowerCase() === "all") {
-    return { selector: { kind: "all" }, include, maxToolRounds, reportPath };
+    return {
+      selector: { kind: "all" },
+      include,
+      allowCandidate,
+      maxToolRounds,
+      reportPath,
+    };
   }
 
   // Tokenize into comma-separated parts (joining all selector tokens first).
@@ -151,7 +192,13 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
     .map((s) => s.trim())
     .filter(Boolean);
   if (parts.length === 0) {
-    return { selector: { kind: "all" }, include, maxToolRounds, reportPath };
+    return {
+      selector: { kind: "all" },
+      include,
+      allowCandidate,
+      maxToolRounds,
+      reportPath,
+    };
   }
 
   // If any part begins with `#`, treat the whole selector as an id list.
@@ -162,6 +209,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       return {
         selector: { kind: "all" },
         include,
+        allowCandidate,
         error: `mixed id and index tokens in selector "${selectorTokens.join(" ")}"; pick one form`,
       };
     }
@@ -170,10 +218,17 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       return {
         selector: { kind: "all" },
         include,
+        allowCandidate,
         error: `no ids parsed from selector "${selectorTokens.join(" ")}"`,
       };
     }
-    return { selector: { kind: "ids", ids }, include, maxToolRounds, reportPath };
+    return {
+      selector: { kind: "ids", ids },
+      include,
+      allowCandidate,
+      maxToolRounds,
+      reportPath,
+    };
   }
 
   // Otherwise indices + ranges.
@@ -187,6 +242,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
         return {
           selector: { kind: "all" },
           include,
+          allowCandidate,
           error: `bad range "${p}"; use 1-based ascending (e.g. 1-5)`,
         };
       }
@@ -198,6 +254,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       return {
         selector: { kind: "all" },
         include,
+        allowCandidate,
         error: `unrecognized selector token "${p}"; expected number, range, #id, or 'all'`,
       };
     }
@@ -206,6 +263,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
       return {
         selector: { kind: "all" },
         include,
+        allowCandidate,
         error: `index must be >= 1, got "${p}"`,
       };
     }
@@ -214,6 +272,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
   return {
     selector: { kind: "indices", indices },
     include,
+    allowCandidate,
     maxToolRounds,
     reportPath,
   };
