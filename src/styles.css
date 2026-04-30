@@ -1490,6 +1490,7 @@ input:checked + .toggle-slider:before {
   display: inline-block;
   animation: protocol-report-card-spin 1s linear infinite;
   transform-origin: center;
+  will-change: transform;
 }
 @keyframes protocol-report-card-spin {
   from { transform: rotate(0deg); }
@@ -3445,7 +3446,13 @@ input:checked + .toggle-slider:before {
 
 .file-preview-body .cm-selectionBackground,
 .file-preview-body .cm-content ::selection {
-  background: rgba(var(--prism-cyan-rgb), 0.35) !important;
+  background: rgba(var(--prism-cyan-rgb), 0.55) !important;
+}
+
+/* Improved selection in input area for better contrast */
+.editor-host .cm-selectionBackground,
+.editor-host .cm-content ::selection {
+  background: rgba(var(--prism-cyan-rgb), 0.6) !important;
 }
 
 /* Improved scrollbar for editor */

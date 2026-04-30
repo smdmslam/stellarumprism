@@ -61,10 +61,12 @@ export class ProtocolReportCard {
 
     this.summaryEl = document.createElement("div");
     this.summaryEl.className = "protocol-report-card-summary";
+    this.summaryEl.setAttribute("aria-live", "polite");
     this.el.appendChild(this.summaryEl);
 
     this.bodyEl = document.createElement("div");
     this.bodyEl.className = "protocol-report-card-body";
+    this.bodyEl.setAttribute("aria-live", "polite");
     this.el.appendChild(this.bodyEl);
 
     this.footerEl = document.createElement("div");

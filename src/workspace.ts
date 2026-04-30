@@ -383,9 +383,9 @@ export class Workspace {
               <span class="input-prefix" data-intent="command">\u276f</span>
               <span class="cwd-badge" title="Current working directory"></span>
               <span class="input-meta-spacer"></span>
-              <span class="model-badge" title="Agent model">\u2026</span>
-              <button class="busy-pill" type="button" title="Cancel agent request" aria-label="cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
-              <span class="intent-badge" data-intent="command">CMD</span>
+              <span class="model-badge" title="Agent model" role="status" aria-label="Active model">...</span>
+              <button class="busy-pill" type="button" title="Cancel agent request" aria-label="Cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
+              <span class="intent-badge" data-intent="command" role="status" aria-label="Input mode">CMD</span>
             </div>
           </div>
         </div>
@@ -959,12 +959,12 @@ export class Workspace {
       const resolved = resolveModel(modelArg[1].trim());
       if (!resolved) {
         this.notifyError(
-          `[agent] unknown model "${sanitize(modelArg[1])}". /models for list.`,
+          `[agent] unknown model "${stripAnsi(modelArg[1])}". /models for list.`,
         );
         return;
       }
       void this.agent.setModel(resolved);
-      this.notify(`[agent] model set to ${sanitize(resolved)}`);
+      this.notify(`[agent] model set to ${stripAnsi(resolved)}`);
       return;
     }
 
@@ -982,14 +982,14 @@ export class Workspace {
       }
       const parsed = parseBuildArgs(rawArgs);
       if (parsed.error) {
-        this.notifyError(`[build] ${sanitize(parsed.error)}`);
+        this.notifyError(`[build] ${stripAnsi(parsed.error)}`);
         return;
       }
       const buildPrompt = buildBuildPrompt(parsed.feature);
       this.setTitleFromText(`build: ${parsed.feature}`);
       this.activeBuildFeature = parsed.feature;
       this.notify(
-        `[build] starting substrate-gated build of ${sanitize(parsed.feature)}`,
+        `[build] starting substrate-gated build of ${stripAnsi(parsed.feature)}`,
       );
       void this.dispatchAgentQuery(buildPrompt, {
         mode: mode.name,
@@ -1042,13 +1042,13 @@ export class Workspace {
       }
       const { scope, maxToolRounds, error } = parseReviewArgs(rawArgs);
       if (error) {
-        this.notifyError(`[review] ${sanitize(error)}`);
+        this.notifyError(`[review] ${stripAnsi(error)}`);
         return;
       }
       const reviewPrompt = buildReviewPrompt(scope);
       this.setTitleFromText(`review ${scope || "(last 20 commits)"}`);
       this.notify(
-        `[review] cohesion review of ${sanitize(scope || "last 20 commits")}`,
+        `[review] cohesion review of ${stripAnsi(scope || "last 20 commits")}`,
       );
       void this.dispatchAgentQuery(reviewPrompt, {
         mode: mode.name,
@@ -1074,7 +1074,7 @@ export class Workspace {
       }
       const { scope, maxToolRounds, error } = parseAuditArgs(rawArgs);
       if (error) {
-        this.notifyError(`[audit] ${sanitize(error)}`);
+        this.notifyError(`[audit] ${stripAnsi(error)}`);
         return;
       }
       const auditPrompt = buildAuditPrompt(scope);
@@ -1111,7 +1111,7 @@ export class Workspace {
       }
       const parsed = parseNewArgs(rawArgs);
       if (parsed.error) {
-        this.notifyError(`[new] ${sanitize(parsed.error)}`);
+        this.notifyError(`[new] ${stripAnsi(parsed.error)}`);
         return;
       }
       const newPrompt = buildNewPrompt({
@@ -1125,7 +1125,7 @@ export class Workspace {
         ? `${parsed.projectName} (${parsed.description})`
         : parsed.projectName;
       this.notify(
-        `[new] scaffolding ${sanitize(parsed.projectName)} into ${sanitize(target)}${parsed.description ? ` \u2014 ${sanitize(parsed.description)}` : ""}`,
+        `[new] scaffolding ${stripAnsi(parsed.projectName)} into ${stripAnsi(target)}${parsed.description ? ` \u2014 ${stripAnsi(parsed.description)}` : ""}`,
       );
       void this.dispatchAgentQuery(newPrompt, {
         mode: mode.name,
@@ -1146,7 +1146,7 @@ export class Workspace {
       }
       const parsed = parseTestGenArgs(rawArgs);
       if (parsed.error) {
-        this.notifyError(`[test-gen] ${sanitize(parsed.error)}`);
+        this.notifyError(`[test-gen] ${stripAnsi(parsed.error)}`);
         return;
       }
       const testGenPrompt = buildTestGenPrompt({
@@ -1159,7 +1159,7 @@ export class Workspace {
         ? `${parsed.symbol} (${parsed.framework})`
         : parsed.symbol;
       this.notify(
-        `[test-gen] generating tests for ${sanitize(parsed.symbol)}${parsed.file ? ` in ${sanitize(parsed.file)}` : ""}${parsed.framework ? ` (${sanitize(parsed.framework)})` : ""}`,
+        `[test-gen] generating tests for ${stripAnsi(parsed.symbol)}${parsed.file ? ` in ${stripAnsi(parsed.file)}` : ""}${parsed.framework ? ` (${stripAnsi(parsed.framework)})` : ""}`,
       );
       void this.dispatchAgentQuery(testGenPrompt, {
         mode: mode.name,
@@ -1180,7 +1180,7 @@ export class Workspace {
       }
       const parsed = parseRefactorArgs(rawArgs);
       if (parsed.error) {
-        this.notifyError(`[refactor] ${sanitize(parsed.error)}`);
+        this.notifyError(`[refactor] ${stripAnsi(parsed.error)}`);
         return;
       }
       const refactorPrompt = buildRefactorPrompt({
@@ -1193,7 +1193,7 @@ export class Workspace {
       );
       this.activeBuildFeature = `${parsed.oldName} \u2192 ${parsed.newName}${parsed.scope ? ` in ${parsed.scope}` : ""}`;
       this.notify(
-        `[refactor] renaming ${sanitize(parsed.oldName)} \u2192 ${sanitize(parsed.newName)}${parsed.scope ? ` in ${sanitize(parsed.scope)}` : ""}`,
+        `[refactor] renaming ${stripAnsi(parsed.oldName)} \u2192 ${stripAnsi(parsed.newName)}${parsed.scope ? ` in ${stripAnsi(parsed.scope)}` : ""}`,
       );
       void this.dispatchAgentQuery(refactorPrompt, {
         mode: mode.name,
@@ -1221,7 +1221,7 @@ export class Workspace {
     const v = this.agent.getVerifier();
     if (arg === "" || arg === "status") {
       this.notify(
-        `[verify] ${v.enabled ? "on" : "off"}, model = ${sanitize(v.model)}`,
+        `[verify] ${v.enabled ? "on" : "off"}, model = ${stripAnsi(v.model)}`,
       );
       return;
     }
@@ -1239,12 +1239,12 @@ export class Workspace {
     const resolved = resolveModel(arg);
     if (!resolved) {
       this.notifyError(
-        `[verify] unknown arg "${sanitize(arg)}". Try on / off / <model alias>.`,
+        `[verify] unknown arg "${stripAnsi(arg)}". Try on / off / <model alias>.`,
       );
       return;
     }
     await this.agent.setVerifierModel(resolved);
-    this.notify(`[verify] reviewer model = ${sanitize(resolved)}`);
+    this.notify(`[verify] reviewer model = ${stripAnsi(resolved)}`);
   }
 
   /**
@@ -1265,7 +1265,7 @@ export class Workspace {
   private async handleFixCommand(rawArgs: string, mode: Mode): Promise<void> {
     const parsed = parseFixArgs(rawArgs);
     if (parsed.error) {
-      this.notifyError(`[fix] ${sanitize(parsed.error)}`);
+      this.notifyError(`[fix] ${stripAnsi(parsed.error)}`);
       return;
     }
     if (!this.cwd) {
@@ -1280,7 +1280,7 @@ export class Workspace {
         { cwd: this.cwd, path: parsed.reportPath ?? null },
       );
     } catch (e) {
-      this.notifyError(`[fix] ${sanitize(String(e))}`);
+      this.notifyError(`[fix] ${stripAnsi(String(e))}`);
       return;
     }
 
@@ -1289,7 +1289,7 @@ export class Workspace {
       report = JSON.parse(lookup.content) as AuditReport;
     } catch (e) {
       this.notifyError(
-        `[fix] failed to parse ${sanitize(prettyPath(lookup.path))}: ${sanitize(String(e))}`,
+        `[fix] failed to parse ${stripAnsi(prettyPath(lookup.path))}: ${stripAnsi(String(e))}`,
       );
       return;
     }
@@ -1301,14 +1301,14 @@ export class Workspace {
     );
     if (filterResult.error) {
       this.notifyError(
-        `[fix] ${sanitize(filterResult.error)} (report: ${sanitize(prettyPath(lookup.path))})`,
+        `[fix] ${stripAnsi(filterResult.error)} (report: ${stripAnsi(prettyPath(lookup.path))})`,
       );
       return;
     }
     const selected = filterResult.findings;
     if (selected.length === 0) {
       this.notify(
-        `[fix] nothing to fix \u2014 ${sanitize(prettyPath(lookup.path))} has 0 findings`,
+        `[fix] nothing to fix \u2014 ${stripAnsi(prettyPath(lookup.path))} has 0 findings`,
       );
       return;
     }
@@ -1318,7 +1318,7 @@ export class Workspace {
       `fix ${selected.length}/${report.findings.length} from latest audit`,
     );
     this.notify(
-      `[fix] applying ${selected.length} of ${report.findings.length} findings from ${sanitize(prettyPath(lookup.path))}`,
+      `[fix] applying ${selected.length} of ${report.findings.length} findings from ${stripAnsi(prettyPath(lookup.path))}`,
     );
     void this.dispatchAgentQuery(fixPrompt, {
       mode: mode.name,
@@ -1366,7 +1366,7 @@ export class Workspace {
       if (trigger) {
         systemPrefix = buildVerifiedSystemPrefix(trigger);
         this.notify(
-          `\u2192 [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched \u201c${sanitize(trigger.matched)}\u201d)`,
+          `\u2192 [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched \u201c${stripAnsi(trigger.matched)}\u201d)`,
         );
       }
     }
@@ -1381,7 +1381,7 @@ export class Workspace {
     const images = this.takePendingImages();
     if (images.length > 0 && !modelSupportsVision(this.agent.getModel())) {
       this.notify(
-        `[images] model ${sanitize(this.agent.getModel())} doesn't support images \u2014 sending text only`,
+        `[images] model ${stripAnsi(this.agent.getModel())} doesn't support images \u2014 sending text only`,
       );
     }
 
@@ -1389,7 +1389,7 @@ export class Workspace {
     const parts: string[] = [];
     if (resolved.length > 0) {
       const names = resolved
-        .map((r) => `${sanitize(r.original)}${r.truncated ? " (truncated)" : ""}`)
+        .map((r) => `${stripAnsi(r.original)}${r.truncated ? " (truncated)" : ""}`)
         .join(", ");
       parts.push(`[attached] ${names}`);
     }
@@ -1397,7 +1397,7 @@ export class Workspace {
       parts.push(`[images] ${images.length} attached`);
     }
     for (const e of errors) {
-      parts.push(`[@${sanitize(e.original)}] ${sanitize(e.error)}`);
+      parts.push(`[@${stripAnsi(e.original)}] ${stripAnsi(e.error)}`);
     }
     if (parts.length > 0) {
       this.notify(parts.join("\n"));
@@ -1572,7 +1572,7 @@ export class Workspace {
         const loc = row?.getAttribute("data-loc") ?? "";
         if (loc) {
           void navigator.clipboard.writeText(loc).catch(() => {});
-          this.notify(`[problems] copied ${sanitize(loc)} to clipboard`);
+          this.notify(`[problems] copied ${stripAnsi(loc)} to clipboard`);
         }
         return;
       }
@@ -1670,7 +1670,7 @@ export class Workspace {
   private handleProblemsCommand(rawArgs: string): void {
     const parsed = parseProblemsArgs(rawArgs);
     if (parsed.error) {
-      this.notifyError(`[problems] ${sanitize(parsed.error)}`);
+      this.notifyError(`[problems] ${stripAnsi(parsed.error)}`);
       return;
     }
     switch (parsed.action) {
@@ -1758,12 +1758,12 @@ export class Workspace {
       });
       const pretty = prettyPath(result.path);
       const lines = [
-        `[audit] report saved \u2192 ${sanitize(pretty)} (${formatBytesShort(result.bytes_written)})`,
+        `[audit] report saved \u2192 ${stripAnsi(pretty)} (${formatBytesShort(result.bytes_written)})`,
       ];
       if (result.json_path) {
         const prettyJson = prettyPath(result.json_path);
         lines.push(
-          `[audit] sidecar     \u2192 ${sanitize(prettyJson)} (${formatBytesShort(result.json_bytes_written ?? 0)})`,
+          `[audit] sidecar     \u2192 ${stripAnsi(prettyJson)} (${formatBytesShort(result.json_bytes_written ?? 0)})`,
         );
         // Update the workspace-state pointer so a future tab open
         // hydrates this audit without re-running it. Best-effort: a
@@ -1772,7 +1772,7 @@ export class Workspace {
       }
       this.notify(lines.join("\n"));
     } catch (e) {
-      this.notifyError(`[audit] report write failed: ${sanitize(String(e))}`);
+      this.notifyError(`[audit] report write failed: ${stripAnsi(String(e))}`);
     }
   }
 
@@ -1815,7 +1815,7 @@ export class Workspace {
     this.notify(renderAnsiBuildReport(report));
 
     if (!this.cwd) {
-      this.notify(`[${sanitize(info.mode)}] cwd unknown; skipping report write`);
+      this.notify(`[${stripAnsi(info.mode)}] cwd unknown; skipping report write`);
       return;
     }
 
@@ -1837,19 +1837,19 @@ export class Workspace {
       });
       const pretty = prettyPath(result.path);
       const lines = [
-        `[${sanitize(info.mode)}] report saved \u2192 ${sanitize(pretty)} (${formatBytesShort(result.bytes_written)})`,
+        `[${stripAnsi(info.mode)}] report saved \u2192 ${stripAnsi(pretty)} (${formatBytesShort(result.bytes_written)})`,
       ];
       if (result.json_path) {
         const prettyJson = prettyPath(result.json_path);
         lines.push(
-          `[${sanitize(info.mode)}] sidecar     \u2192 ${sanitize(prettyJson)} (${formatBytesShort(result.json_bytes_written ?? 0)})`,
+          `[${stripAnsi(info.mode)}] sidecar     \u2192 ${stripAnsi(prettyJson)} (${formatBytesShort(result.json_bytes_written ?? 0)})`,
         );
         void this.updateLastBuildPointer(report, result.json_path);
       }
       this.notify(lines.join("\n"));
     } catch (e) {
       this.notifyError(
-        `[${sanitize(info.mode)}] report write failed: ${sanitize(String(e))}`,
+        `[${stripAnsi(info.mode)}] report write failed: ${stripAnsi(String(e))}`,
       );
     }
   }
@@ -1879,7 +1879,7 @@ export class Workspace {
       );
     } catch (e) {
       // Corrupt state file. Surface dimly and continue with no spine.
-      this.notify(`[workspace] could not load state: ${sanitize(String(e))}`);
+      this.notify(`[workspace] could not load state: ${stripAnsi(String(e))}`);
       return;
     }
     if (!state) return;
@@ -2175,7 +2175,7 @@ export class Workspace {
     const MAX_BYTES = 5 * 1024 * 1024; // 5 MB — vision APIs reject larger
     if (file.size > MAX_BYTES) {
       this.notify(
-        `[images] ${sanitize(file.name || "pasted")} is ${Math.round(file.size / 1024)} KB \u2014 over the 5 MB cap`,
+        `[images] ${stripAnsi(file.name || "pasted")} is ${Math.round(file.size / 1024)} KB \u2014 over the 5 MB cap`,
       );
       return;
     }
@@ -2282,7 +2282,7 @@ export class Workspace {
     const recipe = findRecipe(id);
     if (!recipe) {
       this.notifyError(
-        `[protocol] unknown recipe "${sanitize(id)}". Try /protocol bare to list.`,
+        `[protocol] unknown recipe "${stripAnsi(id)}". Try /protocol bare to list.`,
       );
       return;
     }
@@ -3340,10 +3340,10 @@ export class Workspace {
       // now" timestamp immediately after save instead of stale values.
       this.updateFilePreviewMeta(result.bytes_written, result.mtime_secs);
       this.notify(
-        `[edit] saved ${sanitize(prettyPath(result.path))} (${formatBytesShort(result.bytes_written)})`,
+        `[edit] saved ${stripAnsi(prettyPath(result.path))} (${formatBytesShort(result.bytes_written)})`,
       );
     } catch (err) {
-      this.notifyError(`[edit] save failed: ${sanitize(String(err))}`);
+      this.notifyError(`[edit] save failed: ${stripAnsi(String(err))}`);
     }
   }
 
@@ -3641,7 +3641,7 @@ export class Workspace {
       });
       target = Array.isArray(picked) ? (picked[0] ?? null) : picked;
     } catch (e) {
-      this.notifyError(`[load] dialog failed: ${sanitize(String(e))}`);
+      this.notifyError(`[load] dialog failed: ${stripAnsi(String(e))}`);
       return;
     }
     if (!target) return; // user cancelled
@@ -3671,7 +3671,7 @@ export class Workspace {
         path: target,
       });
     } catch (e) {
-      this.notifyError(`[load] ${sanitize(String(e))}`);
+      this.notifyError(`[load] ${stripAnsi(String(e))}`);
       return;
     }
 
@@ -3693,11 +3693,11 @@ export class Workspace {
         ? ` (replaced ${priorCount} prior message${priorCount === 1 ? "" : "s"})`
         : "";
     const loadLines = [
-      `[load] loaded ${result.message_count} message${result.message_count === 1 ? "" : "s"} from ${sanitize(pretty)}${overwroteNote}`,
+      `[load] loaded ${result.message_count} message${result.message_count === 1 ? "" : "s"} from ${stripAnsi(pretty)}${overwroteNote}`,
     ];
     if (result.model) {
       loadLines.push(
-        `[load] saved model was ${sanitize(result.model)} \u2014 current tab uses ${sanitize(this.agent.getModel())}. Use /model to switch if desired.`,
+        `[load] saved model was ${stripAnsi(result.model)} \u2014 current tab uses ${stripAnsi(this.agent.getModel())}. Use /model to switch if desired.`,
       );
     }
     this.notify(loadLines.join("\n"));
@@ -3810,7 +3810,7 @@ export class Workspace {
     try {
       history = await this.agent.getHistoryFull();
     } catch (e) {
-      this.notifyError(`[load] render failed: ${sanitize(String(e))}`);
+      this.notifyError(`[load] render failed: ${stripAnsi(String(e))}`);
       return;
     }
     if (history.length === 0) return;
@@ -4363,7 +4363,7 @@ function relativeToCwd(absolute: string, cwd: string): string {
     : absolute;
 }
 
-function sanitize(s: string): string {
+function stripAnsi(s: string): string {
   return s
     .replace(/\x1b\[[0-?]*[ -/]*[@-~]/g, "")
     .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, "")
