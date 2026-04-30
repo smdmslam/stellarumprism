@@ -282,6 +282,7 @@ export class Workspace {
    */
   private showHiddenFiles = false;
   private showFileSizes = true;
+  private showFileModified = false;
   private sidebarVisible = true;
   private previewVisible = true;
   private terminalVisible = true;
@@ -357,6 +358,7 @@ export class Workspace {
           <button class="sidebar-tab-action" data-action="refresh-files" type="button" title="Refresh file tree" aria-label="Refresh files">\u21bb</button>
           <button class="sidebar-tab-action" data-action="toggle-hidden" type="button" title="Show hidden files (.git, .env, \u2026)" aria-label="Show hidden files" aria-pressed="false">\u25cb</button>
           <button class="sidebar-tab-action" data-action="toggle-size" type="button" title="Toggle file sizes" aria-label="Toggle file sizes" aria-pressed="true">S</button>
+          <button class="sidebar-tab-action" data-action="toggle-modified" type="button" title="Toggle modified dates" aria-label="Toggle modified dates" aria-pressed="false">M</button>
           <button class="sidebar-tab-action" data-action="toggle-preview" type="button" title="Hide file viewer" aria-label="Toggle file viewer" aria-pressed="true">P</button>
         </div>
         <div class="sidebar-pane sidebar-pane-files" data-tab="files">
@@ -2593,6 +2595,8 @@ export class Workspace {
           this.toggleShowHiddenFiles();
         } else if (a === "toggle-size") {
           this.toggleShowFileSizes();
+        } else if (a === "toggle-modified") {
+          this.toggleShowFileModified();
         } else if (a === "toggle-preview") {
           this.togglePreview();
         } else if (a === "refresh-files") {
@@ -2611,6 +2615,7 @@ export class Workspace {
       this.setSidebarTab(tab);
     });
     this.updatePreviewToggleVisualState();
+    this.updateModifiedToggleVisualState();
   }
 
   /**
@@ -2643,6 +2648,12 @@ export class Workspace {
       btn.setAttribute("aria-pressed", this.showFileSizes ? "true" : "false");
       btn.classList.toggle("sidebar-tab-action-on", this.showFileSizes);
     }
+    this.renderFileTree();
+  }
+
+  private toggleShowFileModified(): void {
+    this.showFileModified = !this.showFileModified;
+    this.updateModifiedToggleVisualState();
     this.renderFileTree();
   }
 
@@ -2687,6 +2698,18 @@ export class Workspace {
     btn.title = this.showHiddenFiles
       ? "Hide hidden files (.git, .env, \u2026 will be hidden again; .prism/ is always shown)"
       : "Show hidden files (.git, .env, \u2026; .prism/ is always shown)";
+  }
+
+  private updateModifiedToggleVisualState(): void {
+    const btn = this.root.querySelector<HTMLButtonElement>(
+      '.sidebar-tab-action[data-action="toggle-modified"]',
+    );
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", this.showFileModified ? "true" : "false");
+    btn.classList.toggle("sidebar-tab-action-on", this.showFileModified);
+    btn.title = this.showFileModified
+      ? "Hide modified dates"
+      : "Show modified dates";
   }
 
   /**
@@ -3241,9 +3264,21 @@ export class Workspace {
     } else {
       icon = `<span class="file-tree-caret file-tree-caret-spacer">\u00a0</span>`;
     }
+    const detailParts: string[] = [];
+    if (this.showFileSizes && e.kind === "file" && typeof e.size === "number") {
+      detailParts.push(formatTreeBytes(e.size));
+    }
+    if (
+      this.showFileModified &&
+      e.kind === "file" &&
+      typeof e.mtime_secs === "number" &&
+      e.mtime_secs > 0
+    ) {
+      detailParts.push(formatTreeDate(e.mtime_secs * 1000));
+    }
     const detail =
-      this.showFileSizes && e.kind === "file" && typeof e.size === "number"
-        ? `<span class="file-tree-detail">${formatTreeBytes(e.size)}</span>`
+      detailParts.length > 0
+        ? `<span class="file-tree-detail">${detailParts.join(" · ")}</span>`
         : "";
     let trailing = "";
     if (row.loadState.kind === "loading") {
@@ -4606,6 +4641,12 @@ function formatBytesShort(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatTreeDate(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /** Parse an OSC 7 data payload ("file://HOST/PATH") into a plain absolute

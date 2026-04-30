@@ -16,6 +16,8 @@ export interface RawTreeEntry {
   kind: "file" | "dir" | "symlink" | "other";
   /** Bytes; only set for files. */
   size?: number | null;
+  /** UNIX epoch seconds; only set for files. */
+  mtime_secs?: number | null;
   /** True iff this is a dir whose children weren't listed yet. */
   has_children: boolean;
 }

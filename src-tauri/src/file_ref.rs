@@ -388,6 +388,8 @@ pub struct TreeEntry {
     /// this null since stat-ing every child to count entries is too
     /// expensive on a cold filesystem).
     pub size: Option<u64>,
+    /// UNIX epoch seconds for last-modified time (files only).
+    pub mtime_secs: Option<u64>,
     /// True iff this is a directory whose children weren't listed yet
     /// in this call. Always true for kind == "dir" in v1 (lazy load).
     pub has_children: bool,
@@ -499,12 +501,22 @@ pub fn list_directory_tree(
             Some(t) if t.is_file() => "file",
             _ => "other",
         };
-        // Only stat files for size; directories leave size unset to
+        // Only stat files for metadata; directories leave fields unset to
         // avoid an expensive walk on a cold cache.
-        let size = if kind == "file" {
-            fs::metadata(&path_buf).ok().map(|m| m.len())
+        let (size, mtime_secs) = if kind == "file" {
+            match fs::metadata(&path_buf) {
+                Ok(m) => {
+                    let mt = m
+                        .modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map(|d| d.as_secs());
+                    (Some(m.len()), mt)
+                }
+                Err(_) => (None, None),
+            }
         } else {
-            None
+            (None, None)
         };
         let has_children = kind == "dir";
         entries.push(TreeEntry {
@@ -512,6 +524,7 @@ pub fn list_directory_tree(
             path: path_buf.to_string_lossy().into_owned(),
             kind: kind.into(),
             size,
+            mtime_secs,
             has_children,
         });
     }
