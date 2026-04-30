@@ -67,16 +67,19 @@ export interface ModelEntry {
 export const MODEL_LIBRARY: ModelEntry[] = [
   // -------- Main rotation -----------------------------------------------
   //
-  // Name-brand models only. Lesser-known providers (StepFun, Mistral's
-  // Devstral, etc.) live in the Explore tier below so the default
-  // picker stays trustworthy and recognizable.
+  // Curated lineup after the calibration sweep documented in
+  // `MASTER-Plan-II.md#5.9`. Every entry below has been validated as
+  // low-hallucination under Prism's tool loop. Adding a model here is
+  // a deliberate endorsement \u2014 if calibration later finds it failing,
+  // remove it entirely (the audit trail lives in `docs/MASTER-AI-model-list.md`,
+  // not as commented-out or `enabled: false` rot in this file).
   //
   // -------- Google Gemini family ----------------------------------------
   //
-  // Re-added to the lineup after the calibration sweep that disabled
-  // higher-hallucinating models. If a Gemini variant starts producing
-  // unbacked claims under our tool loop, flip its `enabled: false` the
-  // same way we did for the others; don't comment it out.
+  // Re-added to the lineup during the calibration sweep that pruned
+  // 13 underperformers. If a Gemini variant later starts producing
+  // unbacked claims under our tool loop, remove it entirely \u2014 we no
+  // longer carry `enabled: false` parking-lot entries.
   {
     aliases: ["gemini-pro", "gemini-2.5-pro"],
     slug: "google/gemini-2.5-pro",
@@ -144,48 +147,12 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     maxContext: 2000000,
   },
   {
-    aliases: ["kimi", "kimi-k2.5", "kimi-k25"],
-    slug: "moonshotai/kimi-k2.5",
-    description:
-      "MoonshotAI Kimi K2.5 \u2014 multimodal, agent-swarm, visual coding specialist",
-    tier: "main",
-    vision: true,
-    cost: 2,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
-  {
-    aliases: ["qwen3.6", "qwen3.6-plus", "qwen-plus"],
-    slug: "qwen/qwen3.6-plus",
-    description:
-      "Qwen 3.6 Plus \u2014 78.8 SWE-bench Verified, hybrid MoE, strong code",
-    tier: "main",
-    cost: 2,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
-  {
     aliases: ["glm-5", "glm"],
     slug: "z-ai/glm-5",
     description:
       "Z.ai GLM 5 \u2014 long-horizon coding, iterative self-correction",
     tier: "main",
     cost: 2,
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
-  {
-    aliases: ["deepseek", "deepseek-v3.2", "dsv3"],
-    slug: "deepseek/deepseek-v3.2",
-    description: "DeepSeek V3.2 \u2014 modern, cheap, solid at code",
-    tier: "main",
-    cost: 1,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
@@ -219,97 +186,15 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     jsonMode: false,
     maxContext: 128000,
   },
-  {
-    aliases: ["qwen", "qwen3"],
-    slug: "qwen/qwen3-next-80b-a3b-instruct",
-    description: "Qwen3 Next 80B A3B \u2014 strong open-weights instruct",
-    tier: "main",
-    cost: 2,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
-  {
-    aliases: ["gpt-oss", "oss"],
-    slug: "openai/gpt-oss-120b:exacto",
-    description:
-      "GPT OSS 120B Exacto \u2014 cheap fast reasoning, OpenAI open-weights",
-    tier: "main",
-    cost: 1,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
 
   // -------- Explore (less-common alternates) ----------------------------
   //
-  // Most Explore-tier entries currently ship with `enabled: false` after
-  // calibration testing identified them as more prone to hallucination
-  // than the kept set. Users can re-enable any of them via Settings \u2192
-  // Models if they want to re-evaluate. The registry stays the source
-  // of truth for what we've evaluated, even if we don't ship it on by
-  // default. Re-enabling is a one-line flag flip.
-  {
-    aliases: ["step", "step-flash", "step-3.5-flash"],
-    slug: "stepfun/step-3.5-flash",
-    description:
-      "StepFun Step 3.5 Flash \u2014 reasoning MoE, cheap, #2 in programming",
-    tier: "explore",
-    cost: 1,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
-  {
-    aliases: ["devstral"],
-    slug: "mistralai/devstral-small",
-    description:
-      "Devstral Small \u2014 Mistral's agentic code model, cheap + proactive",
-    tier: "explore",
-    cost: 1,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
-  {
-    aliases: ["codestral", "mistral"],
-    slug: "mistralai/codestral-2508",
-    description: "Codestral 2508 \u2014 Mistral's code-focused model",
-    tier: "explore",
-    cost: 2,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 256000,
-  },
-  {
-    // Diffusion-based LLM — doesn't support OpenAI tool-calling protocol.
-    aliases: ["mercury", "inception"],
-    slug: "inception/mercury-2",
-    description: "Inception Mercury 2 \u2014 diffusion LLM, extremely fast",
-    tier: "explore",
-    cost: 2,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: false,
-    jsonMode: false,
-    maxContext: 32000,
-  },
-  {
-    aliases: ["gpt5-mini", "gpt-5-mini"],
-    slug: "openai/gpt-5-mini",
-    description: "OpenAI GPT-5 Mini \u2014 cheap frontier model",
-    tier: "explore",
-    vision: true,
-    cost: 2,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 400000,
-  },
+  // Single-entry tier today (qwen-235b only). Sized to grow if we
+  // identify more low-cost-high-quality alternatives during calibration
+  // sweeps. Models that fail calibration are removed from the registry
+  // entirely \u2014 see `MASTER-Plan-II.md#5.9` for the policy and
+  // `docs/MASTER-AI-model-list.md` for the audit trail of what we tried
+  // and dropped.
   {
     aliases: ["qwen-235b", "qwen235"],
     slug: "qwen/qwen3-235b-a22b-2507",
@@ -317,41 +202,6 @@ export const MODEL_LIBRARY: ModelEntry[] = [
       "Qwen3 235B A22B \u2014 big open-weights reasoning, very cheap",
     tier: "explore",
     cost: 1,
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
-  {
-    aliases: ["scout", "llama-scout"],
-    slug: "meta-llama/llama-4-scout",
-    description:
-      "Llama 4 Scout \u2014 Meta multimodal, alt vision model, cheap",
-    tier: "explore",
-    vision: true,
-    cost: 1,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
-  {
-    aliases: ["grok-fast", "grok"],
-    slug: "x-ai/grok-4.1-fast",
-    description: "Grok 4.1 Fast \u2014 xAI general-purpose alt",
-    tier: "explore",
-    cost: 2,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 128000,
-  },
-  {
-    aliases: ["minimax"],
-    slug: "minimax/minimax-m2.5",
-    description: "MiniMax M2.5 \u2014 code-focused alternative to Codestral",
-    tier: "explore",
-    cost: 3,
-    enabled: false, // hallucinated more in our calibration; user can re-enable in Settings
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,

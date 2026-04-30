@@ -235,7 +235,7 @@
 ---
 
 ### Phase 5 — AI Usage / Economics / Billing (VERY HIGH PRIORITY)
-
+**Cost-pressure context (this session):** OpenRouter spend on Prism is being depleted faster than prior app projects. Two responses: (a) prune the model registry to a curated set of low-hallucination + cost-stratified options so users can't sabotage their experience by picking a poor model and blaming Prism; (b) instrument usage so we can see *where* the burn is, since adding cheap models doesn't help if a verifier loop or premium-default for chat is the actual driver. Phase 5 starts with the smallest possible logger so we have data within a week, before any further model curation decisions.
 #### 5.1 Unified AI usage event schema
 - **Status:** NOT STARTED
 - **Issue:** Define standard event record for every AI/model invocation
@@ -285,6 +285,37 @@
 - **Issue:** Prepare backend for Stripe integration without retrofitting later
 - **Scope:** Account/billing schema, quota enforcement, metering API
 - **Note:** Parallel work to usage tracking (5.1–5.7)
+
+#### 5.9 Model registry curation policy ✅ DONE (this session)
+- **Status:** IMPLEMENTED
+- **Context:** Calibration testing identified that 13 of 21 registry models hallucinated in obvious ways under Prism's tool loop. Combined with cost pressure on OpenRouter, the decision was to **erase** the 13 from `src/models.ts` rather than soft-disable them.
+- **Policy going forward:** the registry is the *endorsed* set, not a parking lot. Models that fail calibration get removed entirely. The audit trail of "what we tried and dropped" lives in `docs/MASTER-AI-model-list.md`, not in dead code in the runtime registry.
+- **Why erase rather than hide:** (a) `enabled: false` still required pricing-data + routing-policy upkeep for Phase 5.3 / 5.7; (b) localStorage overrides from prior user toggles kept the disabled models visible in `/models` anyway; (c) hiding from Settings UI required new filter logic; (d) the disable was deliberate and not provisional. Power users can still pass any OpenRouter slug verbatim via `/model provider/slug` \u2014 `resolveModel`'s passthrough always works.
+- **Final default-on lineup (8 models):**
+  - Main: `gpt-5.4`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-2.5-flash`, `grok-4-fast`, `haiku`, `glm-5`
+  - Explore: `qwen-235b`
+  - Backend (filtered out of UI): `sonar` (web_search backbone)
+- **What got dropped:** kimi, qwen3.6, deepseek, qwen (qwen3-next-80b), gpt-oss, step, devstral, codestral, mercury, gpt5-mini, scout, grok-fast, minimax.
+
+#### 5.10 Verifier-cost audit
+- **Status:** NOT STARTED
+- **Issue:** Every agent turn (when verifier is on) fires a *second* model call for review. If the verifier defaults to Haiku ($1 in / $5 out), every chat turn is paying frontier-light prices twice. This is a likely silent driver of the OpenRouter burn.
+- **Action:**
+  1. Confirm the current verifier-default model in `src/agent.ts` (`verifierModel` field).
+  2. Switch to a cheaper verifier that's still rigorous enough to catch grounded-chat violations. Candidates: Qwen 235B (~$0.30/$0.90), GLM-5 (~$0.30/$1.50). The verifier doesn't need to be frontier; it reads structure.
+  3. Optional: make the verifier conditional \u2014 only run for grounded-chat turns or audit/build modes, not casual chat.
+- **Why this is high-leverage:** if verifier is defaulted to a $$$ model, switching to $ cuts review cost ~3\u20135\u00d7 across *every* turn that triggers it.
+- **Estimated scope:** ~10 LOC config change + a one-paragraph rationale in the commit. Real work is the calibration: verify the cheap verifier still catches the rigor-violation patterns.
+
+#### 5.11 Default-model + auto-thrifty preset review
+- **Status:** NOT STARTED
+- **Issue:** If the default chat model is GPT-5.4 or Haiku, every casual question costs premium rates. The `auto-thrifty` preset exists in `router.ts` and is supposed to route cheap-by-default \u2014 but it isn't currently the shipped default.
+- **Action:**
+  1. Audit what's set as the default in fresh installs (`src-tauri/src/config.rs` + first-run config write).
+  2. If GPT-5.4 or Haiku, switch to `auto-thrifty` so chat gets routed cheap.
+  3. Re-confirm `auto-thrifty`'s pool routes to the surviving 8 models post-trim (was probably referencing some of the removed ones).
+- **Why this is the bigger lever:** chat is the most frequent path. Cutting per-chat-turn cost by 3\u20135\u00d7 dwarfs anything else.
+- **Estimated scope:** ~30 LOC. Mostly auditing the current routing tables in `router.ts` and updating `auto-thrifty`'s pool to the 8-model set.
 
 ---
 
@@ -539,6 +570,14 @@ The alternative (one-shot per call) was considered and rejected: it forces the L
 - Orphaned markdown preview CSS removed
 - Unused `marked` and `highlight.js` dependencies removed
 - Font typo fixed (JetBrainsMono NF → JetBrains Mono)
+
+### Models / Cost (Phase 5)
+
+✅ **Model registry curation pass** (this session)
+- 13 underperforming models erased from `src/models.ts` after calibration sweep + cost pressure
+- Final default-on set: gpt-5.4, gemini-2.5-pro, gemini-flash-latest, gemini-2.5-flash, grok-4-fast, haiku, glm-5, qwen-235b
+- Policy: registry = endorsed set. No `enabled: false` parking lot.
+- Power-user escape hatch: `/model provider/full-slug` still passes any OpenRouter slug through verbatim
 
 ### Skills (Phase 7, foundation/curation)
 
