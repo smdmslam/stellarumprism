@@ -1969,6 +1969,114 @@ input:checked + .toggle-slider:before {
   margin-right: 2px;
 }
 
+/* ---------- read_skill multi-pick approval card (Track B) ----------
+ *
+ * The standard approval card is a single Approve/Reject pair over a
+ * preformatted preview. When the LLM calls `read_skill`, we render a
+ * richer card: primary skill at top, family alternatives below, each
+ * with its description + size and a checkbox. User curates the set,
+ * one approval action engages everything checked. */
+.skill-approval-card .skill-approval-loading {
+  padding: 12px 0;
+  font-size: 11.5px;
+  color: #6b7280;
+  font-style: italic;
+}
+.skill-approval-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+.skill-approval-section-label {
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+.skill-approval-section-label:first-child { margin-top: 0; }
+.skill-approval-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(15, 18, 24, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.10);
+  cursor: pointer;
+  transition: background-color 100ms ease, border-color 100ms ease;
+}
+.skill-approval-row:hover {
+  background: rgba(125, 211, 252, 0.05);
+  border-color: rgba(148, 163, 184, 0.25);
+}
+.skill-approval-row-primary {
+  background: rgba(192, 132, 252, 0.08);
+  border-color: rgba(192, 132, 252, 0.32);
+}
+.skill-approval-row-primary:hover {
+  background: rgba(192, 132, 252, 0.14);
+  border-color: rgba(192, 132, 252, 0.50);
+}
+.skill-approval-row input[type="checkbox"] {
+  flex: 0 0 auto;
+  margin: 3px 0 0 0;
+  width: 14px;
+  height: 14px;
+  accent-color: #c084fc;
+  cursor: pointer;
+}
+.skill-approval-row-text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.skill-approval-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.skill-approval-row-slug {
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #c084fc;
+  word-break: break-all;
+}
+.skill-approval-row-size {
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+}
+.skill-approval-row-desc {
+  font-size: 11.5px;
+  color: #cbd5e1;
+  line-height: 1.45;
+  overflow-wrap: break-word;
+}
+.skill-approval-note {
+  margin-top: 6px;
+  padding: 6px 10px;
+  font-size: 10.5px;
+  color: #6b7280;
+  font-style: italic;
+  border-left: 2px solid rgba(148, 163, 184, 0.20);
+  background: rgba(15, 18, 24, 0.4);
+  border-radius: 0 6px 6px 0;
+  line-height: 1.5;
+}
+
 /* ---------- skills awareness toggle (Track B) ----------
  *
  * Pill near the intent badge. OFF state reads as a quiet, dim chip

@@ -187,6 +187,23 @@ export interface AgentControllerOptions {
     args: string;
     ok: boolean;
   }) => void;
+  /**
+   * Read-only access to the current set of engaged skill slugs. Used
+   * by the `read_skill` approval card to filter already-engaged skills
+   * out of the "consider also" alternatives so we never offer the user
+   * something they already have. Returning `undefined` is fine on
+   * surfaces where engagement state isn't tracked \u2014 the card just
+   * won't filter.
+   */
+  getEngagedSkillSlugs?: () => string[];
+  /**
+   * Fires when the user, on a `read_skill` approval card, picks one or
+   * more *additional* skills from the "consider also" section. These
+   * skills don't round-trip through the LLM tool (the LLM only asked
+   * for the primary); the workspace engages them directly via the
+   * Track A path. See `MASTER-Plan-II.md#7.3`.
+   */
+  onAdditionalSkillsEngage?: (slugs: string[]) => void;
 }
 
 /**
@@ -749,6 +766,11 @@ export class AgentController {
    * Reject buttons, then relay the click as `agent_tool_decision`.
    * Preview is pre-formatted on the Rust side with `--- old` / `+++ new`
    * markers we colorize here.
+   *
+   * `read_skill` gets a richer card with the LLM's primary suggestion
+   * highlighted plus its family members offered as alternatives so the
+   * user can curate the engaged set in one approval pass. See
+   * `renderReadSkillApprovalCard` and `MASTER-Plan-II.md#7.3`.
    */
   private onToolApproval(info: {
     call_id: string;
@@ -761,6 +783,10 @@ export class AgentController {
     // The agent is waiting on us — reset the stall timer so we don't
     // prematurely scream "stalled" while a long approval is pending.
     this.resetStallTimer();
+    if (info.tool === "read_skill") {
+      void this.renderReadSkillApprovalCard(info);
+      return;
+    }
     const bar = this.getActionsEl();
     if (!bar) return;
     bar.classList.add("visible");
@@ -808,6 +834,186 @@ export class AgentController {
       }).catch((err) => {
         this.opts.view.appendError(`[approval] ${String(err)}`);
       });
+      this.clearActionBar();
+    };
+  }
+
+  /**
+   * Custom approval card for `read_skill`. Renders the LLM's primary
+   * pick at top with a checkbox (default checked), plus a "Consider
+   * also" section listing the rest of the primary's skill family
+   * (slugs sharing a hyphen-separated prefix), each with the derived
+   * description and an unchecked checkbox.
+   *
+   * Decision shape:
+   *   - Primary checked  \u2192 send "approve" to Rust (LLM gets the body).
+   *   - Primary unchecked \u2192 send "reject" to Rust (LLM gets refusal).
+   *   - Any non-primary checked \u2192 fire `onAdditionalSkillsEngage` so
+   *     the workspace engages them directly without round-tripping
+   *     through the LLM tool.
+   *
+   * Async because we fetch the corpus from `list_skills`. A placeholder
+   * card renders synchronously so the user sees something while the
+   * (millisecond) listing resolves.
+   */
+  private async renderReadSkillApprovalCard(info: {
+    call_id: string;
+    tool: string;
+    args: string;
+    preview: string;
+    round: number;
+  }): Promise<void> {
+    const bar = this.getActionsEl();
+    if (!bar) return;
+    bar.classList.add("visible");
+
+    // Parse primary slug from the LLM's tool args.
+    let primarySlug = "";
+    try {
+      const parsed = JSON.parse(info.args) as { slug?: unknown };
+      if (typeof parsed.slug === "string") primarySlug = parsed.slug;
+    } catch {
+      /* fall through with empty primarySlug; card will render an error */
+    }
+
+    // Synchronous placeholder so the user isn't staring at the old
+    // tool's card while we fetch the listing.
+    bar.innerHTML =
+      `<div class="approval-card skill-approval-card">` +
+      `<div class="approval-header">` +
+      `<span class="approval-label">read_skill</span>` +
+      `<span class="approval-hint">awaiting approval</span>` +
+      `</div>` +
+      `<div class="skill-approval-loading">loading skill list\u2026</div>` +
+      `</div>`;
+
+    const cwd = this.opts.getCwd?.() ?? "";
+    const engaged = new Set(this.opts.getEngagedSkillSlugs?.() ?? []);
+    let skills: ReadSkillSummary[] = [];
+    if (cwd) {
+      try {
+        skills = await invoke<ReadSkillSummary[]>("list_skills", { cwd });
+      } catch {
+        /* non-fatal; render with empty corpus */
+      }
+    }
+
+    const primary =
+      skills.find((s) => s.slug === primarySlug) ??
+      // Fallback: synthesize a primary from the slug alone so the LLM's
+      // request still gets surfaced even if list_skills fails or the
+      // model hallucinated a slug. Description will be empty in that
+      // case; user can still approve/reject.
+      ({
+        slug: primarySlug,
+        name: primarySlug,
+        description: "",
+        sizeBytes: 0,
+      } as ReadSkillSummary);
+
+    const family = inferSkillFamily(
+      primarySlug,
+      skills.filter((s) => s.slug !== primarySlug && !engaged.has(s.slug)),
+    );
+
+    const renderRow = (
+      s: ReadSkillSummary,
+      opts: { primary: boolean; checked: boolean },
+    ): string => {
+      const cls =
+        "skill-approval-row" + (opts.primary ? " skill-approval-row-primary" : "");
+      const desc = s.description
+        ? `<span class="skill-approval-row-desc">${escapeHtml(s.description)}</span>`
+        : "";
+      const sizeTag =
+        s.sizeBytes > 0
+          ? `<span class="skill-approval-row-size">${formatKBLocal(s.sizeBytes)}</span>`
+          : "";
+      return (
+        `<label class="${cls}">` +
+        `<input type="checkbox" data-slug="${escapeHtml(s.slug)}"${opts.checked ? " checked" : ""} />` +
+        `<div class="skill-approval-row-text">` +
+        `<span class="skill-approval-row-head">` +
+        `<span class="skill-approval-row-slug">${escapeHtml(s.slug)}</span>` +
+        sizeTag +
+        `</span>` +
+        desc +
+        `</div>` +
+        `</label>`
+      );
+    };
+
+    const sections: string[] = [];
+    sections.push(
+      `<div class="skill-approval-section-label">Suggested by the agent</div>` +
+        renderRow(primary, { primary: true, checked: true }),
+    );
+    if (family.length > 0) {
+      sections.push(
+        `<div class="skill-approval-section-label">Consider also from this family</div>` +
+          family.map((s) => renderRow(s, { primary: false, checked: false })).join(""),
+      );
+    }
+
+    bar.innerHTML =
+      `<div class="approval-card skill-approval-card">` +
+      `<div class="approval-header">` +
+      `<span class="approval-label">read_skill</span>` +
+      `<span class="approval-hint">awaiting approval</span>` +
+      `</div>` +
+      `<div class="skill-approval-body">` +
+      sections.join("") +
+      `<div class="skill-approval-note">Engaging a skill loads its body into every turn for this tab. Disengage anytime by clicking the chip\u2019s \u00d7 or closing the tab.</div>` +
+      `</div>` +
+      `<div class="approval-buttons">` +
+      `<button class="btn btn-approve" data-skill-decision="approve">Approve selected</button>` +
+      `<button class="btn btn-reject" data-skill-decision="reject">Reject</button>` +
+      `</div>` +
+      `</div>`;
+    bar.scrollTop = bar.scrollHeight;
+
+    bar.onclick = (ev) => {
+      const target = ev.target as HTMLElement | null;
+      const decision = target?.getAttribute("data-skill-decision");
+      if (!decision) return;
+      // Read all checkboxes to figure out who got picked.
+      const checked = Array.from(
+        bar.querySelectorAll<HTMLInputElement>(
+          ".skill-approval-row input[type='checkbox']:checked",
+        ),
+      ).map((el) => el.dataset.slug ?? "").filter((s) => s.length > 0);
+      const primaryChecked = checked.includes(primarySlug);
+      const additional = checked.filter((s) => s !== primarySlug);
+
+      if (decision === "reject") {
+        // Reject the LLM's tool call entirely. Ignore any "consider
+        // also" checks \u2014 if the user hit Reject, they're saying "none
+        // of this please".
+        void invoke("agent_tool_decision", {
+          callId: info.call_id,
+          decision: "reject",
+        }).catch((err) => {
+          this.opts.view.appendError(`[approval] ${String(err)}`);
+        });
+        this.clearActionBar();
+        return;
+      }
+
+      // Approve path: send approve/reject for the primary based on its
+      // checkbox, then engage any additional checked slugs directly.
+      void invoke("agent_tool_decision", {
+        callId: info.call_id,
+        decision: primaryChecked ? "approve" : "reject",
+      }).catch((err) => {
+        this.opts.view.appendError(`[approval] ${String(err)}`);
+      });
+      if (additional.length > 0) {
+        try {
+          this.opts.onAdditionalSkillsEngage?.(additional);
+        } catch (e) {
+          console.error("onAdditionalSkillsEngage threw", e);
+        }
+      }
       this.clearActionBar();
     };
   }
@@ -1266,6 +1472,68 @@ function escapeHtml(s: string): string {
 
 function escapeHtmlAttr(s: string): string {
   return escapeHtml(s).replace(/\n/g, " ");
+}
+
+// ---------------------------------------------------------------------------
+// Skill-approval helpers (Track B family inference)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cheap subset of the `SkillSummary` type from `./skills.ts`. We can't
+ * import it directly without dragging the Tauri-invoke wrapper into
+ * the controller's scope, and inlining keeps agent.ts decoupled from
+ * the workspace's skill module.
+ */
+interface ReadSkillSummary {
+  slug: string;
+  name: string;
+  description: string;
+  sizeBytes: number;
+}
+
+/**
+ * Find the primary's family: skills whose slug shares a hyphen- (or
+ * dot-) separated prefix with the primary, dropping the last segment
+ * progressively until we find one with siblings.
+ *
+ * `vc-pitchdeck-framing`     \u2192 prefix `vc-pitchdeck-` \u2192 7 siblings
+ * `prism-self-modification-x` \u2192 no progressively shorter prefix has
+ *   siblings in the corpus \u2192 return [].
+ *
+ * Returns at most 12 alternatives so a huge family doesn't overflow
+ * the approval card. Larger families are clipped; the user can still
+ * load the rest via `/skills load <slug>` afterward.
+ */
+function inferSkillFamily(
+  primarySlug: string,
+  candidates: ReadSkillSummary[],
+): ReadSkillSummary[] {
+  if (!primarySlug || candidates.length === 0) return [];
+  const sep = primarySlug.includes("-")
+    ? "-"
+    : primarySlug.includes(".")
+      ? "."
+      : null;
+  if (!sep) return [];
+  const parts = primarySlug.split(sep);
+  for (let len = parts.length - 1; len >= 1; len--) {
+    const prefix = parts.slice(0, len).join(sep) + sep;
+    const siblings = candidates.filter((s) => s.slug.startsWith(prefix));
+    if (siblings.length > 0) {
+      // Sort alphabetically for deterministic ordering.
+      siblings.sort((a, b) => a.slug.localeCompare(b.slug));
+      return siblings.slice(0, 12);
+    }
+  }
+  return [];
+}
+
+/** Local copy of `formatKB` from skill-limits.ts to avoid the import. */
+function formatKBLocal(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "";
+  const kb = bytes / 1024;
+  if (kb < 1) return "<1 KB";
+  return `${kb.toFixed(1)} KB`;
 }
 
 /** Strip the "provider/" prefix from an OpenRouter slug for compact display. */

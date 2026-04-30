@@ -754,6 +754,17 @@ export class Workspace {
       onToolExecuted: (info) => {
         void this.handleToolExecuted(info);
       },
+      // Track B: lets the read_skill approval card filter already-
+      // engaged skills out of the "consider also" list.
+      getEngagedSkillSlugs: () => Array.from(this.engagedSkills.keys()),
+      // Track B: when the user picks additional skills from the
+      // approval card, engage them directly (the LLM only requested
+      // the primary; alternatives don't round-trip the LLM tool).
+      onAdditionalSkillsEngage: (slugs) => {
+        for (const slug of slugs) {
+          void this.engageSkill(slug);
+        }
+      },
     });
     this.setupEditor();
     this.setupAttachments();
