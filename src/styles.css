@@ -1247,6 +1247,35 @@ input:checked + .toggle-slider:before {
 .markdown-body strong { color: #f3f4f6; }
 .markdown-body em { color: #e5e7eb; }
 
+/* Markdown tables */
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.markdown-body thead {
+  border-bottom: 2px solid rgba(125, 211, 252, 0.3);
+}
+.markdown-body th {
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #7dd3fc;
+  background: rgba(125, 211, 252, 0.06);
+}
+.markdown-body td {
+  padding: 6px 12px;
+  border-bottom: 1px solid rgba(31, 41, 55, 0.6);
+  color: #d1d5db;
+}
+.markdown-body tr:hover td {
+  background: rgba(125, 211, 252, 0.04);
+}
+.markdown-body tr:last-child td {
+  border-bottom: none;
+}
+
 /* ---------- agent tool-call cards ---------- */
 
 .agent-turn-toolog {

@@ -1,6 +1,8 @@
 ### MODEL OPINIONS
 
 KEEP GOOD
+- GLM 5
+
 
 KEEP OK
 - Kimi 2.5
