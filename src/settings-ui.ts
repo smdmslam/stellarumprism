@@ -3,26 +3,9 @@
  */
 
 import { settings } from "./settings";
-import { MODEL_LIBRARY } from "./models";
+import { MODEL_LIBRARY, compareModelsByCostDesc } from "./models";
 import { invoke } from "@tauri-apps/api/core";
 import { Workspace } from "./workspace";
-
-type PricingBasis = { input_per_m: number; output_per_m: number };
-
-// Mirror of Rust pricing table in `src-tauri/src/pricing.rs` so the
-// settings UI can sort toggles by exact cost basis.
-const MODEL_PRICING_USD_PER_M: Record<string, PricingBasis> = {
-  "google/gemini-2.5-pro": { input_per_m: 1.25, output_per_m: 3.75 },
-  "google/gemini-flash-latest": { input_per_m: 0.3, output_per_m: 2.5 },
-  "google/gemini-2.5-flash": { input_per_m: 0.3, output_per_m: 2.5 },
-  "openai/gpt-5.4": { input_per_m: 2.5, output_per_m: 10.0 },
-  "x-ai/grok-4.1-fast": { input_per_m: 0.2, output_per_m: 0.5 },
-  "x-ai/grok-4-fast": { input_per_m: 0.2, output_per_m: 0.5 },
-  "z-ai/glm-5": { input_per_m: 0.1, output_per_m: 0.3 },
-  "anthropic/claude-haiku-4.5": { input_per_m: 1.0, output_per_m: 5.0 },
-  "qwen/qwen3-235b-a22b-2507": { input_per_m: 0.071, output_per_m: 0.1 },
-  "perplexity/sonar": { input_per_m: 1.0, output_per_m: 1.0 },
-};
 
 /**
  * Escape user / filesystem-derived strings before interpolating into
@@ -219,19 +202,7 @@ export class SettingsUI {
     const models = MODEL_LIBRARY
       .filter(m => m.tier !== "backend")
       .slice()
-      .sort((a, b) => {
-        const aPricing = MODEL_PRICING_USD_PER_M[a.slug] ?? { input_per_m: 0, output_per_m: 0 };
-        const bPricing = MODEL_PRICING_USD_PER_M[b.slug] ?? { input_per_m: 0, output_per_m: 0 };
-        const aTotal = aPricing.input_per_m + aPricing.output_per_m;
-        const bTotal = bPricing.input_per_m + bPricing.output_per_m;
-        const totalDelta = bTotal - aTotal;
-        if (totalDelta !== 0) return totalDelta;
-        const outputDelta = bPricing.output_per_m - aPricing.output_per_m;
-        if (outputDelta !== 0) return outputDelta;
-        const inputDelta = bPricing.input_per_m - aPricing.input_per_m;
-        if (inputDelta !== 0) return inputDelta;
-        return a.aliases[0].localeCompare(b.aliases[0]);
-      });
+      .sort(compareModelsByCostDesc);
     // Aggregate state for the master toggle: ON only when every model
     // is currently enabled. A mixed state (some on, some off) reads as
     // OFF \u2014 clicking flips everything to ON. Clicking again from a

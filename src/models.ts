@@ -64,6 +64,44 @@ export interface ModelEntry {
   maxContext?: number;
 }
 
+export interface PricingBasis {
+  input_per_m: number;
+  output_per_m: number;
+}
+
+// Shared pricing basis used by cost analytics and UI sorting surfaces.
+export const MODEL_PRICING_USD_PER_M: Record<string, PricingBasis> = {
+  "google/gemini-2.5-pro": { input_per_m: 1.25, output_per_m: 10.0 },
+  "google/gemini-2.5-flash-lite": { input_per_m: 0.1, output_per_m: 0.4 },
+  "google/gemini-2.5-flash": { input_per_m: 0.3, output_per_m: 2.5 },
+  "openai/gpt-5.4": { input_per_m: 2.5, output_per_m: 15.0 },
+  "x-ai/grok-4.1-fast": { input_per_m: 0.2, output_per_m: 0.5 },
+  "x-ai/grok-4-fast": { input_per_m: 0.2, output_per_m: 0.5 }, // legacy compatibility
+  "z-ai/glm-5": { input_per_m: 0.6, output_per_m: 2.08 },
+  "anthropic/claude-haiku-4.5": { input_per_m: 1.0, output_per_m: 5.0 },
+  "qwen/qwen3-235b-a22b-2507": { input_per_m: 0.071, output_per_m: 0.1 },
+  "perplexity/sonar": { input_per_m: 1.0, output_per_m: 1.0 },
+};
+
+export function getModelPricingBasis(slug: string): PricingBasis {
+  return MODEL_PRICING_USD_PER_M[slug] ?? { input_per_m: 0, output_per_m: 0 };
+}
+
+/** Sort highest-cost first using exact pricing basis. */
+export function compareModelsByCostDesc(a: ModelEntry, b: ModelEntry): number {
+  const aPricing = getModelPricingBasis(a.slug);
+  const bPricing = getModelPricingBasis(b.slug);
+  const aTotal = aPricing.input_per_m + aPricing.output_per_m;
+  const bTotal = bPricing.input_per_m + bPricing.output_per_m;
+  const totalDelta = bTotal - aTotal;
+  if (totalDelta !== 0) return totalDelta;
+  const outputDelta = bPricing.output_per_m - aPricing.output_per_m;
+  if (outputDelta !== 0) return outputDelta;
+  const inputDelta = bPricing.input_per_m - aPricing.input_per_m;
+  if (inputDelta !== 0) return inputDelta;
+  return a.aliases[0].localeCompare(b.aliases[0]);
+}
+
 export const MODEL_LIBRARY: ModelEntry[] = [
   // -------- Main rotation -----------------------------------------------
   //
@@ -90,25 +128,19 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     cost: 3,
     toolUse: true,
     jsonMode: true,
-    maxContext: 1050000,
+    maxContext: 1048576,
   },
   {
-    // `google/gemini-flash-latest` auto-redirects to whatever Google's
-    // newest Flash variant is. Useful for users who want "latest
-    // workhorse" without chasing version slugs, but the underlying
-    // model can change underfoot \u2014 a turn that worked yesterday may
-    // behave differently after a Google-side bump. Pinned siblings
-    // (Pro, 2.5 Flash) avoid this if predictability matters.
-    aliases: ["gemini-flash-latest", "flash-latest"],
-    slug: "google/gemini-flash-latest",
+    aliases: ["gemini-flash-lite", "gemini-2.5-flash-lite", "flash-lite"],
+    slug: "google/gemini-2.5-flash-lite",
     description:
-      "Google Gemini Flash (latest) \u2014 auto-redirects to newest Flash, cheap workhorse, 1M context",
+      "Google Gemini 2.5 Flash-Lite \u2014 ultra-low-latency, low-cost workhorse, 1M context",
     tier: "main",
     vision: true,
-    cost: 2,
+    cost: 1,
     toolUse: true,
     jsonMode: true,
-    maxContext: 1050000,
+    maxContext: 1048576,
   },
   {
     aliases: ["gemini-flash", "gemini-2.5-flash", "flash"],
@@ -133,7 +165,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     cost: 3,
     toolUse: true,
     jsonMode: true,
-    maxContext: 1000000,
+    maxContext: 1050000,
   },
   {
     aliases: ["grok-4.1-fast", "grok-4-fast", "grok4"],

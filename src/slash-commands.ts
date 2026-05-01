@@ -2,7 +2,7 @@
 // (eventually) a built-in /help listing. Keep these in sync with the handlers
 // in `workspace.ts`.
 
-import { MODEL_LIBRARY, type ModelEntry } from "./models";
+import { MODEL_LIBRARY, compareModelsByCostDesc, type ModelEntry } from "./models";
 import { MODES } from "./modes";
 import { RECIPES } from "./recipes";
 import { settings } from "./settings";
@@ -204,12 +204,15 @@ export function modelCompletions(): {
     (m) =>
       m.tier !== "backend" &&
       settings.isModelEnabled(m.slug, m.enabled !== false),
-  ).map((m) => ({
+  )
+    .slice()
+    .sort(compareModelsByCostDesc)
+    .map((m) => ({
     label: m.aliases[0],
     // Append "[img]" to the slug shown on row 1 when the model supports images.
     detail: m.vision ? `${m.slug} [img]` : m.slug,
     info: m.description,
-  }));
+    }));
 }
 
 /**
