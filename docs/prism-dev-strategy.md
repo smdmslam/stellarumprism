@@ -64,7 +64,7 @@ Phase 4 — Audit tools + /audit mode (the wedge)
 •  grep, find, git_diff, bulk_read tools
 •  Mode registry infrastructure
 •  /audit mode with structured findings output
-•  Long-context preset (Grok 4 Fast / GPT-5.4) as default for audit mode
+•  Long-context preset (Grok 4.1 Fast / GPT-5.4) as default for audit mode
 •  ANSI renderer for findings in xterm
 •  Deliverable: a user can say /audit HEAD~3 and get a numbered wiring-audit report
 

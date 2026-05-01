@@ -7,6 +7,23 @@ import { MODEL_LIBRARY } from "./models";
 import { invoke } from "@tauri-apps/api/core";
 import { Workspace } from "./workspace";
 
+type PricingBasis = { input_per_m: number; output_per_m: number };
+
+// Mirror of Rust pricing table in `src-tauri/src/pricing.rs` so the
+// settings UI can sort toggles by exact cost basis.
+const MODEL_PRICING_USD_PER_M: Record<string, PricingBasis> = {
+  "google/gemini-2.5-pro": { input_per_m: 1.25, output_per_m: 3.75 },
+  "google/gemini-flash-latest": { input_per_m: 0.3, output_per_m: 2.5 },
+  "google/gemini-2.5-flash": { input_per_m: 0.3, output_per_m: 2.5 },
+  "openai/gpt-5.4": { input_per_m: 2.5, output_per_m: 10.0 },
+  "x-ai/grok-4.1-fast": { input_per_m: 0.2, output_per_m: 0.5 },
+  "x-ai/grok-4-fast": { input_per_m: 0.2, output_per_m: 0.5 },
+  "z-ai/glm-5": { input_per_m: 0.1, output_per_m: 0.3 },
+  "anthropic/claude-haiku-4.5": { input_per_m: 1.0, output_per_m: 5.0 },
+  "qwen/qwen3-235b-a22b-2507": { input_per_m: 0.071, output_per_m: 0.1 },
+  "perplexity/sonar": { input_per_m: 1.0, output_per_m: 1.0 },
+};
+
 /**
  * Escape user / filesystem-derived strings before interpolating into
  * innerHTML. Most content here is registry-static (model descriptions)
@@ -199,7 +216,22 @@ export class SettingsUI {
   }
 
   private renderModels(): void {
-    const models = MODEL_LIBRARY.filter(m => m.tier !== "backend");
+    const models = MODEL_LIBRARY
+      .filter(m => m.tier !== "backend")
+      .slice()
+      .sort((a, b) => {
+        const aPricing = MODEL_PRICING_USD_PER_M[a.slug] ?? { input_per_m: 0, output_per_m: 0 };
+        const bPricing = MODEL_PRICING_USD_PER_M[b.slug] ?? { input_per_m: 0, output_per_m: 0 };
+        const aTotal = aPricing.input_per_m + aPricing.output_per_m;
+        const bTotal = bPricing.input_per_m + bPricing.output_per_m;
+        const totalDelta = bTotal - aTotal;
+        if (totalDelta !== 0) return totalDelta;
+        const outputDelta = bPricing.output_per_m - aPricing.output_per_m;
+        if (outputDelta !== 0) return outputDelta;
+        const inputDelta = bPricing.input_per_m - aPricing.input_per_m;
+        if (inputDelta !== 0) return inputDelta;
+        return a.aliases[0].localeCompare(b.aliases[0]);
+      });
     // Aggregate state for the master toggle: ON only when every model
     // is currently enabled. A mixed state (some on, some off) reads as
     // OFF \u2014 clicking flips everything to ON. Clicking again from a
@@ -749,37 +781,42 @@ export class SettingsUI {
         today_tokens: number;
         today_cost_usd: number;
         by_model: { model: string; tokens: number; cost_usd: number }[];
-      }>("get_usage_summary", { chat_id: chatId });
+      }>("get_usage_summary", { chatId });
 
-      const subInfo = await invoke<{ tier: string }>("get_subscription_info");
+      const subInfo = await invoke<{ 
+        tier: string;
+        balance_usd: number;
+        total_real_cost_usd: number;
+      }>("get_subscription_info");
       const isPro = subInfo.tier === "Pro";
 
       const formatCost = (c: number) => `$${c.toFixed(3)}`;
+      const formatCredits = (c: number) => `$${c.toFixed(2)}`;
       const formatTokens = (t: number) =>
         t >= 1000 ? `${(t / 1000).toFixed(1)}k` : t.toString();
 
       let html = `
         <div class="usage-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 32px;">
           <div class="usage-stat-card" style="background: #111827; border: 1px solid #374151; padding: 16px; border-radius: 8px;">
-            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; margin-bottom: 4px;">Current Session</div>
-            <div style="font-size: 24px; font-weight: 600; color: #e5e7eb; margin-bottom: 4px;">${formatTokens(summary.session_tokens)} <span style="font-size: 12px; font-weight: 400; color: #94a3b8;">tokens</span></div>
-            <div style="font-size: 14px; color: #10b981;">${formatCost(summary.session_cost_usd)} <span style="font-size: 11px; color: #6b7280;">est. cost</span></div>
+            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; margin-bottom: 4px;">Credit Balance</div>
+            <div style="font-size: 24px; font-weight: 600; color: ${subInfo.balance_usd > 0 ? "#10b981" : "#ef4444"}; margin-bottom: 4px;">${formatCredits(subInfo.balance_usd)}</div>
+            <div style="font-size: 12px; color: #94a3b8;">${isPro ? "Unlimited (Pro)" : "Pay-as-you-go"}</div>
           </div>
           <div class="usage-stat-card" style="background: #111827; border: 1px solid #374151; padding: 16px; border-radius: 8px;">
-            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; margin-bottom: 4px;">Today</div>
-            <div style="font-size: 24px; font-weight: 600; color: #e5e7eb; margin-bottom: 4px;">${formatTokens(summary.today_tokens)} <span style="font-size: 12px; font-weight: 400; color: #94a3b8;">tokens</span></div>
-            <div style="font-size: 14px; color: #10b981;">${formatCost(summary.today_cost_usd)} <span style="font-size: 11px; color: #6b7280;">est. cost</span></div>
+            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; margin-bottom: 4px;">Lifetime Spend (Real Cost)</div>
+            <div style="font-size: 24px; font-weight: 600; color: #e5e7eb; margin-bottom: 4px;">${formatCost(subInfo.total_real_cost_usd)}</div>
+            <div style="font-size: 12px; color: #94a3b8;">Actual provider cost</div>
           </div>
         </div>
 
-        <h3 style="font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 12px;">Breakdown by Model</h3>
+        <h3 style="font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 12px;">Breakdown by Model (20x Credits)</h3>
         <div class="usage-table-wrapper" style="background: #111827; border: 1px solid #374151; border-radius: 8px; overflow: hidden;">
           <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
             <thead>
               <tr style="border-bottom: 1px solid #374151; background: #1f2937;">
                 <th style="padding: 10px 16px; color: #94a3b8; font-weight: 500;">Model</th>
                 <th style="padding: 10px 16px; color: #94a3b8; font-weight: 500; text-align: right;">Tokens</th>
-                <th style="padding: 10px 16px; color: #94a3b8; font-weight: 500; text-align: right;">Est. Cost</th>
+                <th style="padding: 10px 16px; color: #94a3b8; font-weight: 500; text-align: right;">Credit Cost</th>
               </tr>
             </thead>
             <tbody>
@@ -798,7 +835,7 @@ export class SettingsUI {
             <tr style="border-bottom: 1px solid #1f2937;">
               <td style="padding: 10px 16px; color: #e5e7eb; font-family: ui-monospace, monospace;">${escapeHtml(modelName)}</td>
               <td style="padding: 10px 16px; color: #e5e7eb; text-align: right; font-weight: 500;">${formatTokens(m.tokens)}</td>
-              <td style="padding: 10px 16px; color: #10b981; text-align: right; font-weight: 500;">${formatCost(m.cost_usd)}</td>
+              <td style="padding: 10px 16px; color: #10b981; text-align: right; font-weight: 500;">${formatCredits(m.cost_usd * 20.0)}</td>
             </tr>
           `;
         }
@@ -810,22 +847,22 @@ export class SettingsUI {
         </div>
         
         <div class="usage-subscription-section" style="margin-top: 32px; border-top: 1px solid #1f2937; padding-top: 24px;">
-          <h3 style="font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 8px;">Subscription Tier</h3>
+          <h3 style="font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 8px;">Refill Credits</h3>
           <div style="display: flex; align-items: center; justify-content: space-between; background: #1f2937; padding: 12px 16px; border-radius: 8px;">
             <div>
               <div style="font-size: 14px; color: #e5e7eb; font-weight: 500;">${isPro ? "Pro Plan" : "Free Tier"}</div>
-              <div style="font-size: 11px; color: #94a3b8;">${isPro ? "Unlimited token capacity" : "500k tokens daily limit"}</div>
+              <div style="font-size: 11px; color: #94a3b8;">${isPro ? "High-volume usage included" : "Credits expire at $0.00 balance"}</div>
             </div>
             ${isPro ? `
-              <div style="background: #059669; color: white; padding: 4px 12px; border-radius: 99px; font-size: 11px; font-weight: 600;">Current Plan</div>
+              <div style="background: #059669; color: white; padding: 4px 12px; border-radius: 99px; font-size: 11px; font-weight: 600;">Active</div>
             ` : `
-              <button id="upgrade-pro-btn" class="settings-action-btn" style="background: #3b82f6; color: white; border: none; padding: 6px 16px; border-radius: 4px; font-weight: 600; font-size: 12px; cursor: pointer;">Upgrade to Pro</button>
+              <button id="upgrade-pro-btn" class="settings-action-btn" style="background: #3b82f6; color: white; border: none; padding: 6px 16px; border-radius: 4px; font-weight: 600; font-size: 12px; cursor: pointer;">Buy $30.00 Credit</button>
             `}
           </div>
         </div>
 
         <p style="font-size: 10px; color: #6b7280; margin-top: 16px; line-height: 1.4;">
-          * Costs are estimated based on standard OpenRouter pricing and may vary slightly from your actual bill.
+          * Credit cost is calculated as actual AI provider cost \u00d7 20. This covers platform overhead, infrastructure, and development.
         </p>
       `;
 

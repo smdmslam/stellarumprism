@@ -29,7 +29,7 @@ const MAX_HISTORY_MESSAGES: usize = 40;
 /// OpenRouter slug the audit mode routes to by default. 2M-context Grok
 /// is the right fit — audits need to hold the full diff + cross-referenced
 /// files at once. User can still override via /model before calling /audit.
-const AUDIT_DEFAULT_MODEL: &str = "x-ai/grok-4-fast";
+const AUDIT_DEFAULT_MODEL: &str = "x-ai/grok-4.1-fast";
 
 /// OpenRouter slug the fix mode routes to by default. Fixes need precise,
 /// surgical edits over moderate context (just the touched files). A strong
@@ -65,7 +65,7 @@ const NEW_DEFAULT_MODEL: &str = "anthropic/claude-haiku-4.5";
 /// review reads many commits + cross-references many files, so the
 /// 2M-context Grok is the right fit \u{2014} same reasoning as audit.
 /// Users can still override via /model before calling /review.
-const REVIEW_DEFAULT_MODEL: &str = "x-ai/grok-4-fast";
+const REVIEW_DEFAULT_MODEL: &str = "x-ai/grok-4.1-fast";
 
 /// Tool-round floors per mode. The floor is taken as the max of the
 /// returned value and the user's configured `agent.max_tool_rounds`,
@@ -1452,18 +1452,10 @@ pub async fn agent_query(
         ));
     }
 
-    // Quota enforcement
+    // Quota enforcement (Credit paradigm)
     let sub = crate::billing::load_subscription();
-    if sub.tier == crate::billing::SubscriptionTier::Free {
-        if let Some(quota) = sub.daily_token_quota {
-            let used = crate::usage::get_total_today_tokens();
-            if used >= quota {
-                return Err(format!(
-                    "Daily token quota exceeded ({}/{} used today). Upgrade to Pro for unlimited agent capacity.",
-                    used, quota
-                ));
-            }
-        }
+    if sub.tier == crate::billing::SubscriptionTier::Free && sub.balance_usd <= 0.0 {
+        return Err("Credit balance exhausted. Upgrade to Pro or purchase more credits to continue.".into());
     }
 
     // Resolve the runtime-probe base URL once per turn:
@@ -2036,6 +2028,13 @@ pub async fn agent_query(
                 "estimated_cost_usd": total_cost_usd,
             })
         };
+        // Deduct from credit balance (20x paradigm)
+        if !final_cancelled && total_cost_usd > 0.0 {
+            if let Err(e) = crate::billing::deduct_usage_cost(total_cost_usd) {
+                eprintln!("Failed to deduct usage cost: {}", e);
+            }
+        }
+
         let _ = app_handle.emit(&done_event, payload);
 
         // ---- Reviewer pass (Warp-style multi-pass validation) ----------

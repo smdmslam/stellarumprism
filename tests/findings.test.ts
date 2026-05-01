@@ -36,7 +36,7 @@ test("preserves findings when a stray FINDINGS (0) summary follows", () => {
   ].join("\n");
 
   const r = parseAuditTranscript(transcript, {
-    model: "x-ai/grok-4-fast",
+    model: "x-ai/grok-4.1-fast",
     scope: "HEAD~10..HEAD",
   });
 
@@ -54,7 +54,7 @@ test("preserves findings when a stray FINDINGS (0) summary follows", () => {
 test("zero-finding audit stays at zero", () => {
   const r = parseAuditTranscript(
     "FINDINGS (0)\nNo issues detected for HEAD~3..HEAD.",
-    { model: "x-ai/grok-4-fast", scope: null },
+    { model: "x-ai/grok-4.1-fast", scope: null },
   );
   assert.equal(r.summary.total, 0);
   assert.equal(r.findings.length, 0);

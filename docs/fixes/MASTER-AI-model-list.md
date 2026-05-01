@@ -29,7 +29,7 @@ Source of truth: `src/models.ts`
 
 ### Primary candidates currently offered
 - `openai/gpt-5.4`
-- `x-ai/grok-4-fast`
+- `x-ai/grok-4.1-fast`
 - `moonshotai/kimi-k2.5`
 - `qwen/qwen3.6-plus`
 - `z-ai/glm-5`
@@ -79,7 +79,7 @@ Why:
 Primary role:
 - dependable daily-driver candidate
 
-#### 3. `x-ai/grok-4-fast`
+#### 3. `x-ai/grok-4.1-fast`
 Why:
 - very large context window
 - strong candidate for whole-repo reading and audit-style work
@@ -153,7 +153,7 @@ Deprioritize strongly for Prism's main use case because:
 If only four models are tested first:
 - `openai/gpt-5.4`
 - `anthropic/claude-haiku-4.5`
-- `x-ai/grok-4-fast`
+- `x-ai/grok-4.1-fast`
 - `qwen/qwen3.6-plus`
 
 If five are tested first, add:
@@ -168,7 +168,7 @@ This is the highest-value shortlist.
 Best current contenders for Prism specifically:
 1. `openai/gpt-5.4`
 2. `anthropic/claude-haiku-4.5`
-3. `x-ai/grok-4-fast`
+3. `x-ai/grok-4.1-fast`
 4. `qwen/qwen3.6-plus`
 5. `deepseek/deepseek-v3.2`
 

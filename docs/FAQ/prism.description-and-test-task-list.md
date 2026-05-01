@@ -11,7 +11,7 @@
 | Tier | Alias | Full Slug | Vision | Tools |
 |------|-------|-----------|--------|-------|
 | Main | `gpt-5.4` | `openai/gpt-5.4` | ✓ | ✓ |
-| Main | `grok-4-fast` | `x-ai/grok-4-fast` | — | ✓ |
+| Main | `grok-4.1-fast` | `x-ai/grok-4.1-fast` | — | ✓ |
 | Main | `kimi` | `moonshotai/kimi-k2.5` | ✓ | ✓ |
 | Main | `qwen3.6-plus` | `qwen/qwen3.6-plus` | — | ✓ |
 | Main | `glm-5` | `z-ai/glm-5` | — | ✓ |
@@ -56,7 +56,7 @@ Save this list. We'll run each model through all of these.
 | 2.1 | `/help` | Print all slash commands |
 | 2.2 | `/models` | List all available models with aliases |
 | 2.3 | `/model haiku` | Switch to Claude Haiku 4.5 |
-| 2.4 | `/model grok-4-fast` | Switch to Grok 4 Fast |
+| 2.4 | `/model grok-4.1-fast` | Switch to Grok 4.1 Fast |
 | 2.5 | `/history` | Show conversation history |
 | 2.6 | `/clear` then `/history` | Clear chat, verify empty history |
 | 2.7 | `/files` | Open file tree in sidebar |
@@ -216,7 +216,7 @@ Save this list. We'll run each model through all of these.
 |---|--------|-------------------|
 | 14.1 | Drag an image into chat with `kimi` model | Model describes image |
 | 14.2 | Drag an image with `haiku` model | Model describes image |
-| 14.3 | Drag an image with `grok-4-fast` | Should reject or warn (no vision) |
+| 14.3 | Drag an image with `grok-4.1-fast` | Should reject or warn (no vision) |
 | 14.4 | Screenshot + "what does this show?" | Vision model analyzes |
 
 ---

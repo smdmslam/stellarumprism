@@ -160,7 +160,7 @@ Each mode is a persona-switched agent turn: same tools, same session, different 
 
 | Mode | Slash | Default model | Tool-round floor |
 | --- | --- | --- | --- |
-| `audit` | `/audit`, `/second-pass` | `x-ai/grok-4-fast` (2M context) | 60 |
+| `audit` | `/audit`, `/second-pass` | `x-ai/grok-4.1-fast` (2M context) | 60 |
 | `fix` | `/fix` | `anthropic/claude-haiku-4.5` | 60 |
 | `build` | `/build` | `anthropic/claude-haiku-4.5` | 100 |
 | `refactor` | `/refactor` | `anthropic/claude-haiku-4.5` | 80 |

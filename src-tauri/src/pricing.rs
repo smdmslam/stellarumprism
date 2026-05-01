@@ -22,14 +22,15 @@ pub fn get_pricing_basis(model: &str) -> PricingBasis {
     map.insert("google/gemini-2.5-flash", PricingBasis { input_per_m: 0.30, output_per_m: 2.50 });
     // OpenAI GPT-5.4 (frontier placeholder)
     map.insert("openai/gpt-5.4", PricingBasis { input_per_m: 2.5, output_per_m: 10.0 });
-    // xAI Grok 4 Fast
-    map.insert("x-ai/grok-4-fast", PricingBasis { input_per_m: 0.5, output_per_m: 1.5 });
+    // xAI Grok 4.1 Fast (legacy 4-fast slug kept for compatibility).
+    map.insert("x-ai/grok-4.1-fast", PricingBasis { input_per_m: 0.2, output_per_m: 0.5 });
+    map.insert("x-ai/grok-4-fast", PricingBasis { input_per_m: 0.2, output_per_m: 0.5 });
     // Z.ai GLM 5
     map.insert("z-ai/glm-5", PricingBasis { input_per_m: 0.1, output_per_m: 0.3 });
     // Claude Haiku 4.5 — $1 / $5 per Anthropic / OpenRouter.
     map.insert("anthropic/claude-haiku-4.5", PricingBasis { input_per_m: 1.0, output_per_m: 5.0 });
-    // Qwen 3 235B A22B (2507) — ~$0.30 / $0.90 per OpenRouter.
-    map.insert("qwen/qwen3-235b-a22b-2507", PricingBasis { input_per_m: 0.30, output_per_m: 0.90 });
+    // Qwen3 235B A22B Instruct 2507.
+    map.insert("qwen/qwen3-235b-a22b-2507", PricingBasis { input_per_m: 0.071, output_per_m: 0.10 });
     // Perplexity Sonar
     map.insert("perplexity/sonar", PricingBasis { input_per_m: 1.0, output_per_m: 1.0 });
 

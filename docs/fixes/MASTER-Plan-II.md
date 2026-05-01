@@ -292,7 +292,7 @@
 - **Policy going forward:** the registry is the *endorsed* set, not a parking lot. Models that fail calibration get removed entirely. The audit trail of "what we tried and dropped" lives in `docs/MASTER-AI-model-list.md`, not in dead code in the runtime registry.
 - **Why erase rather than hide:** (a) `enabled: false` still required pricing-data + routing-policy upkeep for Phase 5.3 / 5.7; (b) localStorage overrides from prior user toggles kept the disabled models visible in `/models` anyway; (c) hiding from Settings UI required new filter logic; (d) the disable was deliberate and not provisional. Power users can still pass any OpenRouter slug verbatim via `/model provider/slug` \u2014 `resolveModel`'s passthrough always works.
 - **Final default-on lineup (8 models):**
-  - Main: `gpt-5.4`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-2.5-flash`, `grok-4-fast`, `haiku`, `glm-5`
+  - Main: `gpt-5.4`, `gemini-2.5-pro`, `gemini-flash-latest`, `gemini-2.5-flash`, `grok-4.1-fast`, `haiku`, `glm-5`
   - Explore: `qwen-235b`
   - Backend (filtered out of UI): `sonar` (web_search backbone)
 - **What got dropped:** kimi, qwen3.6, deepseek, qwen (qwen3-next-80b), gpt-oss, step, devstral, codestral, mercury, gpt5-mini, scout, grok-fast, minimax.
@@ -571,7 +571,7 @@ The alternative (one-shot per call) was considered and rejected: it forces the L
 
 ✅ **Model registry curation pass** (this session)
 - 13 underperforming models erased from `src/models.ts` after calibration sweep + cost pressure
-- Final default-on set: gpt-5.4, gemini-2.5-pro, gemini-flash-latest, gemini-2.5-flash, grok-4-fast, haiku, glm-5, qwen-235b
+- Final default-on set: gpt-5.4, gemini-2.5-pro, gemini-flash-latest, gemini-2.5-flash, grok-4.1-fast, haiku, glm-5, qwen-235b
 - Policy: registry = endorsed set. No `enabled: false` parking lot.
 - Power-user escape hatch: `/model provider/full-slug` still passes any OpenRouter slug through verbatim
 

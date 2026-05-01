@@ -136,10 +136,10 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     maxContext: 1000000,
   },
   {
-    aliases: ["grok-4-fast", "grok4"],
-    slug: "x-ai/grok-4-fast",
+    aliases: ["grok-4.1-fast", "grok-4-fast", "grok4"],
+    slug: "x-ai/grok-4.1-fast",
     description:
-      "xAI Grok 4 Fast \u2014 2M context, excels at whole-repo reading",
+      "xAI Grok 4.1 Fast \u2014 2M context, excels at whole-repo reading",
     tier: "main",
     cost: 2,
     toolUse: true,
@@ -204,7 +204,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     cost: 1,
     toolUse: true,
     jsonMode: true,
-    maxContext: 128000,
+    maxContext: 262144,
   },
 ];
 

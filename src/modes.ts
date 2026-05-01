@@ -34,7 +34,7 @@ export interface Mode {
   /**
    * Model slug this mode prefers when the user hasn't pinned a specific
    * model. Rust also knows the default; this is here so the frontend can
-   * show e.g. `[audit] grok-4-fast` in xterm before the request fires.
+   * show e.g. `[audit] grok-4.1-fast` in xterm before the request fires.
    */
   preferredModel: string;
 }
@@ -138,8 +138,8 @@ export const MODES: Mode[] = [
       "20 commits. Pass a number ('/review 30') to review the last N, a " +
       "ref ('/review HEAD~3'), a range ('/review HEAD~5..HEAD'), or a " +
       "path ('/review @src/pages'). Pass --max-rounds=N for big reviews. " +
-      "Uses grok-4-fast (2M context) by default.",
-    preferredModel: "x-ai/grok-4-fast",
+      "Uses grok-4.1-fast (2M context) by default.",
+    preferredModel: "x-ai/grok-4.1-fast",
   },
   {
     name: "audit",
@@ -156,8 +156,8 @@ export const MODES: Mode[] = [
       "('/audit HEAD~3') to audit the last N commits as one refactor, a " +
       "range ('/audit HEAD~5..HEAD'), or a path ('/audit @src/pages') to " +
       "scope to one file or directory. Pass --max-rounds=N for big audits. " +
-      "Uses grok-4-fast (2M context) by default.",
-    preferredModel: "x-ai/grok-4-fast",
+      "Uses grok-4.1-fast (2M context) by default.",
+    preferredModel: "x-ai/grok-4.1-fast",
   },
 ];
 
