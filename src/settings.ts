@@ -48,6 +48,8 @@ export interface AppSettings {
   editorFontSize: number;
   /** Agent / Chat font size */
   chatFontSize: number;
+  /** Strict rigor mode: force grounded instructions + verifier for chat turns. */
+  strictMode: boolean;
 }
 
 const STORAGE_KEY = "prism-settings-v1";
@@ -61,6 +63,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   terminalFontSize: 9,
   editorFontSize: 12,
   chatFontSize: 13,
+  strictMode: true,
 };
 
 export class SettingsManager {
@@ -259,6 +262,17 @@ export class SettingsManager {
 
   setChatFontSize(size: number): void {
     this.current.chatFontSize = size;
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  getStrictMode(): boolean {
+    return this.current.strictMode ?? true;
+  }
+
+  setStrictMode(enabled: boolean): void {
+    if (this.current.strictMode === enabled) return;
+    this.current.strictMode = enabled;
     this.save();
     window.dispatchEvent(new CustomEvent("prism-settings-changed"));
   }

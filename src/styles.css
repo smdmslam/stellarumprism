@@ -1118,6 +1118,46 @@ input:checked + .toggle-slider:before {
 .workspace.agent-hidden .layout-divider-pane {
   display: none !important;
 }
+/* ---------- agent toolbar ----------
+ * Compact header for agent-panel controls. Mirrors the file viewer
+ * header proportions so the right pane has the same top chrome rhythm
+ * as the center pane. */
+.agent-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 12px;
+  background: #0a0d13;
+  border-bottom: 1px solid #1f2937;
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: #94a3b8;
+}
+.agent-toolbar-title {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #cbd5e1;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  user-select: none;
+}
+.agent-toolbar-icon {
+  display: inline-flex;
+  align-items: center;
+  color: #7dd3fc;
+}
+.agent-toolbar-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 
 /* ---------- agent prose panel ----------
  *
@@ -2148,6 +2188,52 @@ input:checked + .toggle-slider:before {
 }
 .skills-toggle:active {
   transform: translateY(1px);
+}
+
+/* ---------- strict / standard rigor toggle ---------- */
+.strict-toggle {
+  flex: 0 0 auto;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(34, 197, 94, 0.12);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.38);
+  transition: background-color 120ms ease, border-color 120ms ease,
+              color 120ms ease, transform 80ms ease;
+}
+.strict-toggle:hover {
+  background: rgba(34, 197, 94, 0.20);
+  border-color: rgba(34, 197, 94, 0.55);
+  color: #bbf7d0;
+}
+.strict-toggle[data-strict="false"] {
+  background: rgba(148, 163, 184, 0.06);
+  color: #6b7280;
+  border-color: rgba(148, 163, 184, 0.18);
+}
+.strict-toggle[data-strict="false"]:hover {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.32);
+  color: #cbd5e1;
+}
+.strict-toggle:active {
+  transform: translateY(1px);
+}
+.strict-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ---------- engaged-skill chips (Track A + B) ----------

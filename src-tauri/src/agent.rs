@@ -1441,6 +1441,9 @@ pub async fn agent_query(
     // here keeps the scaffold off the historical record and out of
     // future turns.
     system_prefix: Option<String>,
+    // Per-turn verifier enable override. Strict mode uses this to force
+    // the reviewer pass on even when the global config disabled it.
+    verifier_enabled_override: Option<bool>,
 ) -> Result<String, String> {
     let snapshot = cfg.snapshot();
     if snapshot.openrouter.api_key.is_empty() {
@@ -1565,7 +1568,10 @@ pub async fn agent_query(
 
     // Capture verifier config + the original user prompt so the reviewer
     // pass (run after the primary completes) sees them.
-    let verifier_cfg = snapshot.agent.verifier.clone();
+    let mut verifier_cfg = snapshot.agent.verifier.clone();
+    if let Some(enabled) = verifier_enabled_override {
+        verifier_cfg.enabled = enabled;
+    }
     let original_prompt = prompt.clone();
 
     // Capture typecheck-substrate config so the spawned task can dispatch
@@ -2656,7 +2662,22 @@ field that gets persisted (Tauri invoke, on-disk JSON, API call), \
 locate the matching Rust / server struct and confirm the field exists \
 there too. Serde and similar serializers silently drop unknown fields \
 by default; the value gets dropped on every save and the user sees a \
-setting that won't stick across launches.";
+setting that won't stick across launches.\n\
+\n\
+When the user's question is INVENTORY-shaped (e.g. \"what can X do\", \
+\"list features of X\", \"summarize this codebase\", \"how does X \
+work\") AND the assistant's response makes specific factual claims \
+about that codebase's capabilities, ALSO check this rigor rule:\n\
+  • CAPABILITY-CLAIM EVIDENCE. Inventory answers must be backed by \
+actual file reads or tool calls. If the tool log shows zero \
+`read_file` / `grep` / `bulk_read` / `git_diff` / `list_directory` \
+invocations this turn but the response confidently lists features, \
+flag the answer as \"likely fabricated from training-era prior\". \
+Say: 'No file-read tool calls fired this turn; the inventory above \
+could not have been verified against the actual code and should be \
+treated as ? Unverified.' This is the single most common hallucination \
+class for cheaper / weaker models when answering 'what can this app \
+do' — the model summarizes from prior, not from source.";
 
 /// Build the single user-message string sent to the reviewer model.
 fn build_reviewer_input(

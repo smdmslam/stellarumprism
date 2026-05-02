@@ -62,6 +62,21 @@ test("repo-fact: fires on 'what changed'", () => {
   assert.equal(t?.kind, "repo-fact");
 });
 
+test("inventory: fires on 'what can X do'", () => {
+  const t = detectVerifiedTrigger("what can Prism do?");
+  assert.equal(t?.kind, "inventory");
+});
+
+test("inventory: fires on 'list features of X'", () => {
+  const t = detectVerifiedTrigger("list features of this app");
+  assert.equal(t?.kind, "inventory");
+});
+
+test("inventory: fires on 'how does X work'", () => {
+  const t = detectVerifiedTrigger("how does the recipe runner work?");
+  assert.equal(t?.kind, "inventory");
+});
+
 // ---------------------------------------------------------------------------
 // Trigger detection — does NOT fire on opinion / vague prompts
 // ---------------------------------------------------------------------------
@@ -146,4 +161,11 @@ test("buildVerifiedSystemPrefix: repo-fact addendum requires a tool call", () =>
   const prefix = buildVerifiedSystemPrefix(trigger);
   assert.ok(prefix.includes("This is a REPO-FACT question"));
   assert.ok(prefix.includes("run a tool to fetch the answer"));
+});
+
+test("buildVerifiedSystemPrefix: inventory addendum requires capability evidence", () => {
+  const trigger = detectVerifiedTrigger("what can Prism do?")!;
+  const prefix = buildVerifiedSystemPrefix(trigger);
+  assert.ok(prefix.includes("This is an INVENTORY / CAPABILITY-SUMMARY question"));
+  assert.ok(prefix.includes("cite the file path or symbol that proves it exists"));
 });

@@ -425,6 +425,23 @@ export class Workspace {
         </div>
         <div class="layout-divider layout-divider-pane" data-divider="pane" role="separator" aria-orientation="vertical" tabindex="0" aria-label="Resize agent pane"></div>
         <div class="agent-pane">
+          <div class="agent-toolbar" aria-label="Agent controls">
+            <div class="agent-toolbar-title">
+              <span class="agent-toolbar-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+              </span>
+              <span>Agent</span>
+            </div>
+            <div class="agent-toolbar-actions">
+              <button class="strict-toggle" type="button" data-strict="true" title="Toggle Strict mode — when on, chat turns force grounded instructions and the verifier pass." aria-label="Strict mode" aria-pressed="true">
+                <span class="strict-toggle-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+                </span>
+                <span class="strict-toggle-label">Strict</span>
+              </button>
+              <button class="skills-toggle" type="button" data-aware="false" title="Toggle skills awareness — when on, the agent can request user-curated skills via the read_skill tool (each request is approved). Off by default." aria-label="Skills awareness" aria-pressed="false">skills off</button>
+            </div>
+          </div>
           <div class="agent-stage" aria-label="Agent dialogue"></div>
           <div class="agent-actions"></div>
           <div class="attachments"></div>
@@ -442,8 +459,6 @@ export class Workspace {
               </div>
 
               <button class="busy-pill" type="button" title="Cancel agent request" aria-label="Cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
-
-              <button class="skills-toggle" type="button" data-aware="false" title="Toggle skills awareness \u2014 when on, the agent can request user-curated skills via the read_skill tool (each request is approved). Off by default." aria-label="Skills awareness" aria-pressed="false">skills off</button>
 
               <div class="pill-group">
                 <span class="intent-badge" data-intent="command" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="Input mode">CMD</span>
@@ -775,6 +790,8 @@ export class Workspace {
     this.setupFileEditorKeybindings();
     this.setupBadges();
     this.updateModelBadge();
+    this.updateSkillsToggleUI();
+    this.updateStrictToggleUI();
 
     const handleSettingsChange = () => {
       if (this.term) {
@@ -783,6 +800,7 @@ export class Workspace {
           requestAnimationFrame(() => this.fitTerminal());
         }
       }
+      this.updateStrictToggleUI();
     };
     window.addEventListener("prism-settings-changed", handleSettingsChange);
     this.disposers.push(() => window.removeEventListener("prism-settings-changed", handleSettingsChange));
@@ -899,6 +917,7 @@ export class Workspace {
     const modelBadge = this.root.querySelector<HTMLElement>(".model-badge")!;
     const intentBadge = this.root.querySelector<HTMLElement>(".intent-badge")!;
     const skillsToggle = this.root.querySelector<HTMLButtonElement>(".skills-toggle");
+    const strictToggle = this.root.querySelector<HTMLButtonElement>(".strict-toggle");
 
     intentBadge.addEventListener("click", (e) => {
       e.preventDefault();
@@ -915,6 +934,11 @@ export class Workspace {
       e.preventDefault();
       e.stopPropagation();
       this.toggleSkillsAwareness();
+    });
+    strictToggle?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggleStrictMode();
     });
 
     // Delegate menu item clicks.
@@ -1565,13 +1589,11 @@ export class Workspace {
       this.maybeNudgeLongThread();
       this.maybeNudgeTopicShift(prompt);
     }
-    // Grounded-Chat protocol: when this is a regular chat turn (no
-    // mode-specific persona like /audit, /fix, /build active) and the
-    // prompt looks like an inspectable factual question, send the
-    // rigor scaffold as a per-turn SYSTEM PREFIX so the model is
-    // forced to source \u2192 evidence \u2192 rule \u2192 working \u2192 verified
-    // label before answering. Mode-driven turns already carry their
-    // own stricter protocols and are skipped to avoid double-wrapping.
+    // Grounded-Chat protocol. In Strict mode, every agent turn gets a
+    // rigor scaffold and verifier override. In Standard mode, plain
+    // chat only gets the scaffold when the prompt looks like an
+    // inspectable factual question; mode-driven turns rely on their
+    // own stricter personas.
     //
     // Earlier shape pre-pended the scaffold to the user message,
     // which then got persisted into session history every triggered
@@ -1582,14 +1604,20 @@ export class Workspace {
     // path sends the scaffold to the model on the wire only and never
     // writes it to history.
     let systemPrefix: string | undefined;
-    if (!options.mode) {
-      const trigger = detectVerifiedTrigger(prompt);
-      if (trigger) {
-        systemPrefix = buildVerifiedSystemPrefix(trigger);
-        this.notify(
-          `\u2192 [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched \u201c${stripAnsi(trigger.matched)}\u201d)`,
-        );
-      }
+    const strictMode = settings.getStrictMode();
+    const trigger = detectVerifiedTrigger(prompt);
+    if (strictMode) {
+      const strictTrigger =
+        trigger ?? ({ kind: "repo-fact", matched: "strict mode" } as const);
+      systemPrefix = buildVerifiedSystemPrefix(strictTrigger);
+      this.notify(
+        `\u2192 [strict] ${verifiedKindLabel(strictTrigger.kind)} protocol active (matched \u201c${stripAnsi(strictTrigger.matched)}\u201d)`,
+      );
+    } else if (!options.mode && trigger) {
+      systemPrefix = buildVerifiedSystemPrefix(trigger);
+      this.notify(
+        `\u2192 [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched \u201c${stripAnsi(trigger.matched)}\u201d)`,
+      );
     }
     // Engaged skills apply to EVERY turn (including mode-driven ones
     // like /audit and /build) per `docs/skills.md`. Prepend before the
@@ -1661,7 +1689,11 @@ export class Workspace {
         truncated: r.truncated,
       })),
       imagePayload,
-      { ...options, systemPrefix },
+      {
+        ...options,
+        systemPrefix,
+        verifierEnabledOverride: strictMode ? true : undefined,
+      },
     );
   }
 
@@ -2717,6 +2749,32 @@ export class Workspace {
     btn.dataset.aware = this.skillsAware ? "true" : "false";
     btn.setAttribute("aria-pressed", this.skillsAware ? "true" : "false");
     btn.textContent = this.skillsAware ? "skills on" : "skills off";
+  }
+
+  /** Toggle persistent Strict mode, which forces grounded chat + verifier. */
+  private toggleStrictMode(): void {
+    const next = !settings.getStrictMode();
+    settings.setStrictMode(next);
+    this.updateStrictToggleUI();
+    this.notify(
+      next
+        ? "[strict] on — grounded instructions and verifier pass forced for agent turns"
+        : "[strict] standard — grounded chat only auto-triggers on inspectable factual prompts",
+    );
+  }
+
+  /** Sync the Strict / Standard toolbar button from persisted settings. */
+  private updateStrictToggleUI(): void {
+    const btn = this.root.querySelector<HTMLButtonElement>(".strict-toggle");
+    if (!btn) return;
+    const strict = settings.getStrictMode();
+    btn.dataset.strict = strict ? "true" : "false";
+    btn.setAttribute("aria-pressed", strict ? "true" : "false");
+    const label = btn.querySelector<HTMLElement>(".strict-toggle-label");
+    if (label) label.textContent = strict ? "Strict" : "Standard";
+    btn.title = strict
+      ? "Strict mode is on — grounded instructions and verifier pass are forced for agent turns."
+      : "Standard mode — grounded chat auto-triggers only on inspectable factual prompts.";
   }
 
   /**

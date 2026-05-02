@@ -13,7 +13,7 @@
 // stricter protocols and shouldn't be double-wrapped.
 
 /** Categorical kinds of factual questions we recognize. */
-export type VerifiedKind = "count" | "enumerate" | "repo-fact";
+export type VerifiedKind = "count" | "enumerate" | "repo-fact" | "inventory";
 
 /** Outcome of trigger detection on a single user prompt. */
 export interface VerifiedTrigger {
@@ -44,10 +44,34 @@ const REPO_FACT_REGEX =
   /\b(where (is|are|did|does)|did we|what changed|recently (added|modified|changed|removed)|latest (commit|change|update|version))\b/i;
 
 /**
+ * Inventory / capability-summary questions. "What can X do?", "list
+ * features of X", "summarize this codebase", "how does X work?",
+ * "walk me through X", "what features does X have?". This kind
+ * specifically targets the failure mode where a model summarizes a
+ * codebase's capabilities from training-era prior without inspecting
+ * any source. The Grounded-Chat protocol forces the model to read
+ * something before claiming a feature exists.
+ *
+ * Regex tuning notes:
+ *   - Uses `\bX\b` boundaries on the verb cluster, then a permissive
+ *     middle, then a noun set that matches typical inventory targets.
+ *   - Doesn't fire on opinion-shaped prompts ("what do you think of
+ *     X?", "what's a good X to use?") because those start with
+ *     "what do/think" or "what's", which the verb cluster rejects.
+ */
+const INVENTORY_REGEX =
+  /\b(what (can|does) [\w\-./]+(?:\s+[\w\-./]+){0,4} do|what features (does|do) [\w\-./]+(?:\s+[\w\-./]+){0,4} (have|offer|support)|list (features|capabilities|tools|commands|modes|settings|options) (of|for|in)|summarize (this|the) (codebase|project|repo|repository|app|application|file|module)|how does [\w\-./]+(?:\s+[\w\-./]+){0,4} work|walk me through (the|this) [\w\-./]+(?:\s+[\w\-./]+){0,4}|tell me about (this|the) (codebase|project|repo|repository|app|application))\b/i;
+
+/**
  * Inspect a raw user prompt for an inspectable-factual trigger. Returns
  * null when the prompt is opinion-shaped, vague, or otherwise outside
  * the rigor envelope (e.g. "any thoughts on X?", "what would you call
  * this feature?"). Callers should leave such prompts alone.
+ *
+ * Order matters: count > enumerate > repo-fact > inventory. A prompt
+ * like "how many features does X have" matches both COUNT and
+ * INVENTORY; we want the count addendum's stricter arithmetic rules
+ * to win.
  */
 export function detectVerifiedTrigger(prompt: string): VerifiedTrigger | null {
   const m1 = COUNT_REGEX.exec(prompt);
@@ -56,6 +80,8 @@ export function detectVerifiedTrigger(prompt: string): VerifiedTrigger | null {
   if (m2) return { kind: "enumerate", matched: m2[0] };
   const m3 = REPO_FACT_REGEX.exec(prompt);
   if (m3) return { kind: "repo-fact", matched: m3[0] };
+  const m4 = INVENTORY_REGEX.exec(prompt);
+  if (m4) return { kind: "inventory", matched: m4[0] };
   return null;
 }
 
@@ -122,6 +148,14 @@ const ADDENDUMS: Record<VerifiedKind, string> = {
 - if no tool can answer it, say "I cannot verify this from the repository" rather than guessing
 
 `,
+  inventory: `This is an INVENTORY / CAPABILITY-SUMMARY question. The single most common failure mode here is summarizing features from training-era prior without inspecting the actual codebase. Mandatory:
+- pick at least one specific source-of-truth file to read FIRST (README.md, the entry-point module, src/ tree, package.json, or a docs/ folder). Do NOT enumerate features from memory.
+- for every capability you mention, cite the file path or symbol that proves it exists.
+- if you cannot back a feature claim with a file or tool result this turn, label it "? Unverified" or omit it entirely.
+- prefer narrow + accurate over broad + invented. "I read README.md and src/agent.ts; here are 5 capabilities I confirmed" beats "here are 12 features (some of which the model invented)."
+- if the codebase is too large to inventory in one turn, say so up front and offer to focus on a specific subsystem.
+
+`,
 };
 
 /**
@@ -172,5 +206,7 @@ export function verifiedKindLabel(kind: VerifiedKind): string {
       return "enumerate";
     case "repo-fact":
       return "repo-fact";
+    case "inventory":
+      return "inventory";
   }
 }

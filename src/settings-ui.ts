@@ -147,6 +147,22 @@ export class SettingsUI {
     // entries from older versions still parse cleanly.
     this.content.innerHTML = `
       <h2 class="settings-section-title">General Settings</h2>
+      <div class="settings-group">
+        <label class="settings-group-title">Agent Rigor</label>
+        <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
+          Strict mode forces grounded instructions and the verifier pass for agent turns. Standard mode is faster and only auto-grounds inspectable factual prompts.
+        </p>
+        <div class="model-setting-card">
+          <div class="model-setting-info">
+            <div class="model-setting-name">Strict mode</div>
+            <div class="model-setting-desc">Default on. Turn off when you prefer lower latency over maximum rigor.</div>
+          </div>
+          <label class="prism-toggle">
+            <input type="checkbox" id="setting-strict-mode" ${settings.getStrictMode() ? "checked" : ""}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
 
       <div class="settings-group">
         <label class="settings-group-title">Editor Configuration</label>
@@ -185,6 +201,7 @@ export class SettingsUI {
     const termInput = document.getElementById("setting-fontSize-terminal") as HTMLInputElement;
     const editorInput = document.getElementById("setting-fontSize-editor") as HTMLInputElement;
     const chatInput = document.getElementById("setting-fontSize-chat") as HTMLInputElement;
+    const strictInput = document.getElementById("setting-strict-mode") as HTMLInputElement;
 
     const handleNumberChange = (input: HTMLInputElement, setter: (val: number) => void) => {
       input.addEventListener("change", () => {
@@ -196,6 +213,9 @@ export class SettingsUI {
     if (termInput) handleNumberChange(termInput, v => settings.setTerminalFontSize(v));
     if (editorInput) handleNumberChange(editorInput, v => settings.setEditorFontSize(v));
     if (chatInput) handleNumberChange(chatInput, v => settings.setChatFontSize(v));
+    strictInput?.addEventListener("change", () => {
+      settings.setStrictMode(strictInput.checked);
+    });
   }
 
   private renderModels(): void {

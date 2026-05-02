@@ -5,6 +5,7 @@ import type { BlockManager } from "./blocks";
 import { modelSupportsToolUse } from "./models";
 import type { AgentViewApi } from "./agent-view";
 import { detectRigorViolation } from "./grounded-rigor";
+import { detectVerifiedTrigger } from "./verified-mode";
 import {
   WRITE_TOOL_NAMES,
   cleanToolSummary,
@@ -228,6 +229,14 @@ export class AgentController {
   private busy = false;
   /** Stall-detection timer id (window.setTimeout return value). */
   private stallTimer: number | null = null;
+  /**
+   * True if the in-flight prompt matched the inventory-shape regex
+   * ("what can X do", "list features of X", etc.). Captured at
+   * `query()` time; consumed in `onDone()` to drive the uninspected-
+   * answer notice when zero tool calls fired. Reset on every new
+   * query so a stale value can't leak into the next turn.
+   */
+  private currentTurnInventoryShaped = false;
   /**
    * One-shot listeners fired on every busy-state transition. Used by
    * `awaitTurnComplete` to resolve when the agent goes busy=true →
@@ -542,6 +551,8 @@ export class AgentController {
        * sent and shown is always the user's bare text now.
        */
       systemPrefix?: string;
+      /** Force-enable/disable the background verifier for this turn. */
+      verifierEnabledOverride?: boolean;
     } = {},
   ): Promise<void> {
     if (!this.hasApiKey) {
@@ -564,6 +575,8 @@ export class AgentController {
     // calls or grounded flag don't leak into the new one.
     this.currentGroundedActive = !!options.systemPrefix;
     this.currentTurnToolCount = 0;
+    this.currentTurnInventoryShaped =
+      detectVerifiedTrigger(prompt)?.kind === "inventory";
     // Reset the per-turn footer trackers (elapsed time + writes list)
     // before entering busy state so any rendering hook reading them sees
     // a clean slate.
@@ -651,6 +664,7 @@ export class AgentController {
         // the existing system message for the wire request only and
         // never persists it into session history.
         systemPrefix: options.systemPrefix ?? null,
+        verifierEnabledOverride: options.verifierEnabledOverride ?? null,
       });
     } catch (err) {
       this.opts.view.appendError(`[agent error] ${String(err)}`);
@@ -1107,6 +1121,24 @@ export class AgentController {
       );
     }
 
+    // Uninspected-answer notice (Q1c). Independent of the rigor
+    // violation above: when the user's prompt was inventory-shaped
+    // AND zero file-read tool calls fired AND the response is
+    // non-trivial, surface a clear notice. Catches the most common
+    // hallucination class for weaker models \u2014 quiet fabrication
+    // (no \u2713 Observed marker emitted, just confident prose) that
+    // the rigor scanner doesn't catch.
+    if (
+      this.currentTurnInventoryShaped &&
+      this.currentTurnToolCount === 0 &&
+      this.responseBuffer.trim().length > 80
+    ) {
+      this.opts.view.appendNotice(
+        "grounded-warning",
+        `[uninspected] this answer was produced without reading the codebase \u2014 no file-read tool calls fired this turn. The inventory above is summarized from training-era prior, not verified against the actual source. Treat as informational, not authoritative.`,
+      );
+    }
+
     // \"Files modified\" footer.
     if (this.currentTurnWrites.length > 0) {
       const footer = formatFilesModifiedFooter(this.currentTurnWrites);
@@ -1144,6 +1176,7 @@ export class AgentController {
     this.currentTurnToolCount = 0;
     this.currentTurnStartedAt = null;
     this.currentTurnWrites = [];
+    this.currentTurnInventoryShaped = false;
 
     const hasResponse = respText.trim().length > 0;
     if (finishedMode === "audit" && hasResponse) {
@@ -1207,6 +1240,7 @@ export class AgentController {
     this.currentTurnToolCount = 0;
     this.currentTurnStartedAt = null;
     this.currentTurnWrites = [];
+    this.currentTurnInventoryShaped = false;
   }
 
   // -- busy-state plumbing --------------------------------------------------
