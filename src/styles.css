@@ -3553,6 +3553,10 @@ input:checked + .toggle-slider:before {
   background: rgba(125, 211, 252, 0.12);
   color: #f9fafb;
 }
+.file-tree-row-active {
+  box-shadow: inset 2px 0 0 0 #7dd3fc;
+  background: rgba(125, 211, 252, 0.08);
+}
 
 .file-tree-caret {
   flex: 0 0 auto;

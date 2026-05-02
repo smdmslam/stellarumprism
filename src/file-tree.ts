@@ -48,8 +48,10 @@ export interface TreeState {
   expanded: Set<string>;
   /** Per-path load state for spinners + error rendering. */
   loadStateByPath: Map<string, LoadState>;
-  /** Currently selected absolute path (single-select v1). */
+  /** Primary selected path (keyboard focus anchor). */
   selected: string | null;
+  /** Set of all selected absolute paths (multi-select). */
+  selection: Set<string>;
 }
 
 export type LoadState =
@@ -66,6 +68,7 @@ export function emptyTreeState(): TreeState {
     expanded: new Set(),
     loadStateByPath: new Map(),
     selected: null,
+    selection: new Set(),
   };
 }
 
@@ -82,6 +85,10 @@ export interface VisibleRow {
   expanded: boolean;
   /** Mirror of `state.loadStateByPath.get(entry.path)`. */
   loadState: LoadState;
+  /** True iff this path is in `state.selection`. */
+  selected: boolean;
+  /** True iff this path is `state.selected` (primary focus). */
+  active: boolean;
 }
 
 /**
@@ -107,7 +114,14 @@ function walk(
     const expanded = state.expanded.has(e.path);
     const loadState =
       state.loadStateByPath.get(e.path) ?? { kind: "idle" };
-    out.push({ entry: e, depth, expanded, loadState });
+    out.push({
+      entry: e,
+      depth,
+      expanded,
+      loadState,
+      selected: state.selection.has(e.path),
+      active: state.selected === e.path,
+    });
     if (expanded && e.kind === "dir") {
       const child = state.childrenByPath.get(e.path);
       if (child) {
@@ -128,6 +142,8 @@ export function setRoot(state: TreeState, listing: RawTreeListing): TreeState {
     // may have shifted.
     childrenByPath: new Map(),
     loadStateByPath: new Map(),
+    selection: new Set(),
+    selected: null,
   };
 }
 
@@ -195,35 +211,60 @@ export function setError(
   return { ...state, loadStateByPath: loadStates };
 }
 
-/** Single-select: set or clear the selected path. */
-export function setSelected(
+/**
+ * Selection update: single, toggle, or range.
+ * - `toggle`: Add/remove from set without clearing others.
+ * - `range`: Select everything between `state.selected` and `path`.
+ * - Default: Clear set, add only `path`.
+ */
+export function updateSelection(
   state: TreeState,
-  path: string | null,
+  rows: VisibleRow[],
+  path: string,
+  mode: "single" | "toggle" | "range" = "single",
 ): TreeState {
-  return { ...state, selected: path };
+  let selection = new Set(state.selection);
+  if (mode === "toggle") {
+    if (selection.has(path)) selection.delete(path);
+    else selection.add(path);
+  } else if (mode === "range" && state.selected && state.selected !== path) {
+    const startIdx = rows.findIndex((r) => r.entry.path === state.selected);
+    const endIdx = rows.findIndex((r) => r.entry.path === path);
+    if (startIdx >= 0 && endIdx >= 0) {
+      const lo = Math.min(startIdx, endIdx);
+      const hi = Math.max(startIdx, endIdx);
+      for (let i = lo; i <= hi; i++) {
+        selection.add(rows[i].entry.path);
+      }
+    } else {
+      selection = new Set([path]);
+    }
+  } else {
+    selection = new Set([path]);
+  }
+  return { ...state, selected: path, selection };
+}
+
+/** Clear all selection. */
+export function clearSelection(state: TreeState): TreeState {
+  return { ...state, selected: null, selection: new Set() };
 }
 
 /**
- * Return the index in `flattenVisibleRows(state)` of the currently
- * selected path, or -1 when nothing is selected (or the selection
- * is no longer visible due to a parent collapse).
+ * Return the index in `rows` of the primary selected path (the focus
+ * anchor), or -1 when nothing is selected.
  */
 export function selectedIndex(
   state: TreeState,
   rows: VisibleRow[],
 ): number {
   if (!state.selected) return -1;
-  for (let i = 0; i < rows.length; i++) {
-    if (rows[i].entry.path === state.selected) return i;
-  }
-  return -1;
+  return rows.findIndex((r) => r.entry.path === state.selected);
 }
 
 /**
  * Move the keyboard selection by `delta` rows (+1 = down, -1 = up).
- * Wraps at neither end \u2014 the caller can decide whether to jump to
- * top/bottom on overshoot. Returns the new selected path (or null
- * when there are no visible rows).
+ * Returns the new selected path (anchor) or null when empty.
  */
 export function moveSelection(
   state: TreeState,
@@ -232,7 +273,6 @@ export function moveSelection(
 ): string | null {
   if (rows.length === 0) return null;
   const cur = selectedIndex(state, rows);
-  // -1 + delta=+1 should land on row 0; -1 + delta=-1 stays at -1.
   let next: number;
   if (cur < 0) {
     next = delta > 0 ? 0 : rows.length - 1;
@@ -243,8 +283,7 @@ export function moveSelection(
 }
 
 /**
- * Format a byte count for the tooltip / detail column. Same scale as
- * the existing `format_bytes` Rust helper but in pure JS for the UI.
+ * Format a byte count for the tooltip / detail column.
  */
 export function formatBytes(n: number | null | undefined): string {
   if (n == null) return "";

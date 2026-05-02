@@ -751,6 +751,25 @@ pub fn remove_file(cwd: String, path: String) -> Result<(), String> {
         .map_err(|e| format!("cannot remove {}: {}", resolved.display(), e))
 }
 
+/// Remove a directory and all its contents recursively.
+#[tauri::command]
+pub fn remove_dir_all(cwd: String, path: String) -> Result<(), String> {
+    let resolved = resolve_path(&cwd, &path)?;
+    let metadata = match fs::metadata(&resolved) {
+        Ok(m) => m,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(e) => return Err(format!("cannot stat {}: {}", resolved.display(), e)),
+    };
+    if !metadata.is_dir() {
+        return Err(format!(
+            "{} is not a directory; remove_dir_all refuses to remove single files",
+            resolved.display()
+        ));
+    }
+    fs::remove_dir_all(&resolved)
+        .map_err(|e| format!("cannot remove directory {}: {}", resolved.display(), e))
+}
+
 #[tauri::command]
 pub fn move_file(cwd: String, from: String, to: String) -> Result<String, String> {
     let resolved_from = resolve_path(&cwd, &from)?;

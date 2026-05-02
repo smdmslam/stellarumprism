@@ -96,7 +96,7 @@ import {
   setError as setTreeError,
   setLoading as setTreeLoading,
   setRoot as setTreeRoot,
-  setSelected as setTreeSelected,
+  updateSelection,
   toggleExpanded,
   type RawTreeListing,
   type TreeState,
@@ -3468,10 +3468,17 @@ export class Workspace {
       if (!row) return;
       const path = row.dataset.path!;
       const kind = row.dataset.kind ?? "file";
-      this.treeState = setTreeSelected(this.treeState, path);
-      if (kind === "dir") {
+
+      const rows = flattenVisibleRows(this.treeState);
+      let mode: "single" | "toggle" | "range" = "single";
+      if (e.shiftKey) mode = "range";
+      else if (e.metaKey || e.ctrlKey) mode = "toggle";
+
+      this.treeState = updateSelection(this.treeState, rows, path, mode);
+
+      if (kind === "dir" && mode === "single") {
         void this.handleTreeToggle(path);
-      } else {
+      } else if (kind === "file" && mode === "single") {
         // Single click opens the file in the editable buffer.
         void this.openFileInEditor(path);
       }
@@ -3485,8 +3492,14 @@ export class Workspace {
       e.preventDefault();
       const path = row.dataset.path!;
       const kind = row.dataset.kind ?? "file";
-      // Select the right-clicked item so the user gets visual feedback.
-      this.treeState = setTreeSelected(this.treeState, path);
+      
+      const rows = flattenVisibleRows(this.treeState);
+      // If the right-clicked item isn't in the current selection, 
+      // switch selection to ONLY this item. Otherwise keep multi-selection.
+      if (!this.treeState.selection.has(path)) {
+        this.treeState = updateSelection(this.treeState, rows, path, "single");
+      }
+      
       this.renderFileTree();
       this.showFileTreeContextMenu(e as MouseEvent, path, kind);
     });
@@ -3498,14 +3511,18 @@ export class Workspace {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         const next = moveSelection(this.treeState, rows, 1);
-        this.treeState = setTreeSelected(this.treeState, next);
+        if (next) {
+          this.treeState = updateSelection(this.treeState, rows, next, e.shiftKey ? "range" : "single");
+        }
         this.renderFileTree();
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         const next = moveSelection(this.treeState, rows, -1);
-        this.treeState = setTreeSelected(this.treeState, next);
+        if (next) {
+          this.treeState = updateSelection(this.treeState, rows, next, e.shiftKey ? "range" : "single");
+        }
         this.renderFileTree();
         return;
       }
@@ -3577,8 +3594,28 @@ export class Workspace {
       menu.appendChild(sep);
     };
 
-    // -- Copy actions -------------------------------------------------------
-    addItem("Copy Path", "⎘", () => {
+    const selection = Array.from(this.treeState.selection);
+    const isMulti = selection.length > 1;
+
+    // -- Batch / Copy actions -------------------------------------------------------
+    if (isMulti) {
+      addItem(`Copy ${selection.length} Paths`, "⎘", () => {
+        void navigator.clipboard.writeText(selection.join("\n"));
+      });
+      addItem(`Add ${selection.length} to Prompt`, "@", () => {
+        const cwd = this.cwd;
+        const rels = selection.map(p => 
+          cwd && p.startsWith(cwd)
+            ? p.slice(cwd.endsWith("/") ? cwd.length : cwd.length + 1)
+            : p
+        );
+        this.input.insertText(rels.map(r => `@${r}`).join(" "));
+        this.input.focus();
+      });
+      addSep();
+    }
+
+    addItem(isMulti ? "Copy Path (item)" : "Copy Path", "⎘", () => {
       void navigator.clipboard.writeText(path);
     });
 
@@ -3589,21 +3626,18 @@ export class Workspace {
         ? path.slice(cwd.endsWith("/") ? cwd.length : cwd.length + 1)
         : path;
     if (cwd && path.startsWith(cwd)) {
-      addItem("Copy Relative Path", "◌", () => {
+      addItem(isMulti ? "Copy Relative (item)" : "Copy Relative Path", "◌", () => {
         void navigator.clipboard.writeText(rel);
       });
     }
 
     // -- Stage in the prompt as an @-reference -----------------------------
-    // Inserts `@<relative-path>` at the cursor in the input bar, then
-    // focuses the editor so the user can keep typing. Mirrors what the
-    // existing @path autocomplete produces, but driven from a click
-    // instead of typing. The agent picks up @-refs via the existing
-    // file_refs.ts resolution path \u2014 no other plumbing needed.
-    addItem("Add to Prompt", "@", () => {
-      this.input.insertText(`@${rel}`);
-      this.input.focus();
-    });
+    if (!isMulti) {
+      addItem("Add to Prompt", "@", () => {
+        this.input.insertText(`@${rel}`);
+        this.input.focus();
+      });
+    }
 
     // -- Open / edit --------------------------------------------------------
     if (kind === "file") {
@@ -3631,20 +3665,16 @@ export class Workspace {
     addItem("Rename", "✏", () => {
       void this.promptRenameTreeItem(path);
     });
-    // Delete is files-only for now \u2014 the Rust `remove_file` command
-    // refuses directories, and recursive dir delete is intentionally
-    // deferred to a dedicated tree-removal command (see file_ref.rs:737).
-    // Hiding the option for dirs is friendlier than letting it fail.
-    if (kind === "file") {
-      addItem(
-        "Delete",
-        "\u2421", // DELETE SYMBOL \u2014 monochrome, matches sibling icons
-        () => {
-          void this.promptDeleteTreeItem(path);
-        },
-        true,
-      );
-    }
+    // Delete items (files or folders). Folders use `remove_dir_all` to
+    // recurse, so the confirmation modal reflects the increased risk.
+    addItem(
+      "Delete",
+      "\u2421", // DELETE SYMBOL \u2014 monochrome, matches sibling icons
+      () => {
+        void this.promptDeleteTreeItem(path, kind);
+      },
+      true,
+    );
 
     // -- Backdrop + positioning + escape ------------------------------------
     const backdrop = document.createElement("div");
@@ -3807,15 +3837,22 @@ export class Workspace {
    * `kind` through anyway so the function is self-contained if
    * the gate is ever loosened.
    */
-  private async promptDeleteTreeItem(path: string): Promise<void> {
+  private async promptDeleteTreeItem(path: string, kind: string): Promise<void> {
     const name = path.split("/").pop() ?? path;
+    const isDir = kind === "dir";
     const decision = await this.askConfirm({
-      title: "Delete file?",
-      body: `${name} will be permanently deleted from disk. This can't be undone from Prism.`,
+      title: isDir ? "Delete folder?" : "Delete file?",
+      body: isDir
+        ? `${name} and all its contents will be permanently deleted from disk. This can't be undone from Prism.`
+        : `${name} will be permanently deleted from disk. This can't be undone from Prism.`,
     });
     if (!decision.choice) return;
     try {
-      await invoke("remove_file", { cwd: this.cwd, path });
+      if (isDir) {
+        await invoke("remove_dir_all", { cwd: this.cwd, path });
+      } else {
+        await invoke("remove_file", { cwd: this.cwd, path });
+      }
       // If the deleted file was open in the editor, close it so the
       // stale path reference doesn't linger as a phantom buffer.
       if (this.openFilePath === path) this.closeFileEditor();
@@ -3975,8 +4012,8 @@ export class Workspace {
   private renderTreeRow(row: VisibleRow): string {
     const e = row.entry;
     const indentPx = 8 + row.depth * 14;
-    const selected =
-      this.treeState.selected === e.path ? " file-tree-row-selected" : "";
+    const selected = row.selected ? " file-tree-row-selected" : "";
+    const active = row.active ? " file-tree-row-active" : "";
     const kindClass = `file-tree-row-${e.kind}`;
     let icon = "";
     if (e.kind === "dir") {
@@ -4008,7 +4045,7 @@ export class Workspace {
       trailing = `<span class="file-tree-detail file-tree-detail-error" title="${escapeAttr(row.loadState.message)}">!</span>`;
     }
     return (
-      `<div class="file-tree-row ${kindClass}${selected}" ` +
+      `<div class="file-tree-row ${kindClass}${selected}${active}" ` +
       `data-path="${escapeAttr(e.path)}" data-kind="${e.kind}" ` +
       `style="padding-left:${indentPx}px" role="treeitem" ` +
       `aria-level="${row.depth + 1}" ` +
