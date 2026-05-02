@@ -391,6 +391,21 @@ All NOT STARTED.
 
 ---
 
+### Phase 10 — Aesthetic & Feature Evolution (Cyber-Noir Inspiration)
+**Context:** Surfaced 2026-05-03 from a high-fidelity mockup audit. The goal is to move Prism from "functional IDE" to a "Premium Cyber-Noir" experience.
+
+| **Aesthetics & Style** (Visuals) | **Feature Additions** (Power) |
+| :--- | :--- |
+| **Neon "Glow" System:** Use luminous HSL colors and `box-shadow` glows for active states/highlights. | **Live Audit Sidebar:** A real-time stream of agent findings (Signature Mismatch, Dead Imports) as first-class UI. |
+| **Glassmorphism Layers:** Implement `backdrop-filter: blur()` on sidebars to create depth. | **Contextual Code Wrapping:** Color-coded background blocks for code based on audit status (Red/Amber/Teal). |
+| **Noir Palette:** Transition to high-contrast deep indigo/purple neutrals instead of standard grays. | **Verification Coverage Widget:** A progress meter for "Percentage of codebase verified by agent". |
+| **Sharp Light-Source Borders:** 1px borders with gradient "light sources" for panel definition. | **Active Guard Indicators:** Tab-bar icons showing live background checks (Typecheck, Audit, Tests). |
+| **Modern Typography Mix:** Sharp sans-serif for UI labels vs. high-performance mono for code. | **Integrity Dashboard:** A summary view of total project "health" and open issues. |
+
+---
+
+---
+
 ## ✅ SECTION 2: ITEMS ALREADY DONE
 
 *(Updated from Plan II; incorporates recent commits like skills runtime and file delete.)*
@@ -450,8 +465,9 @@ All NOT STARTED.
 | **7** Skills | 6 | 4/6 DONE | v1 runtime shipped; 7.5–7.6 deferred. |
 | **8** Plumbing | 5 | 5/5 DONE | Clean. |
 | **9** Backlog | 4 | 0/4 DONE | Nice-to-have. |
+| **10** Design Evolution | 6 | 0/6 DONE | "Cyber-Noir" aesthetics & features. |
 
-**Overall:** 35/60 items DONE (~58%) | Phases 1,2,3,7,8 mostly complete | Phase 5 still CRITICAL; new 1.6 also CRITICAL
+**Overall:** 35/66 items DONE (~53%) | Phases 1,2,3,7,8 mostly complete | Phase 5 still CRITICAL; new 1.6 also CRITICAL
 
 ---
 
