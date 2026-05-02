@@ -148,19 +148,29 @@ export class SettingsUI {
     this.content.innerHTML = `
       <h2 class="settings-section-title">General Settings</h2>
       <div class="settings-group">
-        <label class="settings-group-title">Agent Verification</label>
+        <label class="settings-group-title">Always Verify / Auto Verify</label>
         <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
-          Auto Verify still grounds inspectable factual prompts. Always Verify forces grounded instructions and the verifier pass on every agent turn.
+          Always Verify is on by default. Turn off to use <strong>Auto Verify</strong> for lower latency while keeping factual prompts grounded.
         </p>
         <div class="model-setting-card">
           <div class="model-setting-info">
             <div class="model-setting-name">Always Verify</div>
-            <div class="model-setting-desc">Default on. Turn off to use Auto Verify for lower latency while keeping factual prompts grounded.</div>
+            <div class="model-setting-desc">
+              <strong>Always Verify</strong> adds an independent background model to fact-check every response for maximum reliability.
+              <div style="margin-top: 4px;">
+                <strong>Auto Verify</strong> relies on Prism's structural rigor checks and triggered protocols for faster, grounded performance.
+              </div>
+            </div>
           </div>
-          <label class="prism-toggle">
-            <input type="checkbox" id="setting-strict-mode" ${settings.getStrictMode() ? "checked" : ""}>
-            <span class="toggle-slider"></span>
-          </label>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="strict-mode-status" style="font-size: 10px; font-weight: 800; color: ${settings.getStrictMode() ? "var(--prism-emerald)" : "var(--prism-cyan)"}; text-transform: uppercase; width: 48px; text-align: right;">
+              ${settings.getStrictMode() ? "ALWAYS" : "AUTO"}
+            </span>
+            <label class="prism-toggle">
+              <input type="checkbox" id="setting-strict-mode" ${settings.getStrictMode() ? "checked" : ""}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -214,7 +224,13 @@ export class SettingsUI {
     if (editorInput) handleNumberChange(editorInput, v => settings.setEditorFontSize(v));
     if (chatInput) handleNumberChange(chatInput, v => settings.setChatFontSize(v));
     strictInput?.addEventListener("change", () => {
-      settings.setStrictMode(strictInput.checked);
+      const isChecked = strictInput.checked;
+      settings.setStrictMode(isChecked);
+      const statusEl = document.getElementById("strict-mode-status");
+      if (statusEl) {
+        statusEl.textContent = isChecked ? "ALWAYS" : "AUTO";
+        statusEl.style.color = isChecked ? "var(--prism-emerald)" : "var(--prism-cyan)";
+      }
     });
   }
 

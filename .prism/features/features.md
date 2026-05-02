@@ -8,9 +8,10 @@ This document outlines key features of the Prism project, providing a high-level
 
 ## Recent Enhancements (Last 5 Commits)
 
-### Granular Verification Controls
-*   **"Verify Modes" (formerly "Strict Mode"):** Introduced a broader concept for managing code verification processes.
-*   **Strict Rigor Mode Controls:** Added new functionalities for fine-tuning the strictness and depth of verification, allowing for customizable balance between speed and accuracy.
+### Dual-Tier Verification Strategy
+*   **Always Verify (Second-Pass Supervision):** Engages a separate, independent supervisor model to fact-check every response. This "Double-Check" ensures maximum grounding for complex tasks but may lead to shorter, more cautious answers if evidence is not explicitly found in the tool logs.
+*   **Auto Verify (Structural Protocol Grounding):** The high-performance default. It relies on Prism's built-in **structural guards**—the Grounded-Chat protocol (SOURCE → EVIDENCE → WORKING) and automatic rigor scanning. It catch hallucinations by cross-referencing model claims (e.g., ✓ Observed) against actual tool logs without the latency of a second model.
+*   **Verification-by-Default Philosophy:** Explicitly defines that "Auto Verify" is not a "low-rigor" mode; it is the standard Prism operational state where structural rules are enforced on the primary model, while "Always Verify" acts as an optional supervisory layer.
 
 ### Performance & Cost Optimization
 *   **Flash-lite Integration & Unified Cost Sorting:** Replaced "flash-latest" with "flash-lite" and unified cost sorting, likely resulting in improved efficiency and optimized resource utilization, especially for API calls or similar operations.
