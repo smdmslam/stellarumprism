@@ -269,3 +269,10 @@ Prism's `read_file` tool returns the whole file (up to 128 KB) into a long-conte
 The user-visible consequence: vibe-coders shipping complete products run into the comprehensive-context wall every day. Trying to write a pitch deck or a launch announcement that holds the *whole* project in mind, in Cursor or Copilot, returns fragments that have to be manually stitched. Prism does it natively. This is distinct from the verification wedge but anchored on the same architectural choice (whole-document tool reads + long-context routing) and it serves the same kind of user (the senior or solo developer who needs end-to-end project coherence to ship).
 
 For the deck — promoted to Slide 7 in `docs/vc-pitchdeck.md`. For the auditor doc — added under "Why this is durable" in `docs/vc-prism-auditor.md`. For the architecture file — see `docs/internal-architecture-perplexity-deepseek.md` for why this pairing pattern is private and how it generalizes.
+
+NOTES FROM CURSOR on CURSO CLI which is terminal centric.
+
+Yes — cursor CLI IS very similar in spirit to PRISM. 
+
+PRISM feels closest to the CLI-style workflow because it’s terminal-centric, command-driven, and tool/action oriented.
+The main difference is PRISM adds its own product layer (modes, substrate checks, approvals, your UX decisions) rather than being just a thin terminal client.

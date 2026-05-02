@@ -65,6 +65,38 @@ pub fn requires_approval(tool_name: &str) -> bool {
     )
 }
 
+/// Check if a tool call is redundant based on the current disk state.
+/// Used by the agent loop to skip approval prompts for actions that
+/// have already been performed (e.g. creating a directory that exists).
+pub fn is_moot(tool_name: &str, args_json: &str, cwd: &str) -> bool {
+    let parsed: serde_json::Value = serde_json::from_str(args_json).unwrap_or(serde_json::Value::Null);
+    match tool_name {
+        "create_directory" => {
+            let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            if let Ok(resolved) = resolve_path(cwd, path) {
+                return resolved.is_dir();
+            }
+        }
+        "delete_file" | "delete_directory" => {
+            let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            if let Ok(resolved) = resolve_path(cwd, path) {
+                return !resolved.exists();
+            }
+        }
+        "write_file" => {
+            let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
+            let content = parsed.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            if let Ok(resolved) = resolve_path(cwd, path) {
+                if let Ok(existing) = std::fs::read(&resolved) {
+                    return existing == content.as_bytes();
+                }
+            }
+        }
+        _ => {}
+    }
+    false
+}
+
 /// Whether "approve all (session)" is allowed for this tool.
 ///
 /// Trust/safety policy: filesystem-mutation tools must always show an

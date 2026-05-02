@@ -1768,7 +1768,9 @@ pub async fn agent_query(
                         let session_ok = approval_session
                             .get(&chat_id_for_task)
                             .map_or(false, |v| *v);
-                        let decision = if !needs_approval || (session_ok && session_allowed_for_tool)
+                        let is_moot =
+                            crate::tools::is_moot(&call.function.name, &call.function.arguments, &cwd_for_tools);
+                        let decision = if !needs_approval || is_moot || (session_ok && session_allowed_for_tool)
                         {
                             ApprovalDecision::Approve
                         } else {
