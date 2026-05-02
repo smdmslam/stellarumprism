@@ -1228,6 +1228,13 @@ input:checked + .toggle-slider:before {
   color: #e5e7eb;
 }
 
+.agent-rigor-label {
+  opacity: 0.55;
+  font-weight: 500;
+  /* Ensure the label feels slightly 'meta' compared to the primary prose */
+  letter-spacing: 0.02em;
+}
+
 /* One-shot Markdown report block. Used by structural slash-command
  * output (`/protocol`, future `/help` / `/models` / `/last`
  * conversions) so headings, lists, bold, and inline code render

@@ -36,9 +36,28 @@ marked.setOptions({
 /** Render Markdown to a DocumentFragment. Returns a fragment so the
  *  caller doesn't care how many top-level elements parsed out. */
 function markdownToFragment(markdown: string): DocumentFragment {
-  // Strip any terminal escape sequences so they don't render as
-  // replacement-glyph boxes or junk text.
-  const clean = stripAnsi(markdown);
+  let clean = stripAnsi(markdown);
+
+  // 1. Force double-newline before rigor markers (Observed, Inferred, Unverified)
+  // if they are currently preceded by only a single newline. This ensures
+  // marked renders them as a fresh paragraph with proper vertical spacing.
+  clean = clean.replace(
+    /(?<!\n)\n([✓~?∼]\s+(?:Observed|Inferred|Unverified))/g,
+    "\n\n$1"
+  );
+  clean = clean.replace(/(?<!\n)\n(Verified total:)/g, "\n\n$1");
+
+  // 2. Wrap markers in a styling span. We do this before passing to marked
+  // so it's treated as inline HTML.
+  clean = clean.replace(
+    /([✓~?∼]\s+(?:Observed|Inferred|Unverified))/g,
+    '<span class="agent-rigor-label">$1</span>'
+  );
+  clean = clean.replace(
+    /(Verified total:)/g,
+    '<span class="agent-rigor-label">$1</span>'
+  );
+
   const html = marked.parse(clean, { async: false }) as string;
   const tmp = document.createElement("div");
   tmp.innerHTML = html;
