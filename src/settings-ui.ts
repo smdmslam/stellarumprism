@@ -771,7 +771,7 @@ export class SettingsUI {
     this.content.innerHTML = `
       <h2 class="settings-section-title">AI Usage & Analytics</h2>
       <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 24px;">
-        Track your AI consumption and estimated costs. Data is updated after every agent turn.
+        Track your consumption and compare actual provider costs against the credit markup.
       </p>
       <div id="usage-container" class="usage-container">
         <div class="loading-state">Loading usage summary...</div>
@@ -780,14 +780,15 @@ export class SettingsUI {
 
     const container = document.getElementById("usage-container")!;
     try {
-      // Use the active workspace's chat_id if available, otherwise null (aggregate only)
       const chatId = this.activeWorkspace?.id || null;
       const summary = await invoke<{
         session_tokens: number;
         session_cost_usd: number;
+        session_calls: number;
         today_tokens: number;
         today_cost_usd: number;
-        by_model: { model: string; tokens: number; cost_usd: number }[];
+        today_calls: number;
+        by_interaction: { mode: string; model: string; tokens: number; cost_usd: number; calls: number }[];
       }>("get_usage_summary", { chatId });
 
       const subInfo = await invoke<{ 
@@ -797,52 +798,62 @@ export class SettingsUI {
       }>("get_subscription_info");
       const isPro = subInfo.tier === "Pro";
 
-      const formatCost = (c: number) => `$${c.toFixed(3)}`;
+      const formatCost = (c: number) => `$${c.toFixed(4)}`;
       const formatCredits = (c: number) => `$${c.toFixed(2)}`;
-      const formatTokens = (t: number) =>
-        t >= 1000 ? `${(t / 1000).toFixed(1)}k` : t.toString();
+      const formatTokensFull = (t: number) => t.toLocaleString();
 
       let html = `
-        <div class="usage-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 32px;">
-          <div class="usage-stat-card" style="background: #111827; border: 1px solid #374151; padding: 16px; border-radius: 8px;">
-            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; margin-bottom: 4px;">Credit Balance</div>
-            <div style="font-size: 24px; font-weight: 600; color: ${subInfo.balance_usd > 0 ? "#10b981" : "#ef4444"}; margin-bottom: 4px;">${formatCredits(subInfo.balance_usd)}</div>
-            <div style="font-size: 12px; color: #94a3b8;">${isPro ? "Unlimited (Pro)" : "Pay-as-you-go"}</div>
+        <div class="usage-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 32px;">
+          <div class="usage-stat-card" style="background: #111827; border: 1px solid #1f2937; padding: 24px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 32px; font-weight: 700; color: #2dd4bf; margin-bottom: 4px;">${summary.today_calls}</div>
+            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.1em; font-weight: 600;">Turns (Today)</div>
           </div>
-          <div class="usage-stat-card" style="background: #111827; border: 1px solid #374151; padding: 16px; border-radius: 8px;">
-            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.05em; margin-bottom: 4px;">Lifetime Spend (Real Cost)</div>
-            <div style="font-size: 24px; font-weight: 600; color: #e5e7eb; margin-bottom: 4px;">${formatCost(subInfo.total_real_cost_usd)}</div>
-            <div style="font-size: 12px; color: #94a3b8;">Actual provider cost</div>
+          <div class="usage-stat-card" style="background: #111827; border: 1px solid #1f2937; padding: 24px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 32px; font-weight: 700; color: #2dd4bf; margin-bottom: 4px;">${formatTokensFull(summary.today_tokens)}</div>
+            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.1em; font-weight: 600;">Total Tokens</div>
+          </div>
+          <div class="usage-stat-card" style="background: #111827; border: 1px solid #1f2937; padding: 24px; border-radius: 8px; text-align: center;">
+            <div style="font-size: 32px; font-weight: 700; color: #2dd4bf; margin-bottom: 4px;">${formatCredits(subInfo.balance_usd)}</div>
+            <div style="font-size: 10px; text-transform: uppercase; color: #6b7280; letter-spacing: 0.1em; font-weight: 600;">Credit Balance</div>
           </div>
         </div>
 
-        <h3 style="font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 12px;">Breakdown by Model (20x Credits)</h3>
-        <div class="usage-table-wrapper" style="background: #111827; border: 1px solid #374151; border-radius: 8px; overflow: hidden;">
+        <div class="usage-table-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+          <h3 style="font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em;">Interaction Breakdown</h3>
+          <div style="font-size: 11px; color: #4b5563;">Lifetime Spend: ${formatCost(subInfo.total_real_cost_usd)} (Real)</div>
+        </div>
+
+        <div class="usage-table-wrapper" style="background: transparent; border-radius: 8px; overflow: hidden;">
           <table style="width: 100%; border-collapse: collapse; font-size: 12px; text-align: left;">
             <thead>
-              <tr style="border-bottom: 1px solid #374151; background: #1f2937;">
-                <th style="padding: 10px 16px; color: #94a3b8; font-weight: 500;">Model</th>
-                <th style="padding: 10px 16px; color: #94a3b8; font-weight: 500; text-align: right;">Tokens</th>
-                <th style="padding: 10px 16px; color: #94a3b8; font-weight: 500; text-align: right;">Credit Cost</th>
+              <tr style="border-bottom: 1px solid #1f2937;">
+                <th style="padding: 12px 0; color: #4b5563; font-weight: 600; text-transform: uppercase; font-size: 10px;">Agent</th>
+                <th style="padding: 12px 0; color: #4b5563; font-weight: 600; text-transform: uppercase; font-size: 10px;">Model</th>
+                <th style="padding: 12px 0; color: #4b5563; font-weight: 600; text-transform: uppercase; font-size: 10px; text-align: right;">Calls</th>
+                <th style="padding: 12px 0; color: #4b5563; font-weight: 600; text-transform: uppercase; font-size: 10px; text-align: right;">Real Cost</th>
+                <th style="padding: 12px 0; color: #4b5563; font-weight: 600; text-transform: uppercase; font-size: 10px; text-align: right;">Credits</th>
               </tr>
             </thead>
             <tbody>
       `;
 
-      if (summary.by_model.length === 0) {
+      if (summary.by_interaction.length === 0) {
         html += `
           <tr>
-            <td colspan="3" style="padding: 24px; text-align: center; color: #6b7280; font-style: italic;">No usage recorded yet.</td>
+            <td colspan="5" style="padding: 48px 0; text-align: center; color: #374151; font-style: italic;">No usage recorded yet.</td>
           </tr>
         `;
       } else {
-        for (const m of summary.by_model) {
+        for (const m of summary.by_interaction) {
           const modelName = m.model.split("/").pop() || m.model;
+          const modeName = m.mode.charAt(0).toUpperCase() + m.mode.slice(1);
           html += `
-            <tr style="border-bottom: 1px solid #1f2937;">
-              <td style="padding: 10px 16px; color: #e5e7eb; font-family: ui-monospace, monospace;">${escapeHtml(modelName)}</td>
-              <td style="padding: 10px 16px; color: #e5e7eb; text-align: right; font-weight: 500;">${formatTokens(m.tokens)}</td>
-              <td style="padding: 10px 16px; color: #10b981; text-align: right; font-weight: 500;">${formatCredits(m.cost_usd * 20.0)}</td>
+            <tr style="border-bottom: 1px solid #111827;">
+              <td style="padding: 16px 0; color: #e5e7eb; font-weight: 500;">${escapeHtml(modeName)}</td>
+              <td style="padding: 16px 0; color: #4b5563; font-family: ui-monospace, monospace;">${escapeHtml(modelName)}</td>
+              <td style="padding: 16px 0; color: #e5e7eb; text-align: right;">${m.calls}</td>
+              <td style="padding: 16px 0; color: #94a3b8; text-align: right;">${formatCost(m.cost_usd)}</td>
+              <td style="padding: 16px 0; color: #2dd4bf; text-align: right; font-weight: 600;">${formatCost(m.cost_usd * 20.0)}</td>
             </tr>
           `;
         }
@@ -852,7 +863,7 @@ export class SettingsUI {
             </tbody>
           </table>
         </div>
-        
+
         <div class="usage-subscription-section" style="margin-top: 32px; border-top: 1px solid #1f2937; padding-top: 24px;">
           <h3 style="font-size: 13px; font-weight: 600; color: #e5e7eb; margin-bottom: 8px;">Refill Credits</h3>
           <div style="display: flex; align-items: center; justify-content: space-between; background: #1f2937; padding: 12px 16px; border-radius: 8px;">
@@ -883,17 +894,17 @@ export class SettingsUI {
             upgradeBtn.disabled = true;
             upgradeBtn.textContent = "Processing...";
             await invoke("upgrade_to_pro");
-            alert("Success! You are now on the Pro plan with unlimited token capacity.");
+            alert("Success! You have added $30.00 to your credit balance.");
             this.renderUsage(); // Refresh UI
           } catch (e) {
             alert(`Upgrade failed: ${e}`);
             upgradeBtn.disabled = false;
-            upgradeBtn.textContent = "Upgrade to Pro";
+            upgradeBtn.textContent = "Buy $30.00 Credit";
           }
         });
       }
     } catch (e) {
-      container.innerHTML = `<div class="error-state">Failed to load usage data: ${escapeHtml(String(e))}</div>`;
+      container.innerHTML = `<div class="error-state">Failed to load usage summary: ${escapeHtml(String(e))}</div>`;
     }
   }
 }

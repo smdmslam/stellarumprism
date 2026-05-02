@@ -1675,6 +1675,7 @@ pub async fn agent_query(
                         total_cost_usd += cost;
 
                         emit_usage_event(
+                            &app_handle,
                             request_id,
                             chat_id_for_task.clone(),
                             cwd_str.clone(),
@@ -1737,6 +1738,7 @@ pub async fn agent_query(
                         total_cost_usd += cost;
 
                         emit_usage_event(
+                            &app_handle,
                             request_id,
                             chat_id_for_task.clone(),
                             cwd_str.clone(),
@@ -1943,6 +1945,7 @@ pub async fn agent_query(
                 }
                 Ok(StreamOutcome::Cancelled { assistant_text }) => {
                     emit_usage_event(
+                        &app_handle,
                         None,
                         chat_id_for_task.clone(),
                         cwd_str.clone(),
@@ -1961,6 +1964,7 @@ pub async fn agent_query(
                 }
                 Err(e) => {
                     emit_usage_event(
+                        &app_handle,
                         None,
                         chat_id_for_task.clone(),
                         cwd_str.clone(),
@@ -2081,6 +2085,7 @@ pub async fn agent_query(
                 Ok(StreamOutcome::Completed { usage, request_id, .. }) => {
                     if let Some(u) = usage {
                         emit_usage_event(
+                            &app_handle,
                             request_id,
                             chat_id_for_task.clone(),
                             cwd_str.clone(),

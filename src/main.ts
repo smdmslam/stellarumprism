@@ -5,8 +5,12 @@
 import { TabManager } from "./tabs";
 import { ToolbarManager } from "./toolbar";
 import { readSessionState } from "./session";
+import { initUsageSync } from "./services/usage-persistence";
 
 window.addEventListener("DOMContentLoaded", () => {
+  // Initialize Firebase usage sync
+  void initUsageSync();
+
   const tabStrip = document.getElementById("tab-strip");
   const workspacesParent = document.getElementById("workspaces");
   if (!tabStrip || !workspacesParent) {

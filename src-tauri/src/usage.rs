@@ -31,19 +31,26 @@ pub struct UsageEvent {
 pub struct UsageSummary {
     pub session_tokens: u32,
     pub session_cost_usd: f64,
+    pub session_calls: u32,
     pub today_tokens: u32,
     pub today_cost_usd: f64,
-    pub by_model: Vec<ModelUsage>,
+    pub today_calls: u32,
+    pub by_interaction: Vec<InteractionUsage>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct ModelUsage {
+pub struct InteractionUsage {
+    pub mode: String,
     pub model: String,
     pub tokens: u32,
     pub cost_usd: f64,
+    pub calls: u32,
 }
 
+use tauri::Emitter;
+
 pub fn emit_usage_event(
+    app_handle: &tauri::AppHandle,
     request_id: Option<String>,
     chat_id: String,
     workspace_id: String,
@@ -81,6 +88,8 @@ pub fn emit_usage_event(
         pricing_basis: pricing,
     };
 
+    let _ = app_handle.emit("usage-event", &event);
+
     if let Some(path) = usage_file_path() {
         if let Ok(json) = serde_json::to_string(&event) {
             let _ = append_to_file(path, format!("{}\n", json));
@@ -108,9 +117,11 @@ pub fn get_usage_summary(chat_id: String) -> Result<UsageSummary, String> {
 
     let mut session_tokens = 0;
     let mut session_cost = 0.0;
+    let mut session_calls = 0;
     let mut today_tokens = 0;
     let mut today_cost = 0.0;
-    let mut model_map: std::collections::HashMap<String, (u32, f64)> = std::collections::HashMap::new();
+    let mut today_calls = 0;
+    let mut interaction_map: std::collections::HashMap<(String, String), (u32, f64, u32)> = std::collections::HashMap::new();
 
     for line in reader.lines() {
         let Ok(l) = line else { continue };
@@ -122,36 +133,41 @@ pub fn get_usage_summary(chat_id: String) -> Result<UsageSummary, String> {
         if is_today {
             today_tokens += event.total_tokens;
             today_cost += event.estimated_cost_usd;
+            today_calls += 1;
         }
 
         if is_session {
             session_tokens += event.total_tokens;
             session_cost += event.estimated_cost_usd;
+            session_calls += 1;
         }
 
-        let entry = model_map.entry(event.model).or_insert((0, 0.0));
+        let entry = interaction_map.entry((event.mode, event.model)).or_insert((0, 0.0, 0));
         entry.0 += event.total_tokens;
         entry.1 += event.estimated_cost_usd;
+        entry.2 += 1;
     }
 
-    let mut by_model: Vec<ModelUsage> = model_map
+    let mut by_interaction: Vec<InteractionUsage> = interaction_map
         .into_iter()
-        .map(|(model, (tokens, cost_usd))| ModelUsage {
+        .map(|((mode, model), (tokens, cost_usd, calls))| InteractionUsage {
+            mode,
             model,
             tokens,
             cost_usd,
+            calls,
         })
         .collect();
-    
-    // Sort by cost descending
-    by_model.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
+    by_interaction.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
 
     Ok(UsageSummary {
         session_tokens,
         session_cost_usd: session_cost,
+        session_calls,
         today_tokens,
         today_cost_usd: today_cost,
-        by_model,
+        today_calls,
+        by_interaction,
     })
 }
 
