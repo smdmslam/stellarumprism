@@ -11,6 +11,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tauri::Emitter;
 
 /// OpenRouter slug for the backing web search model. Hardcoded here since
 /// web_search is an internal tool, not a user-facing model choice.
@@ -1173,7 +1174,7 @@ pub async fn execute_web_search(
     let duration_ms = start_time.elapsed().as_millis() as u64;
 
     if let Some(u) = &parsed.usage {
-        crate::usage::emit_usage_event(
+        let cost = crate::usage::emit_usage_event(
             app_handle,
             None, // request_id not easily available for non-streaming Sonar call yet
             chat_id,
@@ -1187,6 +1188,10 @@ pub async fn execute_web_search(
             true,
             false,
         );
+        if let Err(e) = crate::billing::deduct_usage_cost(cost) {
+            let _ = app_handle.emit("billing-alert", &e.to_string());
+            eprintln!("[web_search] Failed to deduct usage cost: {}", e);
+        }
     }
     let Some(choice) = parsed.choices.into_iter().next() else {
         return err_invocation("sonar returned no choices".into());
