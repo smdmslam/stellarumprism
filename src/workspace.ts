@@ -433,11 +433,11 @@ export class Workspace {
               <span>Agent</span>
             </div>
             <div class="agent-toolbar-actions">
-              <button class="strict-toggle" type="button" data-strict="true" title="Toggle Strict mode — when on, chat turns force grounded instructions and the verifier pass." aria-label="Strict mode" aria-pressed="true">
+              <button class="strict-toggle" type="button" data-strict="true" title="Always Verify: force grounded instructions and the verifier pass on every agent turn. Auto Verify: Prism still auto-grounds inspectable factual prompts, with less latency." aria-label="Verification mode" aria-pressed="true">
                 <span class="strict-toggle-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
                 </span>
-                <span class="strict-toggle-label">Strict</span>
+                <span class="strict-toggle-label">Always Verify</span>
               </button>
               <button class="skills-toggle" type="button" data-aware="false" title="Toggle skills awareness — when on, the agent can request user-curated skills via the read_skill tool (each request is approved). Off by default." aria-label="Skills awareness" aria-pressed="false">skills off</button>
             </div>
@@ -1589,9 +1589,9 @@ export class Workspace {
       this.maybeNudgeLongThread();
       this.maybeNudgeTopicShift(prompt);
     }
-    // Grounded-Chat protocol. In Strict mode, every agent turn gets a
-    // rigor scaffold and verifier override. In Standard mode, plain
-    // chat only gets the scaffold when the prompt looks like an
+    // Grounded-Chat protocol. In Always Verify mode, every agent turn
+    // gets a rigor scaffold and verifier override. In Auto Verify mode,
+    // plain chat only gets the scaffold when the prompt looks like an
     // inspectable factual question; mode-driven turns rely on their
     // own stricter personas.
     //
@@ -1608,10 +1608,10 @@ export class Workspace {
     const trigger = detectVerifiedTrigger(prompt);
     if (strictMode) {
       const strictTrigger =
-        trigger ?? ({ kind: "repo-fact", matched: "strict mode" } as const);
+        trigger ?? ({ kind: "repo-fact", matched: "always verify" } as const);
       systemPrefix = buildVerifiedSystemPrefix(strictTrigger);
       this.notify(
-        `\u2192 [strict] ${verifiedKindLabel(strictTrigger.kind)} protocol active (matched \u201c${stripAnsi(strictTrigger.matched)}\u201d)`,
+        `\u2192 [always verify] ${verifiedKindLabel(strictTrigger.kind)} protocol active (matched \u201c${stripAnsi(strictTrigger.matched)}\u201d)`,
       );
     } else if (!options.mode && trigger) {
       systemPrefix = buildVerifiedSystemPrefix(trigger);
@@ -2751,19 +2751,19 @@ export class Workspace {
     btn.textContent = this.skillsAware ? "skills on" : "skills off";
   }
 
-  /** Toggle persistent Strict mode, which forces grounded chat + verifier. */
+  /** Toggle persistent Always Verify mode, which forces grounded chat + verifier. */
   private toggleStrictMode(): void {
     const next = !settings.getStrictMode();
     settings.setStrictMode(next);
     this.updateStrictToggleUI();
     this.notify(
       next
-        ? "[strict] on — grounded instructions and verifier pass forced for agent turns"
-        : "[strict] standard — grounded chat only auto-triggers on inspectable factual prompts",
+        ? "[verify] always — grounded instructions and verifier pass forced for every agent turn"
+        : "[verify] auto — factual prompts still auto-ground; other turns skip forced verification for lower latency",
     );
   }
 
-  /** Sync the Strict / Standard toolbar button from persisted settings. */
+  /** Sync the Always Verify / Auto Verify toolbar button from persisted settings. */
   private updateStrictToggleUI(): void {
     const btn = this.root.querySelector<HTMLButtonElement>(".strict-toggle");
     if (!btn) return;
@@ -2771,10 +2771,10 @@ export class Workspace {
     btn.dataset.strict = strict ? "true" : "false";
     btn.setAttribute("aria-pressed", strict ? "true" : "false");
     const label = btn.querySelector<HTMLElement>(".strict-toggle-label");
-    if (label) label.textContent = strict ? "Strict" : "Standard";
+    if (label) label.textContent = strict ? "Always Verify" : "Auto Verify";
     btn.title = strict
-      ? "Strict mode is on — grounded instructions and verifier pass are forced for agent turns."
-      : "Standard mode — grounded chat auto-triggers only on inspectable factual prompts.";
+      ? "Always Verify is on: every agent turn gets grounded instructions and a verifier pass. Best for maximum checking; may add latency/cost and can make answers more conservative."
+      : "Auto Verify is on: Prism still auto-grounds inspectable factual prompts like counts, repo facts, and feature summaries, but does not force verification on every turn.";
   }
 
   /**

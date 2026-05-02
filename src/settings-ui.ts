@@ -148,14 +148,14 @@ export class SettingsUI {
     this.content.innerHTML = `
       <h2 class="settings-section-title">General Settings</h2>
       <div class="settings-group">
-        <label class="settings-group-title">Agent Rigor</label>
+        <label class="settings-group-title">Agent Verification</label>
         <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
-          Strict mode forces grounded instructions and the verifier pass for agent turns. Standard mode is faster and only auto-grounds inspectable factual prompts.
+          Auto Verify still grounds inspectable factual prompts. Always Verify forces grounded instructions and the verifier pass on every agent turn.
         </p>
         <div class="model-setting-card">
           <div class="model-setting-info">
-            <div class="model-setting-name">Strict mode</div>
-            <div class="model-setting-desc">Default on. Turn off when you prefer lower latency over maximum rigor.</div>
+            <div class="model-setting-name">Always Verify</div>
+            <div class="model-setting-desc">Default on. Turn off to use Auto Verify for lower latency while keeping factual prompts grounded.</div>
           </div>
           <label class="prism-toggle">
             <input type="checkbox" id="setting-strict-mode" ${settings.getStrictMode() ? "checked" : ""}>

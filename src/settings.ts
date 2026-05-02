@@ -48,7 +48,7 @@ export interface AppSettings {
   editorFontSize: number;
   /** Agent / Chat font size */
   chatFontSize: number;
-  /** Strict rigor mode: force grounded instructions + verifier for chat turns. */
+  /** Verification mode: true = Always Verify, false = Auto Verify. */
   strictMode: boolean;
 }
 
