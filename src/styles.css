@@ -3716,20 +3716,23 @@ input:checked + .toggle-slider:before {
   background: transparent;
   cursor: col-resize;
   position: relative;
-  z-index: 2;
-  transition: background-color 120ms ease;
+  z-index: 10; /* Ensure grab area stays on top of pane content */
+  transition: background-color 160ms ease, box-shadow 160ms ease;
   user-select: none;
   -webkit-user-select: none;
 }
 .layout-divider::before {
   content: "";
   position: absolute;
-  inset: 0 -3px;
+  /* Massive invisible grab area: 4px + 8px + 8px = 20px total hit zone */
+  inset: 0 -8px;
 }
 .layout-divider:hover,
 .layout-divider.dragging,
 .layout-divider:focus-visible {
-  background: rgba(125, 211, 252, 0.35);
+  background: rgba(125, 211, 252, 0.4);
+  /* Cyber-Noir glow */
+  box-shadow: 0 0 8px rgba(125, 211, 252, 0.5);
   outline: none;
 }
 .layout-divider-preview {
@@ -3739,16 +3742,20 @@ input:checked + .toggle-slider:before {
   cursor: row-resize;
   margin-top: -2px;
   margin-bottom: -2px;
+  position: relative;
+  z-index: 10;
 }
 .layout-divider-preview::before {
   content: "";
   position: absolute;
-  inset: -6px 0;
+  /* Horizontal grab area: 4px + 10px + 10px = 24px hit zone */
+  inset: -10px 0;
 }
 .layout-divider-preview:hover,
 .layout-divider-preview.dragging,
 .layout-divider-preview:focus-visible {
-  background: rgba(125, 211, 252, 0.35);
+  background: rgba(125, 211, 252, 0.4);
+  box-shadow: 0 0 8px rgba(125, 211, 252, 0.5);
   outline: none;
 }
 /* Vertical divider between the center pane and the agent pane. */
@@ -3758,20 +3765,22 @@ input:checked + .toggle-slider:before {
   background: transparent;
   cursor: col-resize;
   position: relative;
-  z-index: 2;
-  transition: background-color 120ms ease;
+  z-index: 10;
+  transition: background-color 160ms ease, box-shadow 160ms ease;
   user-select: none;
   -webkit-user-select: none;
 }
 .layout-divider-pane::before {
   content: "";
   position: absolute;
-  inset: 0 -3px;
+  /* Vertical grab area: 4px + 8px + 8px = 20px total hit zone */
+  inset: 0 -8px;
 }
 .layout-divider-pane:hover,
 .layout-divider-pane.dragging,
 .layout-divider-pane:focus-visible {
-  background: rgba(125, 211, 252, 0.35);
+  background: rgba(125, 211, 252, 0.4);
+  box-shadow: 0 0 8px rgba(125, 211, 252, 0.5);
   outline: none;
 }
 /* Hide the problems-panel divider when the panel is hidden. */

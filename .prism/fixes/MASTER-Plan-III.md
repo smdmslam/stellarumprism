@@ -194,11 +194,10 @@ so CAN This behavior be improved. in this case i know the file exists. so i pres
 - **Fixed in:** `7dfc64e` (sidebar toggle)
 - **What works:** Explicit button functionality.
 
-#### 3.4 File viewer resize polish
-- **Status:** NOT STARTED
-- **Issue:** Improve right-border drag behavior.
-- **Current:** `.layout-divider` drag handlers.
-- **Note:** CSS tweaks for larger grab area.
+#### 3.4 File viewer resize polish ✅ DONE
+- **Status:** IMPLEMENTED
+- **Fixed in:** `e10f1b2` (increased grab area + hover glow)
+- **What works:** Dividers have a 20px+ invisible hit zone and a Cyber-Noir neon glow on hover.
 
 #### 3.5 File viewer Cmd+F find ✅ DONE
 - **Status:** IMPLEMENTED
@@ -427,6 +426,7 @@ All NOT STARTED.
 
 ### File Explorer / Viewer (Phase 3)
 ✅ 3.1 Context actions (bc36380 + 5f0d12d delete folder + multi-select)
+✅ 3.4 Resize polish (e10f1b2)
 ✅ 3.2 Settings (bc36380)
 ✅ 3.3 Visibility toggle (7dfc64e)
 ✅ 3.5 Cmd+F find (3f97cdd)
@@ -459,7 +459,7 @@ All NOT STARTED.
 |-------|-------|--------|-------|
 | **1** Trust & Safety | 6 | 5/6 DONE | 1.6 (contract-change blast-radius) added 2026-04-30; CRITICAL. |
 | **2** Daily-use | 9 | 8/9 DONE | Only 2.9 (agent Cmd+F) remaining. |
-| **3** File Explorer | 7 | 6/7 DONE | 3.4 resize + 3.7 recent paths left. |
+| **3** File Explorer | 7 | 7/7 DONE | Clean. |
 | **4** Protocols | 5 | 1/5 DONE | UI discoverability critical next. |
 | **5** AI Usage / Billing | 11 | 1/11 DONE (partial) | **CRITICAL PATH** — instrumentation urgent. |
 | **6** Analysis Engine | 2 | 0/2 DONE | Tie to Phase 5 verifier work. |
@@ -468,7 +468,7 @@ All NOT STARTED.
 | **9** Backlog | 4 | 0/4 DONE | Nice-to-have. |
 | **10** Design Evolution | 12 | 0/12 DONE | "Cyber-Noir" aesthetics, Features, & IDE Editor. |
 
-**Overall:** 37/74 items DONE (~50%) | Phases 1,2,3,7,8 mostly complete | Phase 5 still CRITICAL; new 1.6 also CRITICAL
+**Overall:** 38/74 items DONE (~51%)
 
 ---
 
