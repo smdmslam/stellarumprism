@@ -1816,11 +1816,12 @@ pub async fn agent_query(
                                     match call.function.name.as_str() {
                                         "web_search" => {
                                             crate::tools::execute_web_search(
+                                                &app_handle,
                                                 chat_id_for_task.clone(),
                                                 cwd_str.clone(),
-                                                &call.function.arguments,
                                                 &api_key,
                                                 &base_url,
+                                                &call.function.arguments,
                                             )
                                             .await
                                         }

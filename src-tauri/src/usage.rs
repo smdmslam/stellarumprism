@@ -104,9 +104,11 @@ pub fn get_usage_summary(chat_id: String) -> Result<UsageSummary, String> {
         return Ok(UsageSummary {
             session_tokens: 0,
             session_cost_usd: 0.0,
+            session_calls: 0,
             today_tokens: 0,
             today_cost_usd: 0.0,
-            by_model: Vec::new(),
+            today_calls: 0,
+            by_interaction: Vec::new(),
         });
     }
 

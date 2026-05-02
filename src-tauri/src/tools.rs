@@ -1111,6 +1111,7 @@ struct SonarResponseMessage {
 /// a one-shot search backend, not a chat participant. The primary agent
 /// model handles synthesis across multiple searches.
 pub async fn execute_web_search(
+    app_handle: &tauri::AppHandle,
     chat_id: String,
     workspace_id: String,
     args_json: &str,
@@ -1173,6 +1174,7 @@ pub async fn execute_web_search(
 
     if let Some(u) = &parsed.usage {
         crate::usage::emit_usage_event(
+            app_handle,
             None, // request_id not easily available for non-streaming Sonar call yet
             chat_id,
             workspace_id,
