@@ -400,7 +400,8 @@ All NOT STARTED.
 | **Glassmorphism Layers:** Implement `backdrop-filter: blur()` on sidebars to create depth. | **Contextual Code Wrapping:** Color-coded background blocks for code based on audit status (Red/Amber/Teal). |
 | **Noir Palette:** Transition to high-contrast deep indigo/purple neutrals instead of standard grays. | **Verification Coverage Widget:** A progress meter for "Percentage of codebase verified by agent". |
 | **Sharp Light-Source Borders:** 1px borders with gradient "light sources" for panel definition. | **Active Guard Indicators:** Tab-bar icons showing live background checks (Typecheck, Audit, Tests). |
-| **Modern Typography Mix:** Sharp sans-serif for UI labels vs. high-performance mono for code. | **Integrity Dashboard:** A summary view of total project "health" and open issues. |
+| **Modern Typography Mix:** Sharp sans-serif for UI labels vs. high-performance mono for code. | **Full IDE Editor Integration:** High-fidelity substrate (CodeMirror 6) with Multi-Tab support and Semantic Block Highlighting. |
+| **Motion Design:** Micro-transitions for issue resolution and "luminous" state changes. | **Phantom Inline Annotations:** Virtual text for agent comments directly in the editor gutter/code. |
 
 ---
 
@@ -465,9 +466,9 @@ All NOT STARTED.
 | **7** Skills | 6 | 4/6 DONE | v1 runtime shipped; 7.5–7.6 deferred. |
 | **8** Plumbing | 5 | 5/5 DONE | Clean. |
 | **9** Backlog | 4 | 0/4 DONE | Nice-to-have. |
-| **10** Design Evolution | 6 | 0/6 DONE | "Cyber-Noir" aesthetics & features. |
+| **10** Design Evolution | 12 | 0/12 DONE | "Cyber-Noir" aesthetics, Features, & IDE Editor. |
 
-**Overall:** 35/66 items DONE (~53%) | Phases 1,2,3,7,8 mostly complete | Phase 5 still CRITICAL; new 1.6 also CRITICAL
+**Overall:** 35/72 items DONE (~48%) | Phases 1,2,3,7,8 mostly complete | Phase 5 still CRITICAL; new 1.6 also CRITICAL
 
 ---
 
