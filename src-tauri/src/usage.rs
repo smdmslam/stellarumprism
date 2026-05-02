@@ -66,7 +66,8 @@ pub fn emit_usage_event(
     duration_ms: u64,
     success: bool,
     cancelled: bool,
-) {
+) -> f64 {
+    eprintln!("[usage] emitting event: model={}, tokens={}+{}", model, prompt_tokens, completion_tokens);
     let total_tokens = prompt_tokens + completion_tokens;
     let pricing = get_pricing_basis(&model);
     
@@ -97,9 +98,12 @@ pub fn emit_usage_event(
 
     if let Some(path) = usage_file_path() {
         if let Ok(json) = serde_json::to_string(&event) {
+            eprintln!("[usage] persisting to {:?}", path);
             let _ = append_to_file(path, format!("{}\n", json));
         }
     }
+
+    estimated_cost_usd
 }
 
 #[tauri::command]
@@ -194,7 +198,9 @@ fn usage_file_path() -> Option<PathBuf> {
     dirs::data_dir().map(|d| {
         let p = d.join("prism");
         let _ = std::fs::create_dir_all(&p);
-        p.join("usage.jsonl")
+        let file_path = p.join("usage.jsonl");
+        eprintln!("[usage] resolved path: {:?}", file_path);
+        file_path
     })
 }
 
@@ -202,8 +208,12 @@ fn append_to_file(path: PathBuf, data: String) -> std::io::Result<()> {
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(path)?;
-    file.write_all(data.as_bytes())
+        .open(&path)?;
+    if let Err(e) = file.write_all(data.as_bytes()) {
+        eprintln!("[usage] failed to write to {:?}: {}", path, e);
+        return Err(e);
+    }
+    Ok(())
 }
 
 pub fn get_total_today_tokens() -> u64 {
