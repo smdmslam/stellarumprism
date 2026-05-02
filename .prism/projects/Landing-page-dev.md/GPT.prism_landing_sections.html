@@ -1,0 +1,305 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap');
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#08080f;--surface:#0d0d16;--surface2:#0a0a12;
+  --border:rgba(255,255,255,0.07);--border-mid:rgba(255,255,255,0.11);
+  --text:#eeeef5;--muted:rgba(238,238,245,0.45);--dim:rgba(238,238,245,0.18);
+  --g:#00e09e;--b:#3b9eff;--i:#5b6fff;--v:#9b6fff;
+  --g-dim:rgba(0,224,158,0.12);--b-dim:rgba(59,158,255,0.1);
+  --i-dim:rgba(91,111,255,0.12);--v-dim:rgba(155,111,255,0.1);
+}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;overflow-x:hidden;}
+section{padding:80px 40px;border-top:0.5px solid var(--border);}
+.mono{font-family:'DM Mono',monospace;}
+.label{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--dim);margin-bottom:12px;}
+.gbiv{background:linear-gradient(90deg,var(--g),var(--b),var(--i),var(--v));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+
+/* SOCIAL PROOF */
+.proof-strip{display:flex;align-items:center;justify-content:center;gap:0;padding:0 40px;border-top:0.5px solid var(--border);border-bottom:0.5px solid var(--border);background:var(--surface2);}
+.proof-item{padding:22px 36px;border-right:0.5px solid var(--border);display:flex;align-items:center;gap:10px;font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);white-space:nowrap;}
+.proof-item:last-child{border-right:none;}
+.proof-num{font-size:15px;font-weight:500;color:var(--text);}
+.proof-dot{width:5px;height:5px;border-radius:50%;}
+
+/* PROBLEM */
+.problem-line{font-size:clamp(28px,4vw,48px);font-weight:800;letter-spacing:-0.03em;line-height:1.1;max-width:640px;margin:0 auto;text-align:center;}
+.problem-sub{text-align:center;color:var(--muted);font-size:16px;margin-top:20px;font-weight:400;}
+
+.bug-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:52px;}
+.bug-card{background:var(--surface);border:0.5px solid var(--border-mid);border-radius:10px;overflow:hidden;}
+.bug-card-head{padding:12px 16px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:8px;}
+.bug-card-title{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);}
+.bug-tag{font-family:'DM Mono',monospace;font-size:9px;padding:2px 7px;border-radius:3px;margin-left:auto;}
+.tag-v{background:var(--v-dim);color:var(--v);}
+.tag-i{background:var(--i-dim);color:var(--i);}
+.bug-body{padding:14px 16px;font-family:'DM Mono',monospace;font-size:10.5px;line-height:1.9;color:var(--dim);}
+.cl-del{color:rgba(155,111,255,0.6);}
+.cl-ok{color:var(--g);opacity:0.7;}
+.cl-hi{color:var(--text);}
+.cl-cm{color:rgba(255,255,255,0.2);font-style:italic;}
+.bug-foot{padding:10px 16px;border-top:0.5px solid var(--border);font-family:'DM Mono',monospace;font-size:9.5px;color:var(--v);display:flex;align-items:center;gap:6px;}
+.foot-dot{width:5px;height:5px;border-radius:50%;background:var(--v);}
+
+/* HOW IT WORKS */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:52px;position:relative;}
+.step{padding:32px;border-right:0.5px solid var(--border);position:relative;}
+.step:last-child{border-right:none;}
+.step-num{font-family:'DM Mono',monospace;font-size:11px;color:var(--dim);margin-bottom:20px;}
+.step-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;}
+.step-title{font-size:18px;font-weight:700;letter-spacing:-0.02em;margin-bottom:8px;}
+.step-desc{font-size:13px;color:var(--muted);line-height:1.65;font-weight:400;}
+.step-arrow{position:absolute;right:-10px;top:50%;transform:translateY(-50%);z-index:2;font-family:'DM Mono',monospace;font-size:14px;color:var(--border-mid);}
+
+/* WHERE IT LIVES */
+.integrations{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:44px;}
+.int-card{background:var(--surface);border:0.5px solid var(--border-mid);border-radius:10px;padding:24px;}
+.int-icon{width:32px;height:32px;border-radius:7px;margin-bottom:16px;display:flex;align-items:center;justify-content:center;}
+.int-title{font-size:15px;font-weight:700;letter-spacing:-0.02em;margin-bottom:6px;}
+.int-desc{font-size:12px;color:var(--muted);line-height:1.6;font-weight:400;}
+.int-cmd{font-family:'DM Mono',monospace;font-size:10px;color:var(--dim);margin-top:12px;padding:6px 10px;background:var(--surface2);border-radius:5px;border:0.5px solid var(--border);}
+
+/* PRICING */
+.pricing-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:44px;}
+.price-card{background:var(--surface);border:0.5px solid var(--border-mid);border-radius:10px;padding:28px;display:flex;flex-direction:column;}
+.price-card.featured{border-color:var(--i);background:var(--i-dim);}
+.price-tier{font-family:'DM Mono',monospace;font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--dim);margin-bottom:16px;}
+.price-card.featured .price-tier{color:var(--i);}
+.price-num{font-size:38px;font-weight:800;letter-spacing:-0.04em;line-height:1;}
+.price-num span{font-size:16px;font-weight:400;color:var(--muted);}
+.price-who{font-size:12px;color:var(--muted);margin-top:6px;margin-bottom:20px;font-weight:400;}
+.price-feats{list-style:none;display:flex;flex-direction:column;gap:8px;flex:1;}
+.price-feat{font-size:12px;color:var(--muted);display:flex;align-items:flex-start;gap:8px;line-height:1.5;}
+.feat-check{width:14px;height:14px;border-radius:50%;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:8px;}
+.check-g{background:var(--g-dim);color:var(--g);}
+.check-i{background:var(--i-dim);color:var(--i);}
+.price-cta{margin-top:24px;padding:11px;border-radius:7px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;text-align:center;border:none;transition:opacity 0.2s;}
+.cta-ghost{background:none;border:0.5px solid var(--border-mid);color:var(--muted);}
+.cta-ghost:hover{color:var(--text);}
+.cta-solid{background:var(--text);color:var(--bg);}
+.cta-solid:hover{opacity:0.85;}
+.cta-outline{background:none;border:0.5px solid var(--i);color:var(--i);}
+.cta-outline:hover{background:var(--i-dim);}
+
+/* FINAL CTA */
+.final-cta{text-align:center;padding:100px 40px;}
+.final-headline{font-size:clamp(32px,5vw,58px);font-weight:800;letter-spacing:-0.04em;line-height:1.05;max-width:560px;margin:0 auto 16px;}
+.final-sub{font-size:15px;color:var(--muted);margin-bottom:36px;font-weight:400;}
+.email-row{display:flex;align-items:center;justify-content:center;gap:10px;}
+.email-input{font-family:'DM Mono',monospace;font-size:13px;background:var(--surface);border:0.5px solid var(--border-mid);color:var(--text);padding:12px 18px;border-radius:7px;width:260px;outline:none;}
+.email-input::placeholder{color:var(--dim);}
+.email-input:focus{border-color:var(--i);}
+.email-btn{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;background:var(--text);color:var(--bg);border:none;padding:12px 22px;border-radius:7px;cursor:pointer;white-space:nowrap;transition:opacity 0.2s;}
+.email-btn:hover{opacity:0.85;}
+.final-meta{font-family:'DM Mono',monospace;font-size:10px;color:var(--dim);margin-top:18px;letter-spacing:0.04em;}
+.footer-bar{border-top:0.5px solid var(--border);padding:20px 40px;display:flex;align-items:center;justify-content:space-between;font-family:'DM Mono',monospace;font-size:10.5px;color:var(--dim);}
+</style>
+
+<div class="proof-strip">
+  <div class="proof-item">
+    <div class="proof-dot" style="background:var(--g);box-shadow:0 0 6px var(--g);"></div>
+    <span class="mono"><span class="proof-num">MVP</span> shipped</span>
+  </div>
+  <div class="proof-item">
+    <span class="proof-num mono">400+</span>
+    <span>tests passing</span>
+  </div>
+  <div class="proof-item">
+    <span class="proof-num mono">Rust + TypeScript</span>
+  </div>
+  <div class="proof-item">
+    <span class="proof-num mono">20+</span>
+    <span>models supported</span>
+  </div>
+  <div class="proof-item">
+    <div class="proof-dot" style="background:var(--b);box-shadow:0 0 6px var(--b);"></div>
+    <span>real bugs found in dogfooding</span>
+  </div>
+</div>
+
+<section>
+  <div class="label" style="text-align:center;">the problem</div>
+  <p class="problem-line">AI code looks finished.<br>It often isn't.</p>
+  <p class="problem-sub">The bugs that slip through aren't obvious. They're plausible.</p>
+
+  <div class="bug-cards">
+    <div class="bug-card">
+      <div class="bug-card-head">
+        <span class="bug-card-title mono">auth.service.ts</span>
+        <span class="bug-tag tag-v">signature drift</span>
+      </div>
+      <div class="bug-body">
+        <div class="cl-del">- refreshToken(userId)</div>
+        <div class="cl-ok">+ refreshToken(userId, role)</div>
+        <div style="height:8px;"></div>
+        <div class="cl-cm">// caller still passes one arg</div>
+        <div class="cl-cm">// tests pass. ships. breaks.</div>
+      </div>
+      <div class="bug-foot"><div class="foot-dot"></div>missed caller in user.controller:47</div>
+    </div>
+
+    <div class="bug-card">
+      <div class="bug-card-head">
+        <span class="bug-card-title mono">routes.ts</span>
+        <span class="bug-tag tag-i">dead import</span>
+      </div>
+      <div class="bug-body">
+        <div class="cl-del">import { RoleGuard }</div>
+        <div class="cl-del">  from './guards/role'</div>
+        <div style="height:8px;"></div>
+        <div class="cl-cm">// imported, never applied</div>
+        <div class="cl-cm">// route unprotected</div>
+      </div>
+      <div class="bug-foot"><div class="foot-dot"></div>guard wired to nothing</div>
+    </div>
+
+    <div class="bug-card">
+      <div class="bug-card-head">
+        <span class="bug-card-title mono">schema.ts</span>
+        <span class="bug-tag tag-v">schema drift</span>
+      </div>
+      <div class="bug-body">
+        <div class="cl-ok">+ User.role: string</div>
+        <div style="height:8px;"></div>
+        <div class="cl-cm">// field added to DB</div>
+        <div class="cl-cm">// JWT payload not updated</div>
+        <div class="cl-cm">// auth silently incomplete</div>
+      </div>
+      <div class="bug-foot"><div class="foot-dot"></div>payload missing role claim</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="label" style="text-align:center;">how it works</div>
+  <p class="problem-line" style="font-size:clamp(24px,3.5vw,40px);margin-top:0;">Three steps. No new process.</p>
+
+  <div class="steps" style="border:0.5px solid var(--border);border-radius:10px;overflow:hidden;margin-top:44px;">
+    <div class="step">
+      <div class="step-num">01</div>
+      <div class="step-icon" style="background:var(--g-dim);">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="2" width="14" height="14" rx="3" stroke="#00e09e" stroke-width="1.2"/><path d="M5 9h8M9 5v8" stroke="#00e09e" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </div>
+      <div class="step-title">Run Prism after AI</div>
+      <div class="step-desc">After any AI-generated change — refactor, new feature, bug fix — run <span class="mono" style="font-size:11px;color:var(--g);">prism audit</span>. One command.</div>
+      <div class="step-arrow">→</div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">02</div>
+      <div class="step-icon" style="background:var(--b-dim);">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="9" r="6" stroke="#3b9eff" stroke-width="1.2"/><path d="M6 9l2 2 4-4" stroke="#3b9eff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="step-title">It checks against reality</div>
+      <div class="step-desc">Compiler output, tests, symbol resolution, schema state, runtime probes. Not vibes — deterministic checks below the model.</div>
+      <div class="step-arrow">→</div>
+    </div>
+
+    <div class="step">
+      <div class="step-num">03</div>
+      <div class="step-icon" style="background:var(--i-dim);">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 14l4-4 3 3 5-7" stroke="#5b6fff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="step-title">Ship with evidence</div>
+      <div class="step-desc">You get a proof artifact — what passed, what failed, what's unresolved. Ship when it's proven. Not when it looks done.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="label" style="text-align:center;">where it lives</div>
+  <p class="problem-line" style="font-size:clamp(24px,3.5vw,40px);margin-top:0;">Fits the workflow you already have.</p>
+
+  <div class="integrations">
+    <div class="int-card">
+      <div class="int-icon" style="background:var(--g-dim);">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="4" width="14" height="10" rx="2" stroke="#00e09e" stroke-width="1.2"/><path d="M5 8h2M5 11h6" stroke="#00e09e" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </div>
+      <div class="int-title">CLI</div>
+      <div class="int-desc">Run audits from the terminal. Pipe into any existing script or deploy hook. Works anywhere.</div>
+      <div class="int-cmd">$ prism audit ./src</div>
+    </div>
+
+    <div class="int-card" style="border-color:var(--i);">
+      <div class="int-icon" style="background:var(--i-dim);">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="1" y="3" width="16" height="12" rx="2" stroke="#5b6fff" stroke-width="1.2"/><path d="M5 8l3 3 5-5" stroke="#5b6fff" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="int-title">IDE panel</div>
+      <div class="int-desc">Inline verification as you work. Issues flagged in context, before you push.</div>
+      <div class="int-cmd">Prism · 3 issues · 41 passed</div>
+    </div>
+
+    <div class="int-card">
+      <div class="int-icon" style="background:var(--b-dim);">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="9" cy="6" r="2.5" stroke="#3b9eff" stroke-width="1.2"/><path d="M4 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="#3b9eff" stroke-width="1.2" stroke-linecap="round"/></svg>
+      </div>
+      <div class="int-title">CI gate</div>
+      <div class="int-desc">Block merges that haven't passed verification. Audit artifacts saved inside the repo.</div>
+      <div class="int-cmd">prism-audit · passed · 94ms</div>
+    </div>
+  </div>
+</section>
+
+<section style="padding:80px 40px 0;">
+  <div class="label" style="text-align:center;">pricing</div>
+  <p class="problem-line" style="font-size:clamp(24px,3.5vw,40px);margin-top:0;">Start free. Scale when it counts.</p>
+
+  <div class="pricing-grid">
+    <div class="price-card">
+      <div class="price-tier">Individual</div>
+      <div class="price-num">$15<span> / mo</span></div>
+      <div class="price-who">Solo developers</div>
+      <ul class="price-feats">
+        <li class="price-feat"><div class="feat-check check-g">✓</div>Full CLI access</li>
+        <li class="price-feat"><div class="feat-check check-g">✓</div>IDE panel</li>
+        <li class="price-feat"><div class="feat-check check-g">✓</div>All audit commands</li>
+        <li class="price-feat"><div class="feat-check check-g">✓</div>Audit artifact export</li>
+      </ul>
+      <button class="price-cta cta-ghost">Get started</button>
+    </div>
+
+    <div class="price-card featured">
+      <div class="price-tier">Team</div>
+      <div class="price-num" style="color:var(--text);-webkit-text-fill-color:var(--text);">$50<span> / seat / mo</span></div>
+      <div class="price-who">Engineering teams</div>
+      <ul class="price-feats">
+        <li class="price-feat"><div class="feat-check check-i">✓</div>Everything in Individual</li>
+        <li class="price-feat"><div class="feat-check check-i">✓</div>CI gate integration</li>
+        <li class="price-feat"><div class="feat-check check-i">✓</div>Shared workspace memory</li>
+        <li class="price-feat"><div class="feat-check check-i">✓</div>Team audit dashboard</li>
+        <li class="price-feat"><div class="feat-check check-i">✓</div>Priority support</li>
+      </ul>
+      <button class="price-cta cta-solid">Get started</button>
+    </div>
+
+    <div class="price-card">
+      <div class="price-tier">Enterprise</div>
+      <div class="price-num">Custom</div>
+      <div class="price-who">Security and platform orgs</div>
+      <ul class="price-feats">
+        <li class="price-feat"><div class="feat-check check-g">✓</div>Everything in Team</li>
+        <li class="price-feat"><div class="feat-check check-g">✓</div>Policy gates + audit trails</li>
+        <li class="price-feat"><div class="feat-check check-g">✓</div>SSO + access controls</li>
+        <li class="price-feat"><div class="feat-check check-g">✓</div>Dedicated onboarding</li>
+        <li class="price-feat"><div class="feat-check check-g">✓</div>SLA</li>
+      </ul>
+      <button class="price-cta cta-ghost">Talk to us</button>
+    </div>
+  </div>
+</section>
+
+<div class="final-cta">
+  <div class="label">early access</div>
+  <h2 class="final-headline">AI writes the code.<br><span class="gbiv">Prism proves it.</span></h2>
+  <p class="final-sub">Join the waitlist. First access goes to teams actively shipping AI-generated code.</p>
+  <div class="email-row">
+    <input class="email-input" type="email" placeholder="you@company.com" />
+    <button class="email-btn">Request access</button>
+  </div>
+  <div class="final-meta">prism.dev · steven@dmwfinancegroup.com</div>
+</div>
+
+<div class="footer-bar">
+  <span>© 2026 Prism · Stellarum / DMW Finance Group</span>
+  <span>Seed Round · 2026</span>
+</div>

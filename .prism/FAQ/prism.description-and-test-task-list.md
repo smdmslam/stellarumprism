@@ -1,5 +1,7 @@
 **Prism** is a substrate-gated AI coding environment — a Tauri desktop app where every LLM claim is grounded by deterministic checks (typecheck, AST, tests, HTTP probes, LSP) that the model cannot fake.
 
+"Your own README already states the north star clearly: substrate-first verification, consumers (/audit, /fix, /build, /refactor), prism-audit CLI, workspace spine (.prism/state.json), and UI (problems panel, editor, approvals)."
+
 ### Core Architecture:
 - **Substrate cells**: `typecheck`, `ast_query`, `run_tests`, `http_fetch`, `e2e_run`, `lsp_diagnostics`, `file_snippet`
 - **Consumers/Modes**: `/audit`, `/build`, `/fix`, `/refactor`, `/new`, `/test-gen`

@@ -181,8 +181,8 @@ so CAN This behavior be improved. in this case i know the file exists. so i pres
 
 #### 3.1 Explorer context actions ✅ DONE
 - **Status:** IMPLEMENTED
-- **Fixed in:** `bc36380` + recent expansions (e.g., delete in `56c84c7`)
-- **What works:** Right-click menu with new file/folder, rename, copy path, add to prompt, delete.
+- **Fixed in:** `bc36380` + recent expansions (e.g., delete folder and multi-select in `5f0d12d`)
+- **What works:** Right-click menu with new file/folder, rename, copy path, add to prompt, delete folder, multi-selection batch actions.
 
 #### 3.2 Explorer settings (size / date metadata) ✅ DONE
 - **Status:** IMPLEMENTED
@@ -426,7 +426,7 @@ All NOT STARTED.
 ✅ 2.8 Task visibility (protocol cards)
 
 ### File Explorer / Viewer (Phase 3)
-✅ 3.1 Context actions (bc36380 + 56c84c7 delete)
+✅ 3.1 Context actions (bc36380 + 5f0d12d delete folder + multi-select)
 ✅ 3.2 Settings (bc36380)
 ✅ 3.3 Visibility toggle (7dfc64e)
 ✅ 3.5 Cmd+F find (3f97cdd)
@@ -468,7 +468,7 @@ All NOT STARTED.
 | **9** Backlog | 4 | 0/4 DONE | Nice-to-have. |
 | **10** Design Evolution | 12 | 0/12 DONE | "Cyber-Noir" aesthetics, Features, & IDE Editor. |
 
-**Overall:** 35/72 items DONE (~48%) | Phases 1,2,3,7,8 mostly complete | Phase 5 still CRITICAL; new 1.6 also CRITICAL
+**Overall:** 37/74 items DONE (~50%) | Phases 1,2,3,7,8 mostly complete | Phase 5 still CRITICAL; new 1.6 also CRITICAL
 
 ---
 
@@ -501,5 +501,5 @@ All NOT STARTED.
 
 ---
 
-**Last Updated:** 2026-04-30 (skills v1 shipped; Phase 5 prioritized; 1.6 contract-change blast-radius added)  
+**Last Updated:** 2026-05-02 (Rigor spacing fix, folder delete, and multi-select shipped; Phase 10 items updated)  
 **Format:** Focused on unshipped items; progress from commits integrated.

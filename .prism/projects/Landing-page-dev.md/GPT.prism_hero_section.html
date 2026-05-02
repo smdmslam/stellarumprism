@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&family=Syne:wght@400;600;700;800&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --prism-bg: #09090f;
+    --prism-surface: #111118;
+    --prism-border: rgba(255,255,255,0.07);
+    --prism-border-strong: rgba(255,255,255,0.12);
+    --prism-text: #f0f0f5;
+    --prism-muted: rgba(240,240,245,0.45);
+    --prism-dim: rgba(240,240,245,0.2);
+    --accent-r: 120, 80, 255;
+    --accent-g: 0, 220, 160;
+    --accent-b: 80, 160, 255;
+  }
+
+  body {
+    background: var(--prism-bg);
+    color: var(--prism-text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* PRISM LIGHT EFFECT */
+  .prism-light {
+    position: absolute;
+    top: -120px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1px;
+    height: 200px;
+    background: rgba(255,255,255,0.9);
+    box-shadow: 0 0 8px 2px rgba(255,255,255,0.6);
+    animation: beam-pulse 3s ease-in-out infinite;
+  }
+
+  .prism-disperse {
+    position: absolute;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 320px;
+    height: 180px;
+    overflow: visible;
+  }
+
+  @keyframes beam-pulse {
+    0%, 100% { opacity: 0.8; }
+    50% { opacity: 1; }
+  }
+
+  /* NAV */
+  nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 40px;
+    border-bottom: 0.5px solid var(--prism-border);
+    position: relative;
+    z-index: 10;
+  }
+
+  .nav-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .logo-icon {
+    width: 28px;
+    height: 28px;
+    position: relative;
+  }
+
+  .nav-links {
+    display: flex;
+    gap: 32px;
+    list-style: none;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--prism-muted);
+  }
+
+  .nav-links a { color: inherit; text-decoration: none; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--prism-text); }
+
+  .nav-cta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .btn-ghost {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    color: var(--prism-muted);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px 0;
+    transition: color 0.2s;
+  }
+  .btn-ghost:hover { color: var(--prism-text); }
+
+  .btn-primary {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--prism-text);
+    color: var(--prism-bg);
+    border: none;
+    padding: 9px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    letter-spacing: 0.01em;
+  }
+  .btn-primary:hover { opacity: 0.88; }
+
+  /* HERO */
+  .hero {
+    position: relative;
+    padding: 100px 40px 80px;
+    text-align: center;
+    overflow: hidden;
+  }
+
+  /* Dispersed spectrum rays */
+  .spectrum-rays {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 900px;
+    height: 400px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--prism-muted);
+    border: 0.5px solid var(--prism-border-strong);
+    padding: 5px 12px;
+    border-radius: 100px;
+    margin-bottom: 32px;
+    letter-spacing: 0.04em;
+    position: relative;
+    z-index: 2;
+  }
+
+  .badge-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: rgb(var(--accent-g));
+    box-shadow: 0 0 6px rgb(var(--accent-g));
+    animation: dot-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes dot-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .hero-headline {
+    font-size: clamp(42px, 6vw, 76px);
+    font-weight: 800;
+    line-height: 1.0;
+    letter-spacing: -0.04em;
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 2;
+    color: var(--prism-text);
+  }
+
+  .hero-headline .spectrum-text {
+    background: linear-gradient(90deg,
+      #ff6b6b 0%,
+      #ffa94d 15%,
+      #ffe066 30%,
+      #69db7c 45%,
+      #4dabf7 60%,
+      #845ef7 75%,
+      #f06595 90%
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: spectrum-shift 6s linear infinite;
+    background-size: 200% auto;
+  }
+
+  @keyframes spectrum-shift {
+    0% { background-position: 0% center; }
+    100% { background-position: 200% center; }
+  }
+
+  .hero-sub {
+    font-size: 18px;
+    font-weight: 400;
+    color: var(--prism-muted);
+    margin-bottom: 40px;
+    letter-spacing: -0.01em;
+    position: relative;
+    z-index: 2;
+    max-width: 480px;
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.55;
+    margin-top: 18px;
+    margin-bottom: 44px;
+  }
+
+  .hero-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 72px;
+    position: relative;
+    z-index: 2;
+  }
+
+  .btn-hero {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 13px 28px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.01em;
+  }
+
+  .btn-hero-primary {
+    background: #fff;
+    color: #09090f;
+    border: none;
+  }
+  .btn-hero-primary:hover { background: #e8e8f0; }
+
+  .btn-hero-ghost {
+    background: none;
+    color: var(--prism-muted);
+    border: 0.5px solid var(--prism-border-strong);
+  }
+  .btn-hero-ghost:hover { color: var(--prism-text); border-color: rgba(255,255,255,0.25); }
+
+  /* TERMINAL / IDE PREVIEW */
+  .ide-preview {
+    position: relative;
+    z-index: 2;
+    max-width: 860px;
+    margin: 0 auto;
+    border-radius: 12px;
+    border: 0.5px solid var(--prism-border-strong);
+    background: #0d0d14;
+    overflow: hidden;
+    box-shadow: 0 0 0 0.5px rgba(255,255,255,0.04), 0 40px 100px rgba(0,0,0,0.8), 0 0 80px rgba(80,80,255,0.05);
+  }
+
+  /* Spectrum glow under IDE */
+  .ide-glow {
+    position: absolute;
+    bottom: -60px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 600px;
+    height: 100px;
+    background: linear-gradient(90deg,
+      rgba(255,107,107,0.12) 0%,
+      rgba(69,219,124,0.15) 40%,
+      rgba(77,171,247,0.12) 70%,
+      rgba(132,94,247,0.1) 100%
+    );
+    filter: blur(30px);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .ide-titlebar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0;
+    border-bottom: 0.5px solid var(--prism-border);
+    background: #0a0a12;
+  }
+
+  .ide-traffic {
+    display: flex;
+    gap: 6px;
+    padding: 12px 16px;
+    border-right: 0.5px solid var(--prism-border);
+  }
+
+  .traffic-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+  }
+
+  .ide-tabs {
+    display: flex;
+    flex: 1;
+  }
+
+  .ide-tab {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 10px 18px;
+    border-right: 0.5px solid var(--prism-border);
+    color: var(--prism-dim);
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ide-tab.active {
+    color: var(--prism-text);
+    background: #0d0d14;
+    border-bottom: 1.5px solid rgb(var(--accent-r));
+  }
+
+  .tab-ext {
+    color: var(--prism-dim);
+    font-size: 10px;
+  }
+
+  .ide-body {
+    display: grid;
+    grid-template-columns: 200px 1fr 260px;
+    height: 380px;
+  }
+
+  /* File tree */
+  .file-tree {
+    border-right: 0.5px solid var(--prism-border);
+    padding: 12px 0;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--prism-dim);
+    overflow: hidden;
+  }
+
+  .tree-section {
+    padding: 0 8px;
+    margin-bottom: 16px;
+  }
+
+  .tree-label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: rgba(255,255,255,0.2);
+    padding: 0 8px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+
+  .tree-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.1s;
+    color: var(--prism-dim);
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .tree-item:hover { background: rgba(255,255,255,0.04); }
+  .tree-item.active { background: rgba(120,80,255,0.15); color: rgba(180,160,255,0.9); }
+
+  .tree-icon { width: 12px; text-align: center; font-size: 10px; }
+
+  /* Code editor */
+  .code-editor {
+    padding: 20px;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    overflow: hidden;
+    color: #c0c0d0;
+    position: relative;
+  }
+
+  .line-nums {
+    position: absolute;
+    left: 0;
+    top: 20px;
+    width: 40px;
+    text-align: right;
+    color: rgba(255,255,255,0.1);
+    user-select: none;
+    line-height: 1.8;
+    font-size: 12px;
+    padding-right: 8px;
+  }
+
+  .code-content {
+    margin-left: 44px;
+  }
+
+  .code-line {
+    white-space: nowrap;
+  }
+
+  .code-line.highlighted {
+    background: rgba(255,100,100,0.08);
+    border-left: 2px solid rgba(255,100,100,0.5);
+    padding-left: 4px;
+    margin-left: -6px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .code-line.safe {
+    background: rgba(0,220,160,0.06);
+    border-left: 2px solid rgba(0,220,160,0.4);
+    padding-left: 4px;
+    margin-left: -6px;
+    border-radius: 0 4px 4px 0;
+  }
+
+  .tok-kw { color: #9b8aff; }
+  .tok-fn { color: #5dd8b8; }
+  .tok-str { color: #ffa06b; }
+  .tok-num { color: #f0c674; }
+  .tok-cmt { color: rgba(255,255,255,0.25); font-style: italic; }
+  .tok-type { color: #7ec8e3; }
+  .tok-op { color: rgba(255,255,255,0.5); }
+  .tok-err { color: #ff6b6b; text-decoration: underline wavy rgba(255,107,107,0.6); }
+
+  /* Prism panel */
+  .prism-panel {
+    border-left: 0.5px solid var(--prism-border);
+    background: #08080f;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    border-bottom: 0.5px solid var(--prism-border);
+  }
+
+  .panel-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--prism-muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .panel-logo-small {
+    width: 14px;
+    height: 14px;
+  }
+
+  .panel-status {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: rgba(255,100,80,0.15);
+    color: #ff8070;
+    letter-spacing: 0.05em;
+  }
+
+  .panel-status.pass {
+    background: rgba(0,220,160,0.12);
+    color: #00dca0;
+  }
+
+  .panel-body {
+    flex: 1;
+    padding: 14px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    line-height: 1.5;
+  }
+
+  .check-icon {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+  }
+
+  .check-pass { background: rgba(0,220,160,0.2); color: #00dca0; }
+  .check-fail { background: rgba(255,100,80,0.2); color: #ff6b6b; }
+  .check-warn { background: rgba(255,180,0,0.2); color: #ffb400; }
+  .check-run { background: rgba(120,80,255,0.2); color: #9b8aff; }
+
+  .check-text { color: var(--prism-muted); }
+  .check-text strong { color: var(--prism-text); font-weight: 500; }
+  .check-sub { color: var(--prism-dim); font-size: 9.5px; }
+
+  .divider {
+    height: 0.5px;
+    background: var(--prism-border);
+    margin: 2px 0;
+  }
+
+  .proof-section {
+    margin-top: auto;
+    border-top: 0.5px solid var(--prism-border);
+    padding: 12px 14px;
+  }
+
+  .proof-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--prism-dim);
+    margin-bottom: 8px;
+  }
+
+  .proof-bar {
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden;
+    margin-bottom: 4px;
+  }
+
+  .proof-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, rgb(var(--accent-r)), rgb(var(--accent-g)));
+    width: 0;
+    transition: width 2s ease;
+  }
+
+  .proof-meta {
+    display: flex;
+    justify-content: space-between;
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--prism-dim);
+  }
+
+  /* STATUS BAR */
+  .ide-statusbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    border-top: 0.5px solid var(--prism-border);
+    background: #07070e;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--prism-dim);
+  }
+
+  .statusbar-left { display: flex; gap: 20px; }
+  .statusbar-item { display: flex; align-items: center; gap: 5px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* STATS STRIP */
+  .stats-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border-top: 0.5px solid var(--prism-border);
+    position: relative;
+    z-index: 2;
+  }
+
+  .stat-item {
+    padding: 28px 32px;
+    border-right: 0.5px solid var(--prism-border);
+    text-align: left;
+  }
+  .stat-item:last-child { border-right: none; }
+
+  .stat-num {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    margin-bottom: 6px;
+    background: linear-gradient(135deg, var(--prism-text) 0%, rgba(240,240,245,0.5) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .stat-label {
+    font-size: 12px;
+    color: var(--prism-dim);
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+  }
+
+  /* Animation states */
+  .animate-in {
+    animation: fade-up 0.6s ease forwards;
+  }
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .a1 { animation-delay: 0.1s; opacity: 0; }
+  .a2 { animation-delay: 0.25s; opacity: 0; }
+  .a3 { animation-delay: 0.4s; opacity: 0; }
+  .a4 { animation-delay: 0.55s; opacity: 0; }
+  .a5 { animation-delay: 0.7s; opacity: 0; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">
+    <svg class="logo-icon" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="14,2 26,22 2,22" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+      <polygon points="14,6 23,21 5,21" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="0.5"/>
+      <line x1="14" y1="2" x2="8" y2="22" stroke="#ff6b6b" stroke-width="1" opacity="0.7"/>
+      <line x1="14" y1="2" x2="11" y2="22" stroke="#ffa94d" stroke-width="1" opacity="0.7"/>
+      <line x1="14" y1="2" x2="14" y2="22" stroke="#69db7c" stroke-width="1" opacity="0.7"/>
+      <line x1="14" y1="2" x2="17" y2="22" stroke="#4dabf7" stroke-width="1" opacity="0.7"/>
+      <line x1="14" y1="2" x2="20" y2="22" stroke="#845ef7" stroke-width="1" opacity="0.7"/>
+      <circle cx="14" cy="2" r="1.5" fill="rgba(255,255,255,0.8)"/>
+    </svg>
+    Prism
+  </div>
+  <ul class="nav-links">
+    <li><a href="#">Docs</a></li>
+    <li><a href="#">Changelog</a></li>
+    <li><a href="#">Pricing</a></li>
+    <li><a href="#">Blog</a></li>
+  </ul>
+  <div class="nav-cta">
+    <button class="btn-ghost">Sign in</button>
+    <button class="btn-primary">Get early access</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+
+  <!-- Spectrum rays SVG -->
+  <svg class="spectrum-rays" viewBox="0 0 900 400" fill="none" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <!-- Single beam in -->
+    <line x1="450" y1="0" x2="450" y2="80" stroke="rgba(255,255,255,0.5)" stroke-width="1.5" filter="url(#glow)"/>
+    <!-- Prism triangle -->
+    <polygon points="450,80 410,150 490,150" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.15)" stroke-width="0.8"/>
+    <!-- Dispersed rays -->
+    <line x1="450" y1="150" x2="250" y2="400" stroke="#ff6b6b" stroke-width="1" opacity="0.4"/>
+    <line x1="450" y1="150" x2="310" y2="400" stroke="#ffa94d" stroke-width="1" opacity="0.4"/>
+    <line x1="450" y1="150" x2="370" y2="400" stroke="#ffe066" stroke-width="1" opacity="0.35"/>
+    <line x1="450" y1="150" x2="430" y2="400" stroke="#69db7c" stroke-width="1" opacity="0.4"/>
+    <line x1="450" y1="150" x2="490" y2="400" stroke="#4dabf7" stroke-width="1" opacity="0.4"/>
+    <line x1="450" y1="150" x2="560" y2="400" stroke="#845ef7" stroke-width="1" opacity="0.4"/>
+    <line x1="450" y1="150" x2="640" y2="400" stroke="#f06595" stroke-width="1" opacity="0.35"/>
+    <!-- Glow fill -->
+    <ellipse cx="450" cy="390" rx="180" ry="20" fill="url(#spectrumFill)" opacity="0.12"/>
+    <defs>
+      <linearGradient id="spectrumFill" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%" stop-color="#ff6b6b"/>
+        <stop offset="33%" stop-color="#69db7c"/>
+        <stop offset="66%" stop-color="#4dabf7"/>
+        <stop offset="100%" stop-color="#845ef7"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <div class="badge animate-in a1">
+    <span class="badge-dot"></span>
+    Seed Round · 2026 · prism.dev
+  </div>
+
+  <h1 class="hero-headline animate-in a2">
+    AI writes the code.<br>
+    <span class="spectrum-text">Prism proves it.</span>
+  </h1>
+
+  <p class="hero-sub animate-in a3">
+    The verification layer for AI-built software.
+    Run Prism after generation. Ship with evidence, not assumption.
+  </p>
+
+  <div class="hero-actions animate-in a4">
+    <button class="btn-hero btn-hero-primary">Request early access</button>
+    <button class="btn-hero btn-hero-ghost">Read the thesis →</button>
+  </div>
+
+  <!-- IDE PREVIEW -->
+  <div class="ide-preview animate-in a5">
+
+    <!-- Titlebar -->
+    <div class="ide-titlebar">
+      <div class="ide-traffic">
+        <div class="traffic-dot" style="background:#ff5f57"></div>
+        <div class="traffic-dot" style="background:#febc2e"></div>
+        <div class="traffic-dot" style="background:#28c840"></div>
+      </div>
+      <div class="ide-tabs">
+        <div class="ide-tab active">
+          <span style="color:#9b8aff">◆</span> auth<span class="tab-ext">.service.ts</span>
+        </div>
+        <div class="ide-tab">
+          user<span class="tab-ext">.controller.ts</span>
+        </div>
+        <div class="ide-tab">
+          routes<span class="tab-ext">.ts</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="ide-body">
+
+      <!-- File tree -->
+      <div class="file-tree">
+        <div class="tree-label">project</div>
+        <div class="tree-section">
+          <div class="tree-item">
+            <span class="tree-icon">▾</span> src
+          </div>
+          <div class="tree-item active" style="padding-left: 20px">
+            <span class="tree-icon">◆</span> auth.service
+          </div>
+          <div class="tree-item" style="padding-left: 20px">
+            <span class="tree-icon">◇</span> user.ctrl
+          </div>
+          <div class="tree-item" style="padding-left: 20px">
+            <span class="tree-icon">◇</span> routes
+          </div>
+          <div class="tree-item" style="padding-left: 20px">
+            <span class="tree-icon">◇</span> schema.ts
+          </div>
+          <div class="tree-item">
+            <span class="tree-icon">▾</span> tests
+          </div>
+          <div class="tree-item" style="padding-left: 20px">
+            <span class="tree-icon">◇</span> auth.spec
+          </div>
+        </div>
+        <div class="tree-label">prism audit</div>
+        <div class="tree-section">
+          <div class="tree-item" style="color: rgba(255,107,107,0.7)">
+            <span class="tree-icon">⚠</span> 3 issues
+          </div>
+          <div class="tree-item" style="color: rgba(0,220,160,0.7)">
+            <span class="tree-icon">✓</span> 41 passed
+          </div>
+        </div>
+      </div>
+
+      <!-- Code editor -->
+      <div class="code-editor">
+        <div class="line-nums">
+          1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9<br>10<br>11<br>12<br>13<br>14<br>15<br>16<br>17<br>18<br>19<br>20
+        </div>
+        <div class="code-content">
+          <div class="code-line"><span class="tok-kw">import</span> <span class="tok-op">{</span> <span class="tok-type">Injectable</span> <span class="tok-op">}</span> <span class="tok-kw">from</span> <span class="tok-str">'@nestjs/common'</span><span class="tok-op">;</span></div>
+          <div class="code-line"><span class="tok-kw">import</span> <span class="tok-op">{</span> <span class="tok-type">JwtService</span> <span class="tok-op">}</span> <span class="tok-kw">from</span> <span class="tok-str">'@nestjs/jwt'</span><span class="tok-op">;</span></div>
+          <div class="code-line"></div>
+          <div class="code-line"><span class="tok-op">@</span><span class="tok-fn">Injectable</span><span class="tok-op">()</span></div>
+          <div class="code-line"><span class="tok-kw">export class</span> <span class="tok-type">AuthService</span> <span class="tok-op">{</span></div>
+          <div class="code-line">&nbsp;&nbsp;<span class="tok-fn">constructor</span><span class="tok-op">(</span><span class="tok-kw">private</span> <span class="tok-type">jwt</span><span class="tok-op">:</span> <span class="tok-type">JwtService</span><span class="tok-op">) {}</span></div>
+          <div class="code-line"></div>
+          <div class="code-line highlighted">&nbsp;&nbsp;<span class="tok-cmt">// ⚠ caller expects refreshToken(id, role)</span></div>
+          <div class="code-line highlighted">&nbsp;&nbsp;<span class="tok-kw">async</span> <span class="tok-fn">refreshToken</span><span class="tok-op">(</span><span class="tok-type">userId</span><span class="tok-op">:</span> <span class="tok-type">string</span><span class="tok-op">)</span> <span class="tok-op">{</span></div>
+          <div class="code-line highlighted">&nbsp;&nbsp;&nbsp;&nbsp;<span class="tok-kw">const</span> payload <span class="tok-op">=</span> <span class="tok-op">{</span> sub<span class="tok-op">:</span> <span class="tok-err">userId</span> <span class="tok-op">};</span></div>
+          <div class="code-line highlighted">&nbsp;&nbsp;&nbsp;&nbsp;<span class="tok-kw">return</span> <span class="tok-kw">this</span><span class="tok-op">.</span><span class="tok-fn">jwt.sign</span><span class="tok-op">(</span>payload<span class="tok-op">);</span></div>
+          <div class="code-line highlighted">&nbsp;&nbsp;<span class="tok-op">}</span></div>
+          <div class="code-line"></div>
+          <div class="code-line safe">&nbsp;&nbsp;<span class="tok-kw">async</span> <span class="tok-fn">validateToken</span><span class="tok-op">(</span><span class="tok-type">token</span><span class="tok-op">:</span> <span class="tok-type">string</span><span class="tok-op">)</span> <span class="tok-op">{</span></div>
+          <div class="code-line safe">&nbsp;&nbsp;&nbsp;&nbsp;<span class="tok-kw">return</span> <span class="tok-kw">this</span><span class="tok-op">.</span><span class="tok-fn">jwt.verify</span><span class="tok-op">(</span>token<span class="tok-op">);</span></div>
+          <div class="code-line safe">&nbsp;&nbsp;<span class="tok-op">}</span></div>
+          <div class="code-line"><span class="tok-op">}</span></div>
+          <div class="code-line"></div>
+          <div class="code-line"></div>
+        </div>
+      </div>
+
+      <!-- Prism panel -->
+      <div class="prism-panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg class="panel-logo-small" viewBox="0 0 14 14" fill="none">
+              <polygon points="7,1 13,12 1,12" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="0.7"/>
+              <line x1="7" y1="1" x2="4" y2="12" stroke="#ff6b6b" stroke-width="0.8" opacity="0.8"/>
+              <line x1="7" y1="1" x2="6" y2="12" stroke="#69db7c" stroke-width="0.8" opacity="0.8"/>
+              <line x1="7" y1="1" x2="8" y2="12" stroke="#4dabf7" stroke-width="0.8" opacity="0.8"/>
+              <line x1="7" y1="1" x2="10" y2="12" stroke="#845ef7" stroke-width="0.8" opacity="0.8"/>
+            </svg>
+            prism / audit
+          </div>
+          <div class="panel-status" id="auditStatus">3 ISSUES</div>
+        </div>
+
+        <div class="panel-body">
+
+          <div class="check-item">
+            <div class="check-icon check-fail">✗</div>
+            <div>
+              <div class="check-text"><strong>signature mismatch</strong></div>
+              <div class="check-sub">refreshToken(id) called as refreshToken(id, role) in user.controller:47</div>
+            </div>
+          </div>
+
+          <div class="check-item">
+            <div class="check-icon check-fail">✗</div>
+            <div>
+              <div class="check-text"><strong>dead import</strong></div>
+              <div class="check-sub">RoleGuard imported, never used in routes.ts</div>
+            </div>
+          </div>
+
+          <div class="check-item">
+            <div class="check-icon check-warn">▲</div>
+            <div>
+              <div class="check-text"><strong>schema drift</strong></div>
+              <div class="check-sub">User.role field added, JWT payload not updated</div>
+            </div>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="check-item">
+            <div class="check-icon check-pass">✓</div>
+            <div>
+              <div class="check-text"><strong>typecheck</strong></div>
+              <div class="check-sub">41 symbols resolved, 0 errors</div>
+            </div>
+          </div>
+
+          <div class="check-item">
+            <div class="check-icon check-pass">✓</div>
+            <div>
+              <div class="check-text"><strong>test suite</strong></div>
+              <div class="check-sub">28/28 passing · 94ms</div>
+            </div>
+          </div>
+
+          <div class="check-item">
+            <div class="check-icon check-run">◉</div>
+            <div>
+              <div class="check-text"><strong>e2e probe</strong></div>
+              <div class="check-sub">running /auth/refresh · 12ms</div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="proof-section">
+          <div class="proof-label">verification coverage</div>
+          <div class="proof-bar">
+            <div class="proof-fill" id="proofFill"></div>
+          </div>
+          <div class="proof-meta">
+            <span>91% proven</span>
+            <span>3 unresolved</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Status bar -->
+    <div class="ide-statusbar">
+      <div class="statusbar-left">
+        <div class="statusbar-item">
+          <div class="status-dot" style="background:#ff6b6b"></div>
+          3 issues
+        </div>
+        <div class="statusbar-item">
+          <div class="status-dot" style="background:#69db7c"></div>
+          41 checks passed
+        </div>
+        <span>TypeScript · NestJS · Prism v0.9.4</span>
+      </div>
+      <div>
+        <span style="color: rgba(155,138,255,0.8)">◆ prism audit running</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="ide-glow"></div>
+
+</div>
+
+<!-- STATS STRIP -->
+<div class="stats-strip">
+  <div class="stat-item">
+    <div class="stat-num">400+</div>
+    <div class="stat-label">Tests passing across<br>Rust + TypeScript</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num">20+</div>
+    <div class="stat-label">Models routed<br>model-agnostic</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num">6</div>
+    <div class="stat-label">Verification layers<br>below the model</div>
+  </div>
+  <div class="stat-item">
+    <div class="stat-num">0</div>
+    <div class="stat-label">Bugs that look<br>plausible to merge</div>
+  </div>
+</div>
+
+<script>
+  setTimeout(() => {
+    const fill = document.getElementById('proofFill');
+    if (fill) fill.style.width = '91%';
+  }, 800);
+
+  let tick = 0;
+  const statuses = [
+    { label: '3 ISSUES', cls: '' },
+    { label: 'AUDITING', cls: 'pass' },
+    { label: '3 ISSUES', cls: '' },
+  ];
+
+  setInterval(() => {
+    tick = (tick + 1) % statuses.length;
+    const el = document.getElementById('auditStatus');
+    if (el) {
+      el.textContent = statuses[tick].label;
+      el.className = 'panel-status ' + statuses[tick].cls;
+    }
+  }, 3000);
+</script>
+</body>
+</html>
