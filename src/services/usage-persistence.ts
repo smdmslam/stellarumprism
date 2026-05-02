@@ -1,4 +1,4 @@
-import { doc, collection, addDoc, serverTimestamp, runTransaction } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { listen } from "@tauri-apps/api/event";
 
@@ -31,29 +31,7 @@ export async function syncUsageToFirestore(event: UsageEvent): Promise<void> {
   const period = event.timestamp.slice(0, 7); // YYYY-MM
 
   try {
-    await runTransaction(db, async (transaction) => {
-      // 1. Record the granular event
-      const eventRef = collection(db, "usage");
-      const eventDoc = {
-        ...event,
-        uid,
-        period,
-        markup_cost_usd: event.estimated_cost_usd * MARGIN_MULTIPLIER,
-        synced_at: serverTimestamp(),
-      };
-      
-      // Since we can't use addDoc inside a transaction for a new doc ID 
-      // without knowing the ID, we'll use a specific ID if we want, 
-      // but usually we just want to update the profile too.
-      // For now, let's just push the record and update the profile.
-      
-      // 2. Update user profile totals (Lifetime and Balance)
-      const profileRef = doc(db, "users", uid);
-      // Note: In a real app, balance deduction should happen on the backend (Cloud Functions)
-      // to prevent client-side manipulation. For now, we'll mirror the logic.
-    });
-
-    // Outside transaction for simplicity in v1
+    // Record the granular event
     await addDoc(collection(db, "usage"), {
       ...event,
       uid,
@@ -61,7 +39,6 @@ export async function syncUsageToFirestore(event: UsageEvent): Promise<void> {
       markup_cost_usd: event.estimated_cost_usd * MARGIN_MULTIPLIER,
       synced_at: serverTimestamp(),
     });
-
   } catch (error) {
     console.error("Failed to sync usage to Firestore:", error);
   }
