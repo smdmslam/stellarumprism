@@ -784,11 +784,13 @@ export class SettingsUI {
       const summary = await invoke<{
         session_tokens: number;
         session_cost_usd: number;
+        session_markup_cost_usd: number;
         session_calls: number;
         today_tokens: number;
         today_cost_usd: number;
+        today_markup_cost_usd: number;
         today_calls: number;
-        by_interaction: { mode: string; model: string; tokens: number; cost_usd: number; calls: number }[];
+        by_interaction: { mode: string; model: string; tokens: number; cost: number; markup_cost: number; calls: number }[];
       }>("get_usage_summary", { chatId });
 
       const subInfo = await invoke<{ 
@@ -852,8 +854,8 @@ export class SettingsUI {
               <td style="padding: 16px 0; color: #e5e7eb; font-weight: 500;">${escapeHtml(modeName)}</td>
               <td style="padding: 16px 0; color: #4b5563; font-family: ui-monospace, monospace;">${escapeHtml(modelName)}</td>
               <td style="padding: 16px 0; color: #e5e7eb; text-align: right;">${m.calls}</td>
-              <td style="padding: 16px 0; color: #94a3b8; text-align: right;">${formatCost(m.cost_usd)}</td>
-              <td style="padding: 16px 0; color: #2dd4bf; text-align: right; font-weight: 600;">${formatCost(m.cost_usd * 20.0)}</td>
+              <td style="padding: 16px 0; color: #94a3b8; text-align: right;">${formatCost(m.cost)}</td>
+              <td style="padding: 16px 0; color: #2dd4bf; text-align: right; font-weight: 600;">${formatCost(m.markup_cost)}</td>
             </tr>
           `;
         }

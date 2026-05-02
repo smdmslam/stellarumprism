@@ -6,10 +6,12 @@ import { TabManager } from "./tabs";
 import { ToolbarManager } from "./toolbar";
 import { readSessionState } from "./session";
 import { initUsageSync } from "./services/usage-persistence";
+import { initPricing } from "./models";
 
 window.addEventListener("DOMContentLoaded", () => {
-  // Initialize Firebase usage sync
+  // Initialize Firebase usage sync and model pricing
   void initUsageSync();
+  void initPricing();
 
   const tabStrip = document.getElementById("tab-strip");
   const workspacesParent = document.getElementById("workspaces");

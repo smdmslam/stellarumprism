@@ -81,18 +81,18 @@ pub async fn upgrade_to_pro() -> Result<(), String> {
     Ok(())
 }
 
-/// Deducts cost from the user's credit balance using the 20x multiplier.
-/// Returns Ok(true) if deduction succeeded, Ok(false) if insufficient funds.
-pub fn deduct_usage_cost(actual_cost_usd: f64) -> Result<bool> {
+pub fn deduct_usage_cost(actual_cost_usd: f64) -> Result<()> {
     let mut state = load_subscription();
     let credit_cost = actual_cost_usd * 20.0;
     
-    if state.balance_usd < credit_cost && state.tier == SubscriptionTier::Free {
-        return Ok(false);
+    if state.tier == SubscriptionTier::Free && state.balance_usd < credit_cost {
+        state.balance_usd = 0.0; // Zero it out
+        save_subscription(&state)?;
+        return Err(anyhow::anyhow!("Insufficient credit balance. Usage cost exceeded remaining credits."));
     }
 
     state.balance_usd -= credit_cost;
     state.total_real_cost_usd += actual_cost_usd;
     save_subscription(&state)?;
-    Ok(true)
+    Ok(())
 }

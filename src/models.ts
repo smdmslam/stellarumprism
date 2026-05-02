@@ -9,6 +9,7 @@
 // You can freely add/remove entries here. Ordering is preserved in the UI.
 
 import { settings } from "./settings";
+import { invoke } from "@tauri-apps/api/core";
 
 export interface ModelEntry {
   /** Short alias(es). The first is the "canonical" short name. */
@@ -70,18 +71,19 @@ export interface PricingBasis {
 }
 
 // Shared pricing basis used by cost analytics and UI sorting surfaces.
-export const MODEL_PRICING_USD_PER_M: Record<string, PricingBasis> = {
-  "google/gemini-2.5-pro": { input_per_m: 1.25, output_per_m: 10.0 },
-  "google/gemini-2.5-flash-lite": { input_per_m: 0.1, output_per_m: 0.4 },
-  "google/gemini-2.5-flash": { input_per_m: 0.3, output_per_m: 2.5 },
-  "openai/gpt-5.4": { input_per_m: 2.5, output_per_m: 15.0 },
-  "x-ai/grok-4.1-fast": { input_per_m: 0.2, output_per_m: 0.5 },
-  "x-ai/grok-4-fast": { input_per_m: 0.2, output_per_m: 0.5 }, // legacy compatibility
-  "z-ai/glm-5": { input_per_m: 0.6, output_per_m: 2.08 },
-  "anthropic/claude-haiku-4.5": { input_per_m: 1.0, output_per_m: 5.0 },
-  "qwen/qwen3-235b-a22b-2507": { input_per_m: 0.071, output_per_m: 0.1 },
-  "perplexity/sonar": { input_per_m: 1.0, output_per_m: 1.0 },
-};
+// Populated dynamically from the Rust backend via initPricing().
+export let MODEL_PRICING_USD_PER_M: Record<string, PricingBasis> = {};
+
+/** Fetch authoritative pricing from the Rust backend. */
+export async function initPricing(): Promise<void> {
+  try {
+    const pricing = await invoke<Record<string, PricingBasis>>("get_all_pricing");
+    MODEL_PRICING_USD_PER_M = pricing;
+    console.log("[models] Pricing basis initialized from backend.");
+  } catch (err) {
+    console.error("[models] Failed to fetch pricing from backend:", err);
+  }
+}
 
 export function getModelPricingBasis(slug: string): PricingBasis {
   return MODEL_PRICING_USD_PER_M[slug] ?? { input_per_m: 0, output_per_m: 0 };

@@ -24,6 +24,7 @@ pub struct UsageEvent {
     pub success: bool,
     pub cancelled: bool,
     pub estimated_cost_usd: f64,
+    pub markup_cost_usd: f64,
     pub pricing_basis: PricingBasis,
 }
 
@@ -31,9 +32,11 @@ pub struct UsageEvent {
 pub struct UsageSummary {
     pub session_tokens: u32,
     pub session_cost_usd: f64,
+    pub session_markup_cost_usd: f64,
     pub session_calls: u32,
     pub today_tokens: u32,
     pub today_cost_usd: f64,
+    pub today_markup_cost_usd: f64,
     pub today_calls: u32,
     pub by_interaction: Vec<InteractionUsage>,
 }
@@ -43,7 +46,8 @@ pub struct InteractionUsage {
     pub mode: String,
     pub model: String,
     pub tokens: u32,
-    pub cost_usd: f64,
+    pub cost: f64,
+    pub markup_cost: f64,
     pub calls: u32,
 }
 
@@ -85,6 +89,7 @@ pub fn emit_usage_event(
         success,
         cancelled,
         estimated_cost_usd,
+        markup_cost_usd: estimated_cost_usd * 20.0,
         pricing_basis: pricing,
     };
 
@@ -104,9 +109,11 @@ pub fn get_usage_summary(chat_id: String) -> Result<UsageSummary, String> {
         return Ok(UsageSummary {
             session_tokens: 0,
             session_cost_usd: 0.0,
+            session_markup_cost_usd: 0.0,
             session_calls: 0,
             today_tokens: 0,
             today_cost_usd: 0.0,
+            today_markup_cost_usd: 0.0,
             today_calls: 0,
             by_interaction: Vec::new(),
         });
@@ -119,11 +126,14 @@ pub fn get_usage_summary(chat_id: String) -> Result<UsageSummary, String> {
 
     let mut session_tokens = 0;
     let mut session_cost = 0.0;
+    let mut session_markup_cost = 0.0;
     let mut session_calls = 0;
     let mut today_tokens = 0;
     let mut today_cost = 0.0;
+    let mut today_markup_cost = 0.0;
     let mut today_calls = 0;
-    let mut interaction_map: std::collections::HashMap<(String, String), (u32, f64, u32)> = std::collections::HashMap::new();
+    // Map: (mode, model) -> (tokens, cost, markup, calls)
+    let mut interaction_map: std::collections::HashMap<(String, String), (u32, f64, f64, u32)> = std::collections::HashMap::new();
 
     for line in reader.lines() {
         let Ok(l) = line else { continue };
@@ -135,39 +145,46 @@ pub fn get_usage_summary(chat_id: String) -> Result<UsageSummary, String> {
         if is_today {
             today_tokens += event.total_tokens;
             today_cost += event.estimated_cost_usd;
+            today_markup_cost += event.markup_cost_usd;
             today_calls += 1;
         }
 
         if is_session {
             session_tokens += event.total_tokens;
             session_cost += event.estimated_cost_usd;
+            session_markup_cost += event.markup_cost_usd;
             session_calls += 1;
         }
 
-        let entry = interaction_map.entry((event.mode, event.model)).or_insert((0, 0.0, 0));
+        let entry = interaction_map.entry((event.mode.clone(), event.model.clone())).or_insert((0, 0.0, 0.0, 0));
         entry.0 += event.total_tokens;
         entry.1 += event.estimated_cost_usd;
-        entry.2 += 1;
+        entry.2 += event.markup_cost_usd;
+        entry.3 += 1;
     }
 
     let mut by_interaction: Vec<InteractionUsage> = interaction_map
         .into_iter()
-        .map(|((mode, model), (tokens, cost_usd, calls))| InteractionUsage {
+        .map(|((mode, model), (tokens, cost, markup_cost, calls))| InteractionUsage {
             mode,
             model,
             tokens,
-            cost_usd,
+            cost,
+            markup_cost,
             calls,
         })
         .collect();
-    by_interaction.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
+
+    by_interaction.sort_by(|a, b| b.cost.partial_cmp(&a.cost).unwrap_or(std::cmp::Ordering::Equal));
 
     Ok(UsageSummary {
         session_tokens,
         session_cost_usd: session_cost,
+        session_markup_cost_usd: session_markup_cost,
         session_calls,
         today_tokens,
         today_cost_usd: today_cost,
+        today_markup_cost_usd: today_markup_cost,
         today_calls,
         by_interaction,
     })

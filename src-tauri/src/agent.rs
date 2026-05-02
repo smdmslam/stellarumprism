@@ -2044,6 +2044,7 @@ pub async fn agent_query(
         // Deduct from credit balance (20x paradigm)
         if !final_cancelled && total_cost_usd > 0.0 {
             if let Err(e) = crate::billing::deduct_usage_cost(total_cost_usd) {
+                let _ = app_handle.emit("billing-alert", &e.to_string());
                 eprintln!("Failed to deduct usage cost: {}", e);
             }
         }

@@ -18,9 +18,8 @@ export interface UsageEvent {
   success: boolean;
   cancelled: boolean;
   estimated_cost_usd: number;
+  markup_cost_usd: number;
 }
-
-const MARGIN_MULTIPLIER = 20.0;
 
 /**
  * Syncs a local usage event to Firestore.
@@ -36,7 +35,6 @@ export async function syncUsageToFirestore(event: UsageEvent): Promise<void> {
       ...event,
       uid,
       period,
-      markup_cost_usd: event.estimated_cost_usd * MARGIN_MULTIPLIER,
       synced_at: serverTimestamp(),
     });
   } catch (error) {

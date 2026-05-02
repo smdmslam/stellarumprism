@@ -114,6 +114,7 @@ pub fn run() {
             get_usage_summary,
             billing::get_subscription_info,
             billing::upgrade_to_pro,
+            pricing::get_all_pricing,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

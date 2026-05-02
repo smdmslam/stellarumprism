@@ -727,6 +727,9 @@ export class Workspace {
       await listen(`pty-exit-${this.id}`, () => {
         this.term.writeln("\r\n\x1b[2m[shell exited]\x1b[0m");
       }),
+      await listen<string>("billing-alert", (e) => {
+        this.notifyError(`[billing] ${e.payload}`);
+      }),
     );
 
     this.term.onData((data) => {
