@@ -2086,7 +2086,7 @@ pub async fn agent_query(
             let review_payload = match outcome {
                 Ok(StreamOutcome::Completed { usage, request_id, .. }) => {
                     if let Some(u) = usage {
-                        emit_usage_event(
+                        let cost = emit_usage_event(
                             &app_handle,
                             request_id,
                             chat_id_for_task.clone(),
@@ -2100,6 +2100,10 @@ pub async fn agent_query(
                             true,
                             false,
                         );
+                        if let Err(e) = crate::billing::deduct_usage_cost(cost) {
+                            let _ = app_handle.emit("billing-alert", &e.to_string());
+                            eprintln!("[reviewer] Failed to deduct usage cost: {}", e);
+                        }
                     }
                     serde_json::json!({
                         "model": verifier_cfg.model,
@@ -2326,6 +2330,7 @@ async fn run_stream(
     // Accumulator for tool calls being assembled from streaming deltas.
     // Keyed by index (which OpenRouter assigns per parallel call).
     let mut tool_calls: Vec<ToolCall> = Vec::new();
+    let mut finish_reason: Option<String> = None;
 
     loop {
         tokio::select! {
@@ -2355,23 +2360,11 @@ async fn run_stream(
                             if let Some(choice) = parsed.choices.first() {
                                 if let Some(piece) = &choice.delta.content {
                                     if !piece.is_empty() {
-                                        // Strip padding/end-of-text sentinel
-                                        // tokens that some MoE models leak
-                                        // through under degeneracy. They
-                                        // carry no semantic value and would
-                                        // otherwise round-trip into history
-                                        // and re-feed the loop.
                                         let cleaned = strip_pad_tokens(piece);
                                         if !cleaned.is_empty() {
                                             total_chars += cleaned.chars().count();
                                             assistant_text.push_str(&cleaned);
                                             let _ = app.emit(token_event, cleaned);
-                                            // Hard cancel if the tail of the
-                                            // stream is a single repeating
-                                            // pattern \u2014 the model is stuck,
-                                            // and continuing wastes tokens
-                                            // and locks the UI until the user
-                                            // closes the tab.
                                             if is_degenerate_tail(&assistant_text) {
                                                 return Err(
                                                     "model output degenerated (repeating pattern detected); cancelled".to_string(),
@@ -2384,17 +2377,9 @@ async fn run_stream(
                                     accumulate_tool_calls(&mut tool_calls, deltas);
                                 }
                                 if let Some(reason) = &choice.finish_reason {
-                                    // Either "stop", "tool_calls", or "length".
-                                    if reason == "tool_calls" && !tool_calls.is_empty() {
-                                        return Ok(StreamOutcome::ToolCalls {
-                                            total_chars,
-                                            partial_text: assistant_text,
-                                            calls: tool_calls,
-                                            usage,
-                                            request_id,
-                                        });
+                                    if finish_reason.is_none() {
+                                        finish_reason = Some(reason.clone());
                                     }
-                                    return Ok(finalize(total_chars, assistant_text, tool_calls, usage, request_id));
                                 }
                             }
                         }
@@ -2403,7 +2388,17 @@ async fn run_stream(
             }
         }
     }
-    Ok(finalize(total_chars, assistant_text, tool_calls, usage, request_id))
+
+    match finish_reason.as_deref() {
+        Some("tool_calls") if !tool_calls.is_empty() => Ok(StreamOutcome::ToolCalls {
+            total_chars,
+            partial_text: assistant_text,
+            calls: tool_calls,
+            usage,
+            request_id,
+        }),
+        _ => Ok(finalize(total_chars, assistant_text, tool_calls, usage, request_id)),
+    }
 }
 
 /// Strip the most common padding / end-of-text sentinel tokens from a
