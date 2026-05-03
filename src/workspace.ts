@@ -2801,15 +2801,26 @@ export class Workspace {
     display.textContent = `${k}k tokens`;
   }
 
-  /** Update the global fuel gauge in the toolbar based on credits/budget. */
-  public static updateGlobalFuelGauge(credits: number, budget: number): void {
+  /** Update the global energy gauge in the toolbar based on credits. 
+   * Each bar represents a $30 'unit' of runway, capped at 5 bars ($150+). */
+  public static updateGlobalEnergyGauge(credits: number): void {
+    const container = document.querySelector<HTMLElement>("#tb-energy");
     const bars = document.querySelectorAll(".fuel-bar");
-    if (bars.length === 0) return;
-    const activeCount = Math.min(5, Math.max(0, Math.round((credits / budget) * 5)));
+    if (!container || bars.length === 0) return;
+
+    const BAR_UNIT = 30; // Each bar = $30 of runway
+    const activeCount = Math.min(5, Math.max(0, Math.ceil(credits / BAR_UNIT)));
+    
+    // Ensure at least 1 bar is lit if there are any credits at all
+    const finalCount = (credits > 0 && activeCount === 0) ? 1 : activeCount;
+
     bars.forEach((bar, i) => {
-      if (i < activeCount) bar.classList.add("active");
+      if (i < finalCount) bar.classList.add("active");
       else bar.classList.remove("active");
     });
+
+    // Update tooltip with exact balance
+    container.title = `Credit Energy: $${credits.toFixed(2)} remaining (${finalCount} bars of runway)`;
   }
 
   /**
