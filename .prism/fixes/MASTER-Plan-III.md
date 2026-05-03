@@ -185,6 +185,16 @@ so CAN This behavior be improved. in this case i know the file exists. so i pres
 - **Design sketch:** Custom overlay with match highlighting, keyboard shortcuts.
 - **Estimated scope:** ~80–150 LOC in `agent-find.ts`.
 
+#### 2.12 Chat History Persistence Architecture (NEW 2026-05-03)
+- **Status:** NOT STARTED
+- **Goal:** Move chat logs from hidden app data to a first-class `.prism/history/` directory.
+- **Requirements:**
+  1. **Folder Creation:** Automatically initialize `.prism/history/` on first chat.
+  2. **Settings Sync:** Update the "History" tab in Settings to scan and render files from this directory instead of internal state.
+  3. **Custom Directory:** Add a button in Settings allowing users to choose an external path (e.g., a Dropbox/iCloud folder) for cross-device history sync.
+- **Why:** Makes chat history transparent, searchable via standard tools (grep), and portable across machines.
+- **Estimated scope:** ~4h (Rust backend for FS scanning + UI for directory picker).
+
 ---
 
 ### Phase 3 — File Explorer / Viewer QoL (MEDIUM PRIORITY)
@@ -472,7 +482,7 @@ All NOT STARTED.
 | Phase | Items | Status | Notes |
 |-------|-------|--------|-------|
 | **1** Trust & Safety | 7 | 6/7 DONE | 1.6 (contract-change blast-radius) remaining. |
-| **2** Daily-use | 9 | 8/9 DONE | Only 2.9 (agent Cmd+F) remaining. |
+| **2** Daily-use | 10 | 8/10 DONE | 2.11 (Find) and 2.12 (History Persistence) remaining. |
 | **3** File Explorer | 7 | 7/7 DONE | Clean. |
 | **4** Protocols | 5 | 1/5 DONE | UI discoverability critical next. |
 | **5** AI Usage / Billing | 11 | 1/11 DONE (partial) | **CRITICAL PATH** — instrumentation urgent. |
