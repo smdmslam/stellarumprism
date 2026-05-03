@@ -1841,16 +1841,16 @@ input:checked + .toggle-slider:before {
  * Override with always-visible scrollbars so the track reserves real space
  * and the thumb never sits on top of the terminal text. */
 .terminal-host .xterm-viewport::-webkit-scrollbar {
-  width: 10px;
+  width: 6px;
   background: transparent;
 }
 .terminal-host .xterm-viewport::-webkit-scrollbar-track {
   background: transparent;
 }
 .terminal-host .xterm-viewport::-webkit-scrollbar-thumb {
-  background: #2d3748;
+  background: #334155;
   border-radius: 999px;
-  border: 2px solid #0d0f14;
+  border: 1px solid #0d0f14;
 }
 .terminal-host .xterm-viewport::-webkit-scrollbar-thumb:hover {
   background: #475569;
