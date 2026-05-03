@@ -391,6 +391,10 @@ pub fn tool_schema() -> Value {
                         "context_lines": {
                             "type": "integer",
                             "description": "Number of lines of context to include around each hit (symmetric). Defaults to 0."
+                        },
+                        "case_insensitive": {
+                            "type": "boolean",
+                            "description": "Perform a case-insensitive search. Defaults to false."
                         }
                     },
                     "required": ["pattern"]
@@ -401,24 +405,32 @@ pub fn tool_schema() -> Value {
             "type": "function",
             "function": {
                 "name": "find",
-                "description": "Find files whose path matches a glob. Honors .gitignore. Returns a flat list of relative paths. Use when you want to enumerate 'all .tsx files under src/pages' or similar structural queries before reading them.",
+                "description": "Find files by path or filename. Honors .gitignore. Use 'name' for simple filename searches (recursive) or 'pattern' for structural glob queries. Returns a flat list of relative paths.",
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Find files matching this exact basename (recursive). Example: 'README.md' will find all README.md files in any subdirectory."
+                        },
                         "pattern": {
                             "type": "string",
-                            "description": "Glob pattern matched against the full relative path (not just the basename). Examples: '*.ts', 'src/**/*.rs', '**/test_*.py'."
+                            "description": "Glob pattern matched against the full relative path. MUST include '**/'' for recursive matches. Examples: 'src/**/*.ts', '**/test_*.py'. Use 'name' instead for simple filename searches."
                         },
                         "path": {
                             "type": "string",
                             "description": "Directory root to search from. Defaults to cwd."
+                        },
+                        "case_insensitive": {
+                            "type": "boolean",
+                            "description": "Perform a case-insensitive match. Defaults to false."
                         },
                         "max_results": {
                             "type": "integer",
                             "description": "Soft cap on number of paths returned. Defaults to 500. Capped at 2000."
                         }
                     },
-                    "required": ["pattern"]
+                    "required": []
                 }
             }
         },
@@ -1713,13 +1725,17 @@ struct GrepArgs {
     max_results: Option<usize>,
     #[serde(default)]
     context_lines: Option<usize>,
+    #[serde(default)]
+    case_insensitive: bool,
 }
 
 fn tool_grep(args_json: &str, cwd: &str) -> Result<(String, String), String> {
     let args: GrepArgs = serde_json::from_str(args_json)
         .map_err(|e| format!("invalid arguments: {}", e))?;
 
-    let regex = regex::Regex::new(&args.pattern)
+    let regex = regex::RegexBuilder::new(&args.pattern)
+        .case_insensitive(args.case_insensitive)
+        .build()
         .map_err(|e| format!("invalid regex: {}", e))?;
 
     let root = match args.path.as_deref() {
@@ -1880,18 +1896,23 @@ fn truncate_line(s: &str, max: usize) -> String {
 
 #[derive(Deserialize)]
 struct FindArgs {
-    pattern: String,
+    #[serde(default)]
+    pattern: Option<String>,
+    #[serde(default)]
+    name: Option<String>,
     #[serde(default)]
     path: Option<String>,
     #[serde(default)]
     max_results: Option<usize>,
+    #[serde(default)]
+    case_insensitive: bool,
 }
 
 fn tool_find(args_json: &str, cwd: &str) -> Result<(String, String), String> {
     let args: FindArgs = serde_json::from_str(args_json)
         .map_err(|e| format!("invalid arguments: {}", e))?;
-    if args.pattern.trim().is_empty() {
-        return Err("empty pattern".into());
+    if args.pattern.is_none() && args.name.is_none() {
+        return Err("must specify either 'pattern' or 'name'".into());
     }
 
     let root = match args.path.as_deref() {
@@ -1907,9 +1928,29 @@ fn tool_find(args_json: &str, cwd: &str) -> Result<(String, String), String> {
         .map(|n| n.min(FIND_MAX_RESULTS_CAP))
         .unwrap_or(FIND_MAX_RESULTS_DEFAULT);
 
-    let matcher = globset::Glob::new(&args.pattern)
-        .map_err(|e| format!("invalid glob: {}", e))?
-        .compile_matcher();
+    let pattern_matcher = if let Some(p) = &args.pattern {
+        Some(
+            globset::GlobBuilder::new(p)
+                .case_insensitive(args.case_insensitive)
+                .build()
+                .map_err(|e| format!("invalid pattern: {}", e))?
+                .compile_matcher(),
+        )
+    } else {
+        None
+    };
+
+    let name_matcher = if let Some(n) = &args.name {
+        Some(
+            globset::GlobBuilder::new(n)
+                .case_insensitive(args.case_insensitive)
+                .build()
+                .map_err(|e| format!("invalid name: {}", e))?
+                .compile_matcher(),
+        )
+    } else {
+        None
+    };
 
     let mut paths: Vec<String> = Vec::new();
     let mut truncated = false;
@@ -1932,18 +1973,34 @@ fn tool_find(args_json: &str, cwd: &str) -> Result<(String, String), String> {
             continue;
         }
         let rel = path.strip_prefix(&root).unwrap_or(path);
-        if matcher.is_match(rel) {
-            paths.push(rel.to_string_lossy().to_string());
-            if paths.len() >= max_results {
-                truncated = true;
-                break;
+
+        if let Some(m) = &pattern_matcher {
+            if !m.is_match(rel) {
+                continue;
             }
+        }
+
+        if let Some(m) = &name_matcher {
+            let basename = path.file_name().unwrap_or_default();
+            if !m.is_match(basename) {
+                continue;
+            }
+        }
+
+        paths.push(rel.to_string_lossy().to_string());
+        if paths.len() >= max_results {
+            truncated = true;
+            break;
         }
     }
 
     let summary = format!(
-        "find {:?} \u{2192} {} file{}{}",
-        args.pattern,
+        "find {} \u{2192} {} file{}{}",
+        if let Some(n) = &args.name {
+            format!("name:{:?}", n)
+        } else {
+            format!("pattern:{:?}", args.pattern.as_ref().unwrap())
+        },
         paths.len(),
         if paths.len() == 1 { "" } else { "s" },
         if truncated { ", truncated" } else { "" }

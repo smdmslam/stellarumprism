@@ -414,6 +414,7 @@ All NOT STARTED.
 ✅ 1.3 File-editor slash (262974e)
 ✅ 1.4 Verified labels (895f872)
 ✅ 1.5 File approvals (058fbbc, e1e26b6, 56c84c7)
+✅ 1.7 Search Trust (38d21a2 find-by-name + case-insensitivity)
 
 ### Daily-use Readability (Phase 2)
 ✅ 2.1 Structured Markdown (bc36380)
@@ -457,7 +458,7 @@ All NOT STARTED.
 
 | Phase | Items | Status | Notes |
 |-------|-------|--------|-------|
-| **1** Trust & Safety | 6 | 5/6 DONE | 1.6 (contract-change blast-radius) added 2026-04-30; CRITICAL. |
+| **1** Trust & Safety | 7 | 6/7 DONE | 1.6 (contract-change blast-radius) remaining. |
 | **2** Daily-use | 9 | 8/9 DONE | Only 2.9 (agent Cmd+F) remaining. |
 | **3** File Explorer | 7 | 7/7 DONE | Clean. |
 | **4** Protocols | 5 | 1/5 DONE | UI discoverability critical next. |
@@ -468,7 +469,7 @@ All NOT STARTED.
 | **9** Backlog | 4 | 0/4 DONE | Nice-to-have. |
 | **10** Design Evolution | 12 | 0/12 DONE | "Cyber-Noir" aesthetics, Features, & IDE Editor. |
 
-**Overall:** 38/74 items DONE (~51%)
+**Overall:** 39/75 items DONE (~52%)
 
 ---
 
@@ -501,5 +502,5 @@ All NOT STARTED.
 
 ---
 
-**Last Updated:** 2026-05-02 (Rigor spacing fix, folder delete, and multi-select shipped; Phase 10 items updated)  
+**Last Updated:** 2026-05-03 (Rigor spacing fix, folder delete, multi-select, and Search Trust improvements shipped)
 **Format:** Focused on unshipped items; progress from commits integrated.
