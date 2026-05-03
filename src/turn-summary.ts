@@ -31,6 +31,8 @@ export interface WriteEntry {
    *  user can see "the model tried to edit X and failed" rather than a
    *  silently-dropped attempt. */
   ok: boolean;
+  /** Estimated line changes. */
+  stats?: { added: number; removed: number };
 }
 
 /**
@@ -59,6 +61,35 @@ export function extractWritePath(argsJson: string): string | null {
     /* fall through to null */
   }
   return null;
+}
+
+/**
+ * Estimate line changes (+N -M) from a tool's arguments.
+ * For `edit_file`, we compare line counts of the replaced snippet vs the new one.
+ * For `write_file`, we treat it as adding all lines in the new content.
+ */
+export function calculateWriteStats(
+  tool: string,
+  argsJson: string,
+): { added: number; removed: number } | undefined {
+  try {
+    const parsed = JSON.parse(argsJson);
+    if (tool === "edit_file") {
+      const oldStr = String(parsed.old_string || "");
+      const newStr = String(parsed.new_string || "");
+      const removed = oldStr.split("\n").length;
+      const added = newStr.split("\n").length;
+      return { added, removed };
+    }
+    if (tool === "write_file") {
+      const content = String(parsed.content || "");
+      const added = content.split("\n").length;
+      return { added, removed: 0 };
+    }
+  } catch {
+    /* ignore malformed */
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

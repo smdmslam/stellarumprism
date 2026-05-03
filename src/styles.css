@@ -1436,8 +1436,88 @@ input:checked + .toggle-slider:before {
   font-weight: 600;
 }
 .agent-notice-files-modified {
-  color: #06b6d4;
-  margin-top: 10px;
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
+.files-modified-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-family: var(--prism-font-sans);
+  font-size: 12px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.files-modified-count {
+  background: #1f2937;
+  color: #6b7280;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.files-modified-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.file-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  background: rgba(15, 21, 32, 0.6);
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+  font-family: var(--prism-font-mono);
+  font-size: 12px;
+  color: #e2e8f0;
+  user-select: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.file-chip:hover {
+  border-color: rgba(125, 211, 252, 0.3);
+  background: rgba(31, 41, 55, 0.4);
+}
+
+.file-chip-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+}
+
+.file-chip-name {
+  font-weight: 500;
+}
+
+.file-chip-stats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.file-chip-added { color: #4ade80; }
+.file-chip-removed { color: #f87171; }
+
+.file-chip-failed {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.05);
+}
+.file-chip-failed .file-chip-name {
+  color: #fca5a5;
+  text-decoration: line-through;
+  opacity: 0.7;
 }
 .agent-notice-turn-footer {
   color: #4b5563;

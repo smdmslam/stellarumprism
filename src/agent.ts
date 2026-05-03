@@ -8,9 +8,9 @@ import { detectRigorViolation } from "./grounded-rigor";
 import { detectVerifiedTrigger } from "./verified-mode";
 import {
   WRITE_TOOL_NAMES,
+  calculateWriteStats,
   cleanToolSummary,
   extractWritePath,
-  formatFilesModifiedFooter,
   formatTurnFooter,
   type WriteEntry,
 } from "./turn-summary";
@@ -1045,10 +1045,12 @@ export class AgentController {
     if (WRITE_TOOL_NAMES.has(info.name)) {
       const path = extractWritePath(info.args);
       if (path !== null) {
+        const stats = calculateWriteStats(info.name, info.args);
         this.currentTurnWrites.push({
           tool: info.name,
           path,
           ok: info.ok,
+          stats,
         });
       }
     }
@@ -1141,8 +1143,7 @@ export class AgentController {
 
     // \"Files modified\" footer.
     if (this.currentTurnWrites.length > 0) {
-      const footer = formatFilesModifiedFooter(this.currentTurnWrites);
-      this.opts.view.appendNotice("files-modified", footer.join("\n"));
+      this.opts.view.appendFilesModified(this.currentTurnWrites);
     }
 
     // \"Done in Ns \u00b7 N tools \u00b7 model\" turn footer.

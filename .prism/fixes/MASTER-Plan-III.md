@@ -141,34 +141,44 @@ so CAN This behavior be improved. in this case i know the file exists. so i pres
 - **Changes:** Opacity adjustments for file preview and input area.
 - **Verification:** Text selection clearly visible without issues.
 
-#### 2.4 New-conversation affordance ✅ DONE
+#### 2.4 Divider Lume ✅ DONE
+- **Status:** DONE
+- **Fixed in:** `e10f1b2` (Neon glow on hover)
+- **What works:** Layout dividers have a subtle "Cyber-Noir" glow and increased hit zones.
+
+#### 2.5 Modified-files Chips ✅ DONE
+- **Status:** DONE
+- **Implementation:** Basename chips with file icons and +N -M diff stats.
+- **Impact:** Significant space savings in the agent panel.
+
+#### 2.6 New-conversation affordance ✅ DONE
 - **Status:** IMPLEMENTED
 - **Fixed in:** `8e02277`, `ffe3f9c`, `b1f5d43` (new-chat button + nudges)
 - **What works:** New button, long-thread nudge (tuned to 0.5 threshold per recent review), topic-shift nudge.
 - **Remaining:** None; threshold tuned from 0.2 to 0.5 for better accuracy.
 
-#### 2.5 Clickable model/CMD pills in prompt chrome ✅ DONE
+#### 2.7 Clickable model/CMD pills in prompt chrome ✅ DONE
 - **Status:** IMPLEMENTED
 - **Fixed in:** `e1e26b6` (badge click handlers)
 - **What works:** Model and intent badges clickable and functional.
 
-#### 2.6 ANSI/control-sequence sanitization in agent output ✅ DONE
+#### 2.8 ANSI/control-sequence sanitization in agent output ✅ DONE
 - **Status:** IMPLEMENTED
 - **Fixed in:** `56e4094` (sanitize → stripAnsi migration)
 - **What works:** `stripAnsi()` applied across call sites; no escape codes visible.
 - **Verification:** Agent panel markdown clean.
 
-#### 2.7 Agent streaming autoscroll ✅ DONE
+#### 2.9 Agent streaming autoscroll ✅ DONE
 - **Status:** IMPLEMENTED
 - **Fixed in:** `7dfc64e` (scroll follow state)
 - **What works:** Autoscroll respects user intent.
 
-#### 2.8 Task/progress visibility ✅ DONE
+#### 2.10 Task/progress visibility ✅ DONE
 - **Status:** IMPLEMENTED
 - **What works:** Busy pill and protocol report cards show polished progress.
 - **Remaining:** None; rendering confirmed polished.
 
-#### 2.9 Cmd+F find in agent pane
+#### 2.11 Cmd+F find in agent pane
 - **Status:** NOT STARTED
 - **Issue:** No search within agent conversation.
 - **Why:** Essential for long transcripts.
@@ -424,6 +434,8 @@ All NOT STARTED.
 ✅ 2.6 ANSI sanitization (56e4094)
 ✅ 2.7 Autoscroll (7dfc64e)
 ✅ 2.8 Task visibility (protocol cards)
+✅ 2.4 Divider Lume (Cyber-noir aesthetic)
+✅ 2.5 Modified-files Chips (Icon-rich, basename-only display)
 
 ### File Explorer / Viewer (Phase 3)
 ✅ 3.1 Context actions (bc36380 + 5f0d12d delete folder + multi-select)

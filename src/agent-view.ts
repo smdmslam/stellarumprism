@@ -20,6 +20,7 @@
  *   - The view is read-only — typing always lives in `.input-bar`.
  */
 import { marked } from "marked";
+import type { WriteEntry } from "./turn-summary";
 
 // ---------------------------------------------------------------------------
 // marked setup
@@ -109,6 +110,8 @@ export interface AgentViewApi {
   appendToolCall(info: ToolCallInfo): void;
   /** Open the review slot and append a chunk to it. */
   appendReview(piece: string): void;
+  /** Render a list of modified files as interactive chips. */
+  appendFilesModified(writes: WriteEntry[]): void;
   /** Render a typed notice line (router note, header, footer, etc.). */
   appendNotice(kind: NoticeKind, body: string): void;
   /**
@@ -273,9 +276,74 @@ export class AgentView implements AgentViewApi {
     this.currentReview.replaceChildren(frag);
     this.scrollToBottomIfFollowing();
   }
+ 
+  appendFilesModified(writes: WriteEntry[]): void {
+    if (writes.length === 0) return;
+    if (!this.currentTurn) this.beginTurn("");
+ 
+    // Deduplicate by path.
+    const unique = new Map<string, WriteEntry>();
+    for (const w of writes) unique.set(w.path, w);
+    const sorted = Array.from(unique.values()).sort((a, b) =>
+      a.path.localeCompare(b.path),
+    );
+
+    const container = document.createElement("div");
+    container.className = "agent-notice agent-notice-files-modified";
+
+    const heading = document.createElement("div");
+    heading.className = "files-modified-heading";
+    heading.innerHTML = `Files Modified <span class="files-modified-count">${sorted.length}</span>`;
+    container.appendChild(heading);
+
+    const chips = document.createElement("div");
+    chips.className = "files-modified-chips";
+
+    for (const w of sorted) {
+      const chip = document.createElement("div");
+      chip.className = "file-chip" + (w.ok ? "" : " file-chip-failed");
+
+      // Extract basename for display; keep full path in title.
+      const parts = w.path.split(/[\/\\]/);
+      const name = parts[parts.length - 1] || w.path;
+      chip.title = w.path;
+
+      const iconEl = document.createElement("span");
+      iconEl.className = "file-chip-icon";
+      iconEl.innerHTML = getFileIcon(name);
+      chip.appendChild(iconEl);
+
+      const nameEl = document.createElement("span");
+      nameEl.className = "file-chip-name";
+      nameEl.textContent = name;
+      chip.appendChild(nameEl);
+
+      if (w.stats && (w.stats.added > 0 || w.stats.removed > 0)) {
+        const statsEl = document.createElement("span");
+        statsEl.className = "file-chip-stats";
+        if (w.stats.added > 0) {
+          statsEl.innerHTML += `<span class="file-chip-added">+${w.stats.added}</span>`;
+        }
+        if (w.stats.removed > 0) {
+          statsEl.innerHTML += `<span class="file-chip-removed">-${w.stats.removed}</span>`;
+        }
+        chip.appendChild(statsEl);
+      }
+
+      chips.appendChild(chip);
+    }
+
+    container.appendChild(chips);
+    this.currentTurn!.appendChild(container);
+    this.scrollToBottomIfFollowing();
+  }
 
   appendNotice(kind: NoticeKind, body: string): void {
     if (!this.currentTurn) this.beginTurn("");
+    // If the notice is a legacy files-modified string, we ignore it and
+    // wait for the explicit appendFilesModified call.
+    if (kind === "files-modified") return;
+
     const el = document.createElement("div");
     el.className = `agent-notice agent-notice-${kind}`;
     el.textContent = stripAnsi(body);
@@ -349,5 +417,38 @@ export class AgentView implements AgentViewApi {
     // the agent was streaming. 10px handles sub-pixel rounding while
     // yielding to the user's intent to scroll back.
     return Math.ceil(scrollTop + clientHeight) >= scrollHeight - 10;
+  }
+}
+
+/**
+ * Return a small SVG icon string based on filename extension.
+ * Defaults to a generic file icon if extension is unknown.
+ */
+function getFileIcon(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const color = (c: string) => `stroke="${c}"`;
+
+  // Standard Lucide-style file icon as fallback.
+  const fallback = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+
+  switch (ext) {
+    case "rs":
+      return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ${color("#f97316")} stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>`;
+    case "ts":
+    case "tsx":
+      return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ${color("#3b82f6")} stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>`;
+    case "js":
+    case "jsx":
+      return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ${color("#facc15")} stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>`;
+    case "md":
+      return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ${color("#94a3b8")} stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+    case "css":
+      return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ${color("#3b82f6")} stroke-width="2"><path d="M20 21l-2-16-10-3-8 3 2 16 8 2 8-2z"/><path d="M8 11h8M8 15h5"/></svg>`;
+    case "json":
+      return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ${color("#facc15")} stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>`;
+    case "html":
+      return `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ${color("#ea580c")} stroke-width="2"><path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/></svg>`;
+    default:
+      return fallback;
   }
 }
