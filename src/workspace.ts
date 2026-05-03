@@ -104,6 +104,7 @@ import {
   type TreeState,
   type VisibleRow,
 } from "./file-tree";
+import { readerUI } from "./reader-ui";
 
 const TERM_THEME = {
   background: "#0d0f14",
@@ -3666,6 +3667,9 @@ export class Workspace {
     addSep();
     addItem("Rename", "✏", () => {
       void this.promptRenameTreeItem(path);
+    });
+    addItem("Open in Pop-out", "\u2197", () => {
+      void readerUI.open(this.cwd!, path);
     });
     addItem("Move", "\u2192", () => {
       void this.promptMoveTreeItem(path);

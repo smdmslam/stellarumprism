@@ -4414,3 +4414,84 @@ input:checked + .toggle-slider:before {
   border-color: #374151;
   color: #e2e8f0;
 }
+
+/* --- Pop-out Reader (Reader Modal) --- */
+
+.reader-card {
+  width: 92vw !important;
+  height: 90vh !important;
+  max-width: 1400px !important;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 !important;
+  background: #0d0f14 !important;
+  border: 1px solid rgba(125, 211, 252, 0.2) !important;
+  box-shadow: 
+    0 0 40px rgba(0, 0, 0, 0.8),
+    0 0 20px rgba(125, 211, 252, 0.05) !important;
+}
+
+.reader-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #0a0c11;
+  border-bottom: 1px solid #1f2937;
+  flex-shrink: 0;
+}
+
+.reader-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reader-filename {
+  font-family: var(--prism-font-sans);
+  font-size: 16px;
+  font-weight: 700;
+  color: #f3f4f6;
+  letter-spacing: -0.01em;
+}
+
+.reader-path {
+  font-family: var(--prism-font-mono);
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.reader-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reader-main {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  background: #0d0f14;
+}
+
+.reader-main .cm-editor {
+  height: 100%;
+}
+
+/* Ensure the scrollbar in reader is visible but themed */
+.reader-main ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.reader-main ::-webkit-scrollbar-track {
+  background: #0d0f14;
+}
+.reader-main ::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border: 2px solid #0d0f14;
+  border-radius: 5px;
+}
+.reader-main ::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}

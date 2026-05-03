@@ -88,5 +88,23 @@
         </main>
       </div>
     </div>
+    <!-- Reader Overlay (Pop-out Reader) -->
+    <div id="reader-overlay" class="settings-overlay" aria-hidden="true">
+      <div id="reader-card" class="settings-card reader-card">
+        <header class="reader-header">
+          <div class="reader-title-group">
+            <span id="reader-filename" class="reader-filename"></span>
+            <span id="reader-path" class="reader-path"></span>
+          </div>
+          <div class="reader-actions">
+            <button id="reader-save" class="settings-action-btn" style="display: none;">Save</button>
+            <button id="reader-close" class="settings-close-btn" title="Close reader (Esc)">&times;</button>
+          </div>
+        </header>
+        <main id="reader-content" class="reader-main">
+          <!-- FileEditor instance injected here -->
+        </main>
+      </div>
+    </div>
   </body>
 </html>

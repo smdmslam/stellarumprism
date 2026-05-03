@@ -192,7 +192,7 @@ so CAN This behavior be improved. in this case i know the file exists. so i pres
 #### 3.1 Explorer context actions ✅ DONE
 - **Status:** IMPLEMENTED
 - **Fixed in:** `bc36380` + recent expansions (e.g., delete folder and multi-select in `5f0d12d`)
-- **What works:** Right-click menu with new file/folder, rename, move, copy path, add to prompt, delete folder, multi-selection batch actions.
+- **What works:** Right-click menu with new file/folder, rename, move, pop-out reader/editor, copy path, add to prompt, delete folder, multi-selection batch actions.
 - **Fixed:** Destructive tree refresh on delete/rename/move (expansion state and loaded subtrees are now preserved).
 
 #### 3.2 Explorer settings (size / date metadata) ✅ DONE
