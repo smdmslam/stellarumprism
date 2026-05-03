@@ -355,6 +355,12 @@ All items NOT STARTED except 5.9 (DONE) and recent verifier-cost audit partial (
 - **Aesthetics:** Luminous green/cyan bars that dim or change color as budget depletes.
 - **Why:** Moves AI economics from a "hidden tab" to a first-class UI element, allowing for effortless spend awareness.
 
+#### 5.13 Task Token/Cost Metadata Row (NEW 2026-05-03)
+- **Status:** NOT STARTED
+- **Goal:** Display real-time task metrics (tokens/cost/turns) directly in the prompt area.
+- **Design:** A dedicated metadata row above the path badge.
+- **Why:** Provides immediate feedback on the "weight" of the current task and helps users manage session length and cost.
+
 ---
 
 ### Phase 6 — Analysis Engine Upgrades (MEDIUM PRIORITY)
