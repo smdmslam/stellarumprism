@@ -15,3 +15,16 @@ Prism demonstrated its value during the "Pop-out Reader" and "Surgical Explorer"
 > "Prism feels like having a senior engineer constantly looking over your shoulder, not just for syntax, but for the actual integrity of the project's logic. It found a needle in a haystack of 28 tests that I wouldn't have bothered running until much later."
 
 "Prism was definitely the MVP here—catching that test failure before the push saved us from a broken build. It’s a great testament to the "Grounded" architecture we're building."
+
+---
+
+## 2026-05-03: Comparative Reader Refinement
+**Status:** High Value / Precision Review
+
+Prism provided a surgical review of the "Pin-to-Compare" feature set. It identified three critical UX and logic barriers that had been overlooked during the initial implementation phase:
+
+*   **Logic Barrier:** Identified that pin indicators were rendering on directories, which would have triggered `read_file_text` errors.
+*   **State Integrity:** Flagged a "Live Sync" clobbering issue where normal explorer navigation was overwriting pinned files. This led to a more stable "Intentional Pinning" model.
+*   **UI Clarity:** Prompted the addition of an "Active Pane" highlight, resolving the ambiguity of where a new file would load.
+
+**Impact:** These refinements transformed the feature from a "fragile modal" into a "robust side-by-side IDE surface." Prism's ability to reason about the relationship between explorer state and modal persistence is a significant productivity multiplier.
