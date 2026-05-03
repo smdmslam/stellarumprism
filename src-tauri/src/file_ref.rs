@@ -16,12 +16,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const MAX_FILE_BYTES: usize = 256 * 1024; // 256 KB
 const MAX_FILE_CHARS_WARN: usize = 200 * 1024; // warn if close to cap
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct FileRef {
     /// The actual path that was read (absolute).
     pub path: String,
@@ -35,14 +35,14 @@ pub struct FileRef {
     pub truncated: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DirEntry {
     pub name: String,
     /// "file" | "dir" | "symlink" | "other".
     pub kind: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DirListing {
     /// Absolute directory whose contents are being listed.
     pub dir: String,
