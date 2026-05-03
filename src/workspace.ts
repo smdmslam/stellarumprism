@@ -442,7 +442,7 @@ export class Workspace {
                 </span>
                 <span class="strict-toggle-label">Always Verify</span>
               </button>
-              <button class="skills-toggle" type="button" data-aware="false" title="Toggle skills awareness — when on, the agent can request user-curated skills via the read_skill tool (each request is approved). Off by default." aria-label="Skills awareness" aria-pressed="false">skills off</button>
+              <button class="skills-toggle" type="button" data-aware="false" title="Toggle agent awareness \u2014 when on, the agent can request user-curated skills via the read_skill tool (each request is approved). Off by default." aria-label="Agent awareness" aria-pressed="false">awareness: off</button>
             </div>
           </div>
           <div class="agent-stage" aria-label="Agent dialogue"></div>
@@ -2748,8 +2748,8 @@ export class Workspace {
     this.updateSkillsToggleUI();
     this.notify(
       this.skillsAware
-        ? "[skills] awareness on \u2014 the agent will see available skills and may request to load one (each request is approved)"
-        : "[skills] awareness off",
+        ? "[agent] awareness on \u2014 the model can see available skills and request to load them"
+        : "[agent] awareness off",
     );
   }
 
@@ -2759,7 +2759,7 @@ export class Workspace {
     if (!btn) return;
     btn.dataset.aware = this.skillsAware ? "true" : "false";
     btn.setAttribute("aria-pressed", this.skillsAware ? "true" : "false");
-    btn.textContent = this.skillsAware ? "skills on" : "skills off";
+    btn.textContent = this.skillsAware ? "awareness: on" : "awareness: off";
   }
 
   /** Toggle persistent Always Verify mode, which forces grounded chat + verifier. */
