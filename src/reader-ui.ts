@@ -202,8 +202,7 @@ export class ReaderUI {
     this.right.editor?.destroy();
     this.left.editor = null;
     this.right.editor = null;
-    this.left.path = null;
-    this.right.path = null;
+    // We keep this.left.path and this.right.path so pins persist in the explorer
     this.overlay.setAttribute("aria-hidden", "true");
     this.onChange?.();
   }
