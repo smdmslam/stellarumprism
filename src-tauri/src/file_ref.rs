@@ -18,6 +18,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+use opener;
+
 const MAX_FILE_BYTES: usize = 256 * 1024; // 256 KB
 const MAX_FILE_CHARS_WARN: usize = 200 * 1024; // warn if close to cap
 

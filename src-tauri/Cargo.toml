@@ -56,4 +56,5 @@ anyhow = "1.0"
 ignore = "0.4"
 regex = "1"
 globset = "0.4"
+opener = "0.9"
 
