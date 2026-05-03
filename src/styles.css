@@ -4531,13 +4531,13 @@ input:checked + .toggle-slider:before {
 }
 
 .reader-col.is-active {
-  background: rgba(59, 130, 246, 0.03);
-  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.2);
+  background: rgba(125, 211, 252, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.2);
 }
 
 .reader-col.is-active .pane-header {
   background: #0d121d;
-  border-bottom-color: rgba(59, 130, 246, 0.3);
+  border-bottom-color: rgba(125, 211, 252, 0.3);
 }
 
 .reader-col-editor {
@@ -4617,7 +4617,7 @@ input:checked + .toggle-slider:before {
 }
 
 .tree-pin-btn.is-pinned {
-  color: #3b82f6; /* Stellarum Blue when pinned */
+  color: #7dd3fc; /* Prism Cyan when pinned */
   opacity: 1;
-  filter: drop-shadow(0 0 3px rgba(59, 130, 246, 0.4));
+  filter: drop-shadow(0 0 3px rgba(125, 211, 252, 0.4));
 }
