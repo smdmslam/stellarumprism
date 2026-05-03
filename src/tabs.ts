@@ -346,6 +346,16 @@ export class TabManager {
       });
     });
 
+    addTarget("Rename Tab", "\u270f\ufe0f", async () => {
+      const newTitle = await ws.askText({
+        title: "Rename Tab",
+        defaultValue: ws.getTitle(),
+      });
+      if (newTitle && newTitle.trim()) {
+        ws.setTitle(newTitle.trim());
+      }
+    });
+
     // Backdrop catches outside clicks + the next right-click anywhere
     // off the menu. zIndex sits below the menu so the menu remains
     // clickable.

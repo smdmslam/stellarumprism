@@ -2761,13 +2761,7 @@ fn build_user_message(
 
     let mut out = String::new();
     if !ctx.today.is_empty() {
-        // Emphasized so the model notices it over its training prior. The
-        // phrasing matters: models anchor on "today is <year>" more reliably
-        // than on a bare date line.
-        out.push_str(&format!(
-            "Current real-world date: {}. Treat this as authoritative; it is NEWER than your training cutoff.\n\n",
-            ctx.today
-        ));
+        out.push_str(&format!("Current date: {}.\n\n", ctx.today));
     }
     if !ctx.cwd.is_empty() {
         out.push_str(&format!("Current working directory: {}\n\n", ctx.cwd));

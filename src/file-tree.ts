@@ -273,13 +273,22 @@ export function renamePathInTree(
     return p;
   };
 
+  const migrateEntry = (e: RawTreeEntry): RawTreeEntry => {
+    const newP = migrate(e.path);
+    if (newP === e.path) return e;
+    // If THIS is the item that was renamed, update its name too.
+    if (e.path === oldPath) {
+      const parts = newPath.split("/");
+      const name = parts[parts.length - 1] || e.name;
+      return { ...e, path: newP, name };
+    }
+    return { ...e, path: newP };
+  };
+
   // 1. Update root entries.
   let root = state.root;
   if (root) {
-    const entries = root.entries.map((e) => ({
-      ...e,
-      path: migrate(e.path),
-    }));
+    const entries = root.entries.map(migrateEntry);
     root = { ...root, entries };
   }
 
@@ -287,10 +296,7 @@ export function renamePathInTree(
   const childrenByPath = new Map<string, RawTreeListing>();
   for (const [p, listing] of state.childrenByPath.entries()) {
     const newP = migrate(p);
-    const entries = listing.entries.map((e) => ({
-      ...e,
-      path: migrate(e.path),
-    }));
+    const entries = listing.entries.map(migrateEntry);
     childrenByPath.set(newP, { ...listing, dir: newP, entries });
   }
 

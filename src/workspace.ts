@@ -185,6 +185,12 @@ export class Workspace {
   private taskTokens = 0;
   private cwd = ""; // populated by OSC 7 from the shell integration
 
+  public setTitle(title: string): void {
+    this.title = truncateLikeTabTitle(title);
+    this.autoTitleDone = true;
+    this.cb.onTitleChange(this.id, this.title);
+  }
+
   public getId(): string { return this.id; }
   public getCwd(): string { return this.cwd; }
   /** Pending image attachments for the next agent query. */
@@ -1065,7 +1071,7 @@ export class Workspace {
       });
       return;
     }
-    // /save [full] \u2014 write a markdown chat artifact. Default mode is
+    // /save [full] — write a markdown chat artifact. Default mode is
     // a clean human-readable transcript (user + assistant prose only).
     // `/save full` (or `/save --full`) writes the v2 tool-aware format
     // with assistant tool_calls + role=tool results preserved, so the
@@ -1077,7 +1083,7 @@ export class Workspace {
       void this.saveChat(full);
       return;
     }
-    // /load \u2014 round-trip companion to /save. Opens a file picker,
+    // /load — round-trip companion to /save. Opens a file picker,
     // parses the chosen Prism chat markdown, and seeds THIS tab's
     // session with the loaded messages. Existing in-memory history is
     // overwritten; user should /save first if they care.
@@ -1093,13 +1099,13 @@ export class Workspace {
       }
       return;
     }
-    // /files \u2014 switch sidebar to the Files tab and focus the tree.
+    // /files — switch sidebar to the Files tab and focus the tree.
     if (/^\s*\/files\s*$/i.test(text)) {
       this.setSidebarTab("files");
-      this.notify("[files] sidebar \u2192 Files tab");
+      this.notify("[files] sidebar → Files tab");
       return;
     }
-    // /skills \u2014 list everything under `.prism/skills/` as a markdown
+    // /skills — list everything under `.prism/skills/` as a markdown
     // table. Subcommands:
     //   /skills                 list the corpus
     //   /skills load <slug>     engage a skill for this tab (chip + body in systemPrefix)
@@ -1111,7 +1117,7 @@ export class Workspace {
     if (skillsMatch) {
       const args = (skillsMatch[1] ?? "").trim();
       if (args.length === 0) {
-        // Bare /skills \u2014 list the corpus.
+        // Bare /skills — list the corpus.
         void listSkills(this.cwd)
           .then((skills) => {
             if (this.agentView) {
@@ -1136,11 +1142,11 @@ export class Workspace {
         return;
       }
       this.notifyError(
-        `[skills] unknown subcommand \"${stripAnsi(args)}\". Use /skills, /skills load <slug>, or /skills unload <slug>.`,
+        `[skills] unknown subcommand "${stripAnsi(args)}". Use /skills, /skills load <slug>, or /skills unload <slug>.`,
       );
       return;
     }
-    // /last \u2014 print a compact summary of the persisted workspace
+    // /last — print a compact summary of the persisted workspace
     // state (last audit + last build pointers).
     if (/^\s*\/last\s*$/i.test(text)) {
       if (this.agentView) {
@@ -1319,7 +1325,7 @@ export class Workspace {
     }
 
     // /new <project-name> <stack description> [--into=<dir>] [--max-rounds=N]
-    //   \u2014 substrate-gated project scaffolder. Bare `/new` (no args)
+    //   — substrate-gated project scaffolder. Bare `/new` (no args)
     //   was already handled above as 'clear conversation history', so
     //   this branch only fires when args are present (the regex requires
     //   at least one whitespace + non-empty tail).
@@ -1347,7 +1353,7 @@ export class Workspace {
         ? `${parsed.projectName} (${parsed.description})`
         : parsed.projectName;
       this.notify(
-        `[new] scaffolding ${stripAnsi(parsed.projectName)} into ${stripAnsi(target)}${parsed.description ? ` \u2014 ${stripAnsi(parsed.description)}` : ""}`,
+        `[new] scaffolding ${stripAnsi(parsed.projectName)} into ${stripAnsi(target)}${parsed.description ? ` — ${stripAnsi(parsed.description)}` : ""}`,
       );
       void this.dispatchAgentQuery(newPrompt, {
         mode: mode.name,
@@ -1411,11 +1417,11 @@ export class Workspace {
         scope: parsed.scope,
       });
       this.setTitleFromText(
-        `refactor ${parsed.oldName} \u2192 ${parsed.newName}`,
+        `refactor ${parsed.oldName} → ${parsed.newName}`,
       );
-      this.activeBuildFeature = `${parsed.oldName} \u2192 ${parsed.newName}${parsed.scope ? ` in ${parsed.scope}` : ""}`;
+      this.activeBuildFeature = `${parsed.oldName} → ${parsed.newName}${parsed.scope ? ` in ${parsed.scope}` : ""}`;
       this.notify(
-        `[refactor] renaming ${stripAnsi(parsed.oldName)} \u2192 ${stripAnsi(parsed.newName)}${parsed.scope ? ` in ${stripAnsi(parsed.scope)}` : ""}`,
+        `[refactor] renaming ${stripAnsi(parsed.oldName)} → ${stripAnsi(parsed.newName)}${parsed.scope ? ` in ${stripAnsi(parsed.scope)}` : ""}`,
       );
       void this.dispatchAgentQuery(refactorPrompt, {
         mode: mode.name,
@@ -1570,7 +1576,7 @@ export class Workspace {
     const selected = filterResult.findings;
     if (selected.length === 0) {
       this.notify(
-        `[fix] nothing to fix \u2014 ${stripAnsi(prettyPath(lookup.path))} has 0 findings`,
+        `[fix] nothing to fix — ${stripAnsi(prettyPath(lookup.path))} has 0 findings`,
       );
       return;
     }
@@ -1634,12 +1640,12 @@ export class Workspace {
         trigger ?? ({ kind: "repo-fact", matched: "always verify" } as const);
       systemPrefix = buildVerifiedSystemPrefix(strictTrigger);
       this.notify(
-        `\u2192 [always verify] ${verifiedKindLabel(strictTrigger.kind)} protocol active (matched \u201c${stripAnsi(strictTrigger.matched)}\u201d)`,
+        `→ [always verify] ${verifiedKindLabel(strictTrigger.kind)} protocol active (matched “${stripAnsi(strictTrigger.matched)}”)`,
       );
     } else if (!options.mode && trigger) {
       systemPrefix = buildVerifiedSystemPrefix(trigger);
       this.notify(
-        `\u2192 [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched \u201c${stripAnsi(trigger.matched)}\u201d)`,
+        `→ [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched “${stripAnsi(trigger.matched)}”)`,
       );
     }
     // Engaged skills apply to EVERY turn (including mode-driven ones
@@ -1654,7 +1660,7 @@ export class Workspace {
     }
     // Track B awareness manifest. Append AFTER any other prefix so the
     // available-skills line is the last thing the model sees before the
-    // user query \u2014 closer to the conversational floor improves the odds
+    // user query — closer to the conversational floor improves the odds
     // it gets considered. Excludes already-engaged skills (their bodies
     // are above; no need to re-advertise).
     if (this.skillsAware) {
@@ -1676,7 +1682,7 @@ export class Workspace {
     const images = this.takePendingImages();
     if (images.length > 0 && !modelSupportsVision(this.agent.getModel())) {
       this.notify(
-        `[images] model ${stripAnsi(this.agent.getModel())} doesn't support images \u2014 sending text only`,
+        `[images] model ${stripAnsi(this.agent.getModel())} doesn't support images — sending text only`,
       );
     }
 
@@ -1967,7 +1973,7 @@ export class Workspace {
       row.setAttribute("data-snippet-loaded", "true");
       return;
     }
-    host.innerHTML = `<div class="snippet snippet-loading">loading\u2026</div>`;
+    host.innerHTML = `<div class="snippet snippet-loading">loading…</div>`;
     try {
       const snippet = await invoke<FileSnippet>("read_file_snippet", {
         cwd: this.cwd,
@@ -2073,12 +2079,12 @@ export class Workspace {
       });
       const pretty = prettyPath(result.path);
       const lines = [
-        `[audit] report saved \u2192 ${stripAnsi(pretty)} (${formatBytesShort(result.bytes_written)})`,
+        `[audit] report saved → ${stripAnsi(pretty)} (${formatBytesShort(result.bytes_written)})`,
       ];
       if (result.json_path) {
         const prettyJson = prettyPath(result.json_path);
         lines.push(
-          `[audit] sidecar     \u2192 ${stripAnsi(prettyJson)} (${formatBytesShort(result.json_bytes_written ?? 0)})`,
+          `[audit] sidecar     → ${stripAnsi(prettyJson)} (${formatBytesShort(result.json_bytes_written ?? 0)})`,
         );
         // Update the workspace-state pointer so a future tab open
         // hydrates this audit without re-running it. Best-effort: a
@@ -2152,12 +2158,12 @@ export class Workspace {
       });
       const pretty = prettyPath(result.path);
       const lines = [
-        `[${stripAnsi(info.mode)}] report saved \u2192 ${stripAnsi(pretty)} (${formatBytesShort(result.bytes_written)})`,
+        `[${stripAnsi(info.mode)}] report saved → ${stripAnsi(pretty)} (${formatBytesShort(result.bytes_written)})`,
       ];
       if (result.json_path) {
         const prettyJson = prettyPath(result.json_path);
         lines.push(
-          `[${stripAnsi(info.mode)}] sidecar     \u2192 ${stripAnsi(prettyJson)} (${formatBytesShort(result.json_bytes_written ?? 0)})`,
+          `[${stripAnsi(info.mode)}] sidecar     → ${stripAnsi(prettyJson)} (${formatBytesShort(result.json_bytes_written ?? 0)})`,
         );
         void this.updateLastBuildPointer(report, result.json_path);
       }
@@ -2178,7 +2184,7 @@ export class Workspace {
    * sidecars. Best-effort: any failure logs and leaves in-memory state
    * empty so the next audit/build rewrites it cleanly.
    *
-   * We deliberately do NOT auto-open the Problems panel here \u2014 a user
+   * We deliberately do NOT auto-open the Problems panel here — a user
    * who reopens a tab to a clean slate may not want their last audit
    * shoved in their face. `/problems show` brings it back instantly.
    */
@@ -2352,12 +2358,12 @@ export class Workspace {
     const out: string[] = ["\r\n"];
     if (!this.lastAuditReport && !this.lastBuildReport) {
       out.push(
-        `${DIM}[last] no persisted state yet \u2014 run /audit or /build to populate ${CYAN}.prism/state.json${RESET}\r\n`,
+        `${DIM}[last] no persisted state yet — run /audit or /build to populate ${CYAN}.prism/state.json${RESET}\r\n`,
       );
       return out.join("");
     }
     out.push(
-      `${BOLD}Last activity${RESET} ${DIM}\u2014 from ${CYAN}.prism/state.json${RESET}\r\n`,
+      `${BOLD}Last activity${RESET} ${DIM}— from ${CYAN}.prism/state.json${RESET}\r\n`,
     );
     if (this.lastAuditReport) {
       const a = this.lastAuditReport;
@@ -2371,7 +2377,7 @@ export class Workspace {
           `\r\n`,
       );
     } else {
-      out.push(`  ${DIM}audit \u2014 (none yet; run /audit)${RESET}\r\n`);
+      out.push(`  ${DIM}audit — (none yet; run /audit)${RESET}\r\n`);
     }
     if (this.lastBuildReport) {
       const b = this.lastBuildReport;
@@ -2385,8 +2391,8 @@ export class Workspace {
       out.push(
         `  ${BOLD}build${RESET} ${DIM}${rel}${RESET}` +
           ` ${statusColor}${b.status}${RESET}` +
-          ` ${DIM}\u00b7 ${CYAN}${b.mode}${RESET}` +
-          (b.feature ? ` ${DIM}\u00b7 ${b.feature}${RESET}` : "") +
+          ` ${DIM}· ${CYAN}${b.mode}${RESET}` +
+          (b.feature ? ` ${DIM}· ${b.feature}${RESET}` : "") +
           `\r\n`,
       );
       const v = b.verification;
@@ -2395,11 +2401,11 @@ export class Workspace {
         if (v.typecheck) parts.push(`typecheck ${v.typecheck}`);
         if (v.tests) parts.push(`tests ${v.tests}`);
         if (v.http) parts.push(`http ${v.http}`);
-        out.push(`    ${DIM}${parts.join(" \u00b7 ")}${RESET}\r\n`);
+        out.push(`    ${DIM}${parts.join(" · ")}${RESET}\r\n`);
       }
     } else {
       out.push(
-        `  ${DIM}build \u2014 (none yet; run /build, /new, /refactor, /test-gen)${RESET}\r\n`,
+        `  ${DIM}build — (none yet; run /build, /new, /refactor, /test-gen)${RESET}\r\n`,
       );
     }
     return out.join("");
@@ -2421,7 +2427,7 @@ export class Workspace {
         { cwd: this.cwd },
       );
     } catch {
-      // Treat a corrupt file the same as missing \u2014 the next write
+      // Treat a corrupt file the same as missing — the next write
       // overwrites the bad bytes with a clean spine.
       current = null;
     }
@@ -2490,7 +2496,7 @@ export class Workspace {
     const MAX_BYTES = 5 * 1024 * 1024; // 5 MB — vision APIs reject larger
     if (file.size > MAX_BYTES) {
       this.notify(
-        `[images] ${stripAnsi(file.name || "pasted")} is ${Math.round(file.size / 1024)} KB \u2014 over the 5 MB cap`,
+        `[images] ${stripAnsi(file.name || "pasted")} is ${Math.round(file.size / 1024)} KB — over the 5 MB cap`,
       );
       return;
     }
@@ -2527,7 +2533,7 @@ export class Workspace {
         (img) =>
           `<div class="thumb" data-id="${img.id}" title="${escapeAttr(img.name)}">` +
           `<img src="${img.dataUrl}" alt="${escapeAttr(img.name)}"/>` +
-          `<button class="thumb-close" data-id="${img.id}" title="Remove">\u00d7</button>` +
+          `<button class="thumb-close" data-id="${img.id}" title="Remove">×</button>` +
           `</div>`,
       )
       .join("");
@@ -2574,12 +2580,12 @@ export class Workspace {
       // recipe ids (inline code), labels (bold), and category labels
       // (italic) get proper visual weight via the existing
       // `.markdown-body` styles. The plain-text appendNotice path is
-      // too dim for a structured listing \u2014 see the notify-overcorrection
+      // too dim for a structured listing — see the notify-overcorrection
       // follow-up doc for the broader migration this seeds.
       const md: string[] = ["## Available recipes", ""];
       for (const r of RECIPES) {
         md.push(
-          `- **\`${r.id}\`** \u2014 ${r.label} \u00b7 *${r.category}*  `,
+          `- **\`${r.id}\`** — ${r.label} · *${r.category}*  `,
         );
         md.push(`  ${r.blurb}`);
       }
@@ -2592,7 +2598,7 @@ export class Workspace {
     // Card path: mount a ProtocolReportCard inline in the agent panel
     // and let the runner drive its lifecycle via onProgress. The card
     // replaces the per-step notify() chatter from Phase B with one
-    // self-mutating element (planning \u2192 running \u2192 done) modeled on
+    // self-mutating element (planning → running → done) modeled on
     // the Approval card pattern.
     const recipe = findRecipe(id);
     if (!recipe) {
@@ -2621,7 +2627,7 @@ export class Workspace {
         // user can paste it into a terminal or Finder manually.
         void openPath(path)
           .then(() => {
-            this.notify(`[protocol] opened report \u2192 ${path}`);
+            this.notify(`[protocol] opened report → ${path}`);
           })
           .catch((err) => {
             void navigator.clipboard.writeText(path).catch(() => {});
@@ -2697,11 +2703,11 @@ export class Workspace {
    * when the resulting agent turn completes. The runner's `slash` step
    * kind only lists agent-dispatching commands (/audit, /review, etc.);
    * if a non-dispatching command is passed (e.g. /help) the agent
-   * never goes busy and this promise hangs by design \u2014 v1 leans on
+   * never goes busy and this promise hangs by design — v1 leans on
    * recipe-author discipline rather than runtime detection.
    *
    * Subscribes to the agent's `awaitTurnComplete` BEFORE dispatching so
-   * the busy=true \u2192 busy=false cycle can't race past the listener.
+   * the busy=true → busy=false cycle can't race past the listener.
    */
   private async runAgentSlashCommand(
     text: string,
@@ -2744,7 +2750,7 @@ export class Workspace {
       this.taskTokens = 0;
       this.updateTaskCost(0);
       this.cb.onTitleChange(this.id, this.title);
-      this.notify("[agent] new session \u2014 history cleared and title reset");
+      this.notify("[agent] new session — history cleared and title reset");
     });
   }
 
@@ -2762,7 +2768,7 @@ export class Workspace {
     this.updateSkillsToggleUI();
     this.notify(
       this.skillsAware
-        ? "[agent] skill awareness on \u2014 the model can see available skills and request to load them"
+        ? "[agent] skill awareness on — the model can see available skills and request to load them"
         : "[agent] skill awareness off",
     );
   }
@@ -2851,7 +2857,7 @@ export class Workspace {
    *
    * Format mirrors the agent's own protocol style so the LLM treats
    * it as instruction rather than user content. Each skill is one
-   * line: `- \`slug\` \u2014 description`.
+   * line: `- \`slug\` — description`.
    */
   private async composeSkillsAwarenessManifest(): Promise<string> {
     if (!this.cwd) return "";
@@ -2870,10 +2876,10 @@ export class Workspace {
     const out: string[] = [];
     out.push("## Available skills");
     out.push(
-      "The user has skills awareness enabled. If any of the following user-curated skills would clearly help with the current task, call the `read_skill` tool with the matching slug. Each call surfaces an approval card to the user; on approval, the skill engages for the rest of the tab session and its body rides every subsequent turn. Do not call speculatively \u2014 a wrong call costs the user a click.",
+      "The user has skills awareness enabled. If any of the following user-curated skills would clearly help with the current task, call the `read_skill` tool with the matching slug. Each call surfaces an approval card to the user; on approval, the skill engages for the rest of the tab session and its body rides every subsequent turn. Do not call speculatively — a wrong call costs the user a click.",
     );
     for (const s of candidates) {
-      out.push(`- \`${s.slug}\` \u2014 ${s.description}`);
+      out.push(`- \`${s.slug}\` — ${s.description}`);
     }
     return out.join("\n");
   }
@@ -2881,12 +2887,12 @@ export class Workspace {
   /**
    * Tool-execution observer hook. Wired into AgentController via
    * `onToolExecuted`; fires once per completed tool call. We care
-   * specifically about `read_skill` here \u2014 a successful one means
+   * specifically about `read_skill` here — a successful one means
    * the user just approved engaging a skill, so we stickify it by
    * routing through the same `engageSkill` path Track A uses.
    *
    * Failures (user rejected, args invalid, file too large) are
-   * silently ignored \u2014 the LLM already saw the error in the tool
+   * silently ignored — the LLM already saw the error in the tool
    * result and can adjust; we don't need to surface anything more.
    */
   private async handleToolExecuted(info: {
@@ -2909,7 +2915,7 @@ export class Workspace {
     // Engage via the standard path so the size-discipline gate runs
     // and the chip renders. Note: the LLM ALREADY got the body for
     // this turn via the tool result, so even if `decideEngagement`
-    // blocks (over budget), the current turn isn't degraded \u2014 the
+    // blocks (over budget), the current turn isn't degraded — the
     // engagement is just refused for future turns.
     await this.engageSkill(slug);
   }
@@ -2933,7 +2939,7 @@ export class Workspace {
    * `this.engagedSkills` on success. Re-renders the input-bar chip(s)
    * and notifies the user. Idempotent on already-engaged slugs.
    *
-   * Does NOT persist anything \u2014 engagement is per-tab + ephemeral by
+   * Does NOT persist anything — engagement is per-tab + ephemeral by
    * design. See `docs/skills.md` for the curation-vs-engagement split.
    */
   private async engageSkill(slug: string): Promise<void> {
@@ -2942,7 +2948,7 @@ export class Workspace {
       return;
     }
     if (!this.cwd) {
-      this.notifyError("[skills] cwd unknown \u2014 wait for the shell prompt");
+      this.notifyError("[skills] cwd unknown — wait for the shell prompt");
       return;
     }
     if (this.engagedSkills.has(slug)) {
@@ -3031,7 +3037,7 @@ export class Workspace {
    *
    * The size indicator gets a `[data-state]` attribute so CSS can flip
    * its color when the user is approaching the budget cap (warn at
-   * \u226575%, near at \u226590%) without us doing manual style writes here.
+   * ≥75%, near at ≥90%) without us doing manual style writes here.
    */
   private renderSkillChips(): void {
     const row = this.root.querySelector<HTMLElement>(".skill-chips-row");
@@ -3048,11 +3054,11 @@ export class Workspace {
       totalBytes += skill.sizeBytes;
       const chip = document.createElement("span");
       chip.className = "skill-chip";
-      chip.title = `${skill.name} \u2014 ${formatKB(skill.sizeBytes)}\nClick \u00d7 to disengage`;
+      chip.title = `${skill.name} — ${formatKB(skill.sizeBytes)}\nClick × to disengage`;
 
       const glyph = document.createElement("span");
       glyph.className = "skill-chip-glyph";
-      glyph.textContent = "\u25b8";
+      glyph.textContent = "▸";
       chip.appendChild(glyph);
 
       const labelEl = document.createElement("span");
@@ -3064,7 +3070,7 @@ export class Workspace {
       closeBtn.type = "button";
       closeBtn.className = "skill-chip-close";
       closeBtn.setAttribute("aria-label", `Disengage ${skill.name}`);
-      closeBtn.textContent = "\u00d7";
+      closeBtn.textContent = "×";
       closeBtn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -3077,8 +3083,8 @@ export class Workspace {
 
     // Compact size indicator. Integer KB rounding so the badge stays
     // tight at narrow widths and lines up nicely with the chip baseline.
-    // State attribute drives color: `ok` (<75%), `warn` (75\u201389%),
-    // `near` (\u226590%). The hard cap itself is enforced by
+    // State attribute drives color: `ok` (<75%), `warn` (75–89%),
+    // `near` (≥90%). The hard cap itself is enforced by
     // `decideEngagement`; this is just visual headroom feedback.
     const usedKb = Math.round(totalBytes / 1024);
     const budgetKb = Math.round(SESSION_SKILL_BUDGET_BYTES / 1024);
@@ -3138,7 +3144,7 @@ export class Workspace {
     if (!el) return;
     const short = shortModelName(this.agent.getModel());
     const count = this.agent.getMessageCount();
-    el.textContent = count > 0 ? `${short} \u00b7 ${count}` : short;
+    el.textContent = count > 0 ? `${short} · ${count}` : short;
   }
 
   private updateCwdBadge(): void {
@@ -3171,9 +3177,9 @@ export class Workspace {
       countEl.textContent = String(list.length);
       listEl.innerHTML = list
         .map((b) => {
-          const cmd = b.command.trim() || "\u2014";
+          const cmd = b.command.trim() || "—";
           const dur = formatDuration(b);
-          const ecLabel = b.status === "running" ? "\u2026" : String(b.exitCode ?? "\u2014");
+          const ecLabel = b.status === "running" ? "…" : String(b.exitCode ?? "—");
           return (
             `<li class="block-item status-${b.status}" data-id="${b.id}" title="${escapeAttr(cmd)}">` +
             `<span class="status-dot"></span>` +
@@ -3461,10 +3467,10 @@ export class Workspace {
     if (!btn) return;
     btn.setAttribute("aria-pressed", this.showHiddenFiles ? "true" : "false");
     btn.classList.toggle("sidebar-tab-action-on", this.showHiddenFiles);
-    btn.textContent = this.showHiddenFiles ? "\u25cf" : "\u25cb";
+    btn.textContent = this.showHiddenFiles ? "●" : "○";
     btn.title = this.showHiddenFiles
-      ? "Hide hidden files (.git, .env, \u2026 will be hidden again; .prism/ is always shown)"
-      : "Show hidden files (.git, .env, \u2026; .prism/ is always shown)";
+      ? "Hide hidden files (.git, .env, … will be hidden again; .prism/ is always shown)"
+      : "Show hidden files (.git, .env, …; .prism/ is always shown)";
   }
 
   /**
@@ -3730,7 +3736,7 @@ export class Workspace {
     addItem("New File", "+", () => {
       void this.createNewFile(parentForCreate);
     });
-    addItem("New Folder", "\u229E", () => {
+    addItem("New Folder", "⊞", () => {
       void this.createNewFolder(parentForCreate);
     });
 
@@ -3739,17 +3745,17 @@ export class Workspace {
     addItem("Rename", "✏", () => {
       void this.promptRenameTreeItem(path);
     });
-    addItem("Open Reader", "\u2197", () => {
+    addItem("Open Reader", "↗", () => {
       void readerUI.open(this.cwd!, path);
     });
-    addItem("Move", "\u2192", () => {
+    addItem("Move", "→", () => {
       void this.promptMoveTreeItem(path);
     });
     // Delete items (files or folders). Folders use `remove_dir_all` to
     // recurse, so the confirmation modal reflects the increased risk.
     addItem(
       "Delete",
-      "\u2421", // DELETE SYMBOL \u2014 monochrome, matches sibling icons
+      "␡", // DELETE SYMBOL — monochrome, matches sibling icons
       () => {
         void this.promptDeleteTreeItem(path, kind);
       },
@@ -3790,7 +3796,7 @@ export class Workspace {
    * to submit and Esc to cancel, and returns the trimmed text or
    * `null` on cancel.
    */
-  private askText(opts: {
+  public askText(opts: {
     title: string;
     defaultValue?: string;
     placeholder?: string;
@@ -4913,10 +4919,8 @@ export class Workspace {
     // dialog itself runs `mkdir -p` on the chosen directory at write
     // time, so neither path needs to pre-exist.
     const defaultPath = this.cwd
-      ? `${this.cwd}/.prism/chats/${slug}-${shortStamp()}.${ext}`
-      : await expandTilde(
-          `~/Documents/Prism/Chats/${slug}-${shortStamp()}.${ext}`,
-        );
+      ? `${this.cwd}/.prism/chats/${slug}.${ext}`
+      : await expandTilde(`~/Documents/Prism/Chats/${slug}.${ext}`);
     let target: string | null = null;
     try {
       target = await saveDialog({
@@ -4954,12 +4958,8 @@ export class Workspace {
         }
       }
     }
-    const slugSource = lastUser || this.title;
-    const slug = slugify(slugSource) || slugify(this.title) || "chat";
-    const exportTitle =
-      lastUser.length > 0
-        ? truncateLikeTabTitle(lastUser) || this.title
-        : this.title;
+    const slug = slugify(this.title) || "chat";
+    const exportTitle = this.title;
     return { slug, exportTitle };
   }
 

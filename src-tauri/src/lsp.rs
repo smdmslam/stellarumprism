@@ -211,6 +211,16 @@ pub fn detect_lsp_command(cwd: &Path) -> Option<LspSpec> {
         }
     }
     if cwd.join("tsconfig.json").is_file() || cwd.join("package.json").is_file() {
+        let local_bin = cwd.join("node_modules/.bin/typescript-language-server");
+        if local_bin.is_file() {
+            return Some(LspSpec {
+                server: "typescript-language-server".into(),
+                argv: vec![
+                    local_bin.to_string_lossy().into(),
+                    "--stdio".into(),
+                ],
+            });
+        }
         if let Some(_) = which_simple("typescript-language-server") {
             return Some(LspSpec {
                 server: "typescript-language-server".into(),
