@@ -28,3 +28,22 @@ Prism provided a surgical review of the "Pin-to-Compare" feature set. It identif
 *   **UI Clarity:** Prompted the addition of an "Active Pane" highlight, resolving the ambiguity of where a new file would load.
 
 **Impact:** These refinements transformed the feature from a "fragile modal" into a "robust side-by-side IDE surface." Prism's ability to reason about the relationship between explorer state and modal persistence is a significant productivity multiplier.
+
+---
+
+## 2026-05-03: Case Study: Silent Staging & Modal Decoupling
+**Status:** Architectural Breakthrough
+
+This review highlights a pivotal UX shift suggested by Prism to resolve "Interruptive UI" patterns.
+
+**The Problem:**
+Initially, clicking a "Star" to pin a file forced the Pop-out Reader to open immediately. This created a logic barrier where users couldn't "collect" multiple files without being constantly interrupted by the modal overlay.
+
+**Prism's Solution:**
+Prism proposed a **Silent Staging** model. By introducing a `silent` flag to the `togglePin` logic, the system now allows users to:
+1.  **Stage Silently:** Star files in the explorer (glow turns Prism Cyan) while remaining in the flow of the explorer.
+2.  **View Intentionally:** The modal only opens when the user explicitly triggers "Open Reader."
+3.  **Persistence Correction:** Prism identified that `close()` was prematurely nullifying pinned paths, and suggested preserving them so stars remain active across sessions.
+
+**Impact:**
+This transformed the "Pop-out Reader" from a simple file viewer into a **Comparison Buffer**. It demonstrates Prism's capacity to not just fix bugs, but to propose superior architectural patterns for user flow.
