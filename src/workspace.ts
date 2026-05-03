@@ -3482,7 +3482,7 @@ export class Workspace {
       if (pinBtn) {
         e.preventDefault();
         e.stopPropagation();
-        void readerUI.togglePin(this.cwd!, path);
+        void readerUI.togglePin(this.cwd!, path, true);
         return;
       }
 

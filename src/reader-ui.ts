@@ -49,18 +49,18 @@ export class ReaderUI {
   }
 
   /** Toggle a file's pinned status in the reader. */
-  public async togglePin(cwd: string, path: string): Promise<void> {
+  public async togglePin(cwd: string, path: string, silent = false): Promise<void> {
     if (this.left.path === path) {
       await this.unpin("left");
     } else if (this.right.path === path) {
       await this.unpin("right");
     } else {
-      await this.pin(cwd, path);
+      await this.pin(cwd, path, silent);
     }
   }
 
-  private async pin(cwd: string, path: string): Promise<void> {
-    if (!this.isVisible()) {
+  private async pin(cwd: string, path: string, silent = false): Promise<void> {
+    if (!silent && !this.isVisible()) {
       this.overlay.setAttribute("aria-hidden", "false");
     }
 
