@@ -347,6 +347,14 @@ All items NOT STARTED except 5.9 (DONE) and recent verifier-cost audit partial (
 - **Issue:** Default to premium models inflates casual chat costs.
 - **Action:** Audit `config.rs` and `router.ts`; set `auto-thrifty` as default.
 
+#### 5.12 Visual Budget Indicator (Toolbar "Fuel Gauge") (NEW 2026-05-03)
+- **Status:** NOT STARTED
+- **Goal:** Real-time visibility of remaining credits directly in the primary toolbar.
+- **Design:** Five small vertical bars (OpenRouter uptime style).
+- **Logic:** Map `(remaining_credits / total_budget)` to a 5-bar scale.
+- **Aesthetics:** Luminous green/cyan bars that dim or change color as budget depletes.
+- **Why:** Moves AI economics from a "hidden tab" to a first-class UI element, allowing for effortless spend awareness.
+
 ---
 
 ### Phase 6 — Analysis Engine Upgrades (MEDIUM PRIORITY)
