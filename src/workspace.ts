@@ -449,6 +449,12 @@ export class Workspace {
           <div class="agent-actions"></div>
           <div class="attachments"></div>
           <div class="input-bar">
+            <div class="input-info-row">
+              <span class="info-item cost-metric" title="Current Task Estimated Cost">
+                <span class="info-label">Cost</span>
+                <span class="info-value" id="task-cost-display">0.0k tokens</span>
+              </span>
+            </div>
             <div class="input-row">
               <div class="editor-host"></div>
             </div>
@@ -2784,8 +2790,27 @@ export class Workspace {
     const label = btn.querySelector<HTMLElement>(".strict-toggle-label");
     if (label) label.textContent = strict ? "Always Verify" : "Auto Verify";
     btn.title = strict
-      ? "Always Verify is on: every agent turn gets grounded instructions and a verifier pass. Best for maximum checking; may add latency/cost and can make answers more conservative."
+      ? "Always Verify is on: every agent turn gets grounded chat instructions and a verifier pass. Best for maximum checking; may add latency/cost and can make answers more conservative."
       : "Auto Verify is on: Prism still auto-grounds inspectable factual prompts like counts, repo facts, and feature summaries, but does not force verification on every turn.";
+  }
+
+  /** Update the task cost display in the prompt info row. */
+  public updateTaskCost(tokens: number): void {
+    const display = this.root.querySelector<HTMLElement>("#task-cost-display");
+    if (!display) return;
+    const k = (tokens / 1000).toFixed(1);
+    display.textContent = `${k}k tokens`;
+  }
+
+  /** Update the global fuel gauge in the toolbar based on credits/budget. */
+  public static updateGlobalFuelGauge(credits: number, budget: number): void {
+    const bars = document.querySelectorAll(".fuel-bar");
+    if (bars.length === 0) return;
+    const activeCount = Math.min(5, Math.max(0, Math.round((credits / budget) * 5)));
+    bars.forEach((bar, i) => {
+      if (i < activeCount) bar.classList.add("active");
+      else bar.classList.remove("active");
+    });
   }
 
   /**
