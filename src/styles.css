@@ -4560,14 +4560,25 @@ input:checked + .toggle-slider:before {
   background: #374151;
 }
 /* Modeless Reader: Allow clicks through the backdrop */
-#reader-overlay:not([aria-hidden="true"]) {
-  pointer-events: none;
-  background-color: rgba(0, 0, 0, 0.05) !important;
-  backdrop-filter: blur(2px) !important;
+#reader-overlay {
+  pointer-events: none !important;
+  background-color: rgba(0, 0, 0, 0.02) !important; /* Extremely faint */
+  backdrop-filter: none !important; /* Remove blur to prevent potential WebKit click-bugs */
 }
 
-#reader-overlay .reader-card {
-  pointer-events: auto;
+/*
+ * When closed, the overlay only has opacity:0 — the large .reader-card is still
+ * in the top stacking layer. Unconditional pointer-events:auto on the card
+ * would steal every click for the whole app. Only enable hits while open.
+ */
+#reader-overlay[aria-hidden="true"] .reader-card,
+#reader-overlay[aria-hidden="true"] .reader-card * {
+  pointer-events: none !important;
+}
+
+#reader-overlay:not([aria-hidden="true"]) .reader-card,
+#reader-overlay:not([aria-hidden="true"]) .reader-card * {
+  pointer-events: auto !important;
 }
 
 /* Tree View "Viewing" Indicator (Star) */
