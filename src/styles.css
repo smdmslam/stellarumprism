@@ -4559,3 +4559,23 @@ input:checked + .toggle-slider:before {
 .reader-main ::-webkit-scrollbar-thumb:hover {
   background: #374151;
 }
+/* Modeless Reader: Allow clicks through the backdrop */
+#reader-overlay:not([aria-hidden="true"]) {
+  pointer-events: none;
+  background-color: rgba(0, 0, 0, 0.05) !important;
+  backdrop-filter: blur(2px) !important;
+}
+
+#reader-overlay .reader-card {
+  pointer-events: auto;
+}
+
+/* Tree View "Viewing" Indicator (Star) */
+.tree-view-indicator {
+  margin-left: auto;
+  color: #fbbf24; /* Amber star */
+  font-size: 10px;
+  opacity: 0.8;
+  filter: drop-shadow(0 0 2px rgba(251, 191, 36, 0.4));
+  padding-right: 8px;
+}

@@ -648,6 +648,11 @@ export class Workspace {
     this.wireSidebarTabs();
     this.wireFileTree();
 
+    // Sync with Reader UI (Star indicators)
+    readerUI.setOnChange(() => {
+      this.renderFileTree();
+    });
+
     // OSC 7: the shell (via our zsh integration) tells us its cwd on every
     // prompt. We parse `file://host/path` and keep the last value.
     this.term.parser.registerOscHandler(7, (data) => {
@@ -3484,6 +3489,11 @@ export class Workspace {
       } else if (kind === "file" && mode === "single") {
         // Single click opens the file in the editable buffer.
         void this.openFileInEditor(path);
+        
+        // Live Sync with Pop-out Reader: 
+        if (readerUI.isVisible()) {
+          void readerUI.open(this.cwd!, path);
+        }
       }
       this.renderFileTree();
     });
@@ -3518,6 +3528,9 @@ export class Workspace {
           this.treeState = updateSelection(this.treeState, rows, next, e.shiftKey ? "range" : "single");
         }
         this.renderFileTree();
+        if (readerUI.isVisible() && next) {
+          void readerUI.open(this.cwd!, next);
+        }
         return;
       }
       if (e.key === "ArrowUp") {
@@ -3527,6 +3540,9 @@ export class Workspace {
           this.treeState = updateSelection(this.treeState, rows, next, e.shiftKey ? "range" : "single");
         }
         this.renderFileTree();
+        if (readerUI.isVisible() && next) {
+          void readerUI.open(this.cwd!, next);
+        }
         return;
       }
       if (e.key === "ArrowRight") {
@@ -4095,6 +4111,9 @@ export class Workspace {
     } else if (row.loadState.kind === "error") {
       trailing = `<span class="file-tree-detail file-tree-detail-error" title="${escapeAttr(row.loadState.message)}">!</span>`;
     }
+    const isOpen = readerUI.getOpenPaths().includes(e.path);
+    const viewingIndicator = isOpen ? `<span class="tree-view-indicator" title="Viewing in Pop-out Reader">\u2605</span>` : "";
+
     return (
       `<div class="file-tree-row ${kindClass}${selected}${active}" ` +
       `data-path="${escapeAttr(e.path)}" data-kind="${e.kind}" ` +
@@ -4102,6 +4121,7 @@ export class Workspace {
       `aria-level="${row.depth + 1}" ` +
       `aria-expanded="${e.kind === "dir" ? (row.expanded ? "true" : "false") : ""}">` +
       `${icon}<span class="file-tree-name">${escapeHtml(e.name)}</span>` +
+      viewingIndicator +
       detail +
       trailing +
       `</div>`

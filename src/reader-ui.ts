@@ -23,6 +23,7 @@ export class ReaderUI {
   private right: PaneState = { path: null, cwd: null, editor: null, hostId: "reader-right" };
   private isSplit = false;
   private lastFocusedPane: "left" | "right" = "left";
+  private onChange?: () => void;
 
   constructor() {
     this.overlay = document.getElementById("reader-overlay")!;
@@ -32,8 +33,19 @@ export class ReaderUI {
     this.wireEvents();
   }
 
+  public setOnChange(cb: () => void): void {
+    this.onChange = cb;
+  }
+
   public isVisible(): boolean {
     return this.overlay.getAttribute("aria-hidden") === "false";
+  }
+
+  public getOpenPaths(): string[] {
+    const paths: string[] = [];
+    if (this.left.path) paths.push(this.left.path);
+    if (this.right.path) paths.push(this.right.path);
+    return paths;
   }
 
   public async open(cwd: string, path: string): Promise<void> {
@@ -89,6 +101,7 @@ export class ReaderUI {
 
       this.updateSaveButton();
       pane.editor.focus();
+      this.onChange?.();
     } catch (err) {
       host.innerHTML = `<div style="padding: 24px; color: #ef4444;">Error: ${String(err)}</div>`;
     }
@@ -125,6 +138,7 @@ export class ReaderUI {
       this.right.editor?.destroy();
       this.right.editor = null;
     }
+    this.onChange?.();
   }
 
   private updateSaveButton(): void {
@@ -140,6 +154,7 @@ export class ReaderUI {
     this.left.path = null;
     this.right.path = null;
     this.overlay.setAttribute("aria-hidden", "true");
+    this.onChange?.();
   }
 
   private async save(): Promise<void> {
