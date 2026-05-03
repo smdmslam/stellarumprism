@@ -131,19 +131,16 @@ function walk(
   }
 }
 
-/** Set / replace the cwd's listing. Resets transient state. */
+/** Set / replace the cwd's listing. */
 export function setRoot(state: TreeState, listing: RawTreeListing): TreeState {
+  const sameCwd = state.root?.dir === listing.dir;
   return {
     ...state,
     root: listing,
-    // Drop loaded subtrees that don't match the new root's cwd. We
-    // keep the expanded set so the UI can re-load and re-expand on
-    // refresh, but reset childrenByPath because the on-disk shape
-    // may have shifted.
-    childrenByPath: new Map(),
-    loadStateByPath: new Map(),
-    selection: new Set(),
-    selected: null,
+    childrenByPath: sameCwd ? state.childrenByPath : new Map(),
+    loadStateByPath: sameCwd ? state.loadStateByPath : new Map(),
+    selection: sameCwd ? state.selection : new Set(),
+    selected: sameCwd ? state.selected : null,
   };
 }
 

@@ -3667,6 +3667,9 @@ export class Workspace {
     addItem("Rename", "✏", () => {
       void this.promptRenameTreeItem(path);
     });
+    addItem("Move", "\u2192", () => {
+      void this.promptMoveTreeItem(path);
+    });
     // Delete items (files or folders). Folders use `remove_dir_all` to
     // recurse, so the confirmation modal reflects the increased risk.
     addItem(
@@ -3827,6 +3830,49 @@ export class Workspace {
       this.renderFileTree();
     } catch (err) {
       window.alert(`Rename failed: ${String(err)}`);
+    }
+  }
+
+  /**
+   * Prompt the user for a destination folder and move the item.
+   */
+  private async promptMoveTreeItem(path: string): Promise<void> {
+    const parts = path.split("/");
+    const fileName = parts.pop()!;
+    const oldParent = parts.join("/");
+
+    const newParent = await this.askText({
+      title: "Move to folder",
+      defaultValue: oldParent,
+      body: `Moving "${fileName}". Enter the destination directory path.`,
+    });
+
+    if (newParent === null || newParent === oldParent) return;
+
+    const newPath = newParent ? `${newParent}/${fileName}` : fileName;
+
+    try {
+      await invoke("move_file", { cwd: this.cwd, from: path, to: newPath });
+
+      // If the moved file was open in the editor, close it so the
+      // stale path reference doesn't linger.
+      if (this.openFilePath === path) this.closeFileEditor();
+
+      // Immediately remove from the local tree state.
+      this.treeState = removePathsFromTree(this.treeState, [path]);
+
+      // Refresh the destination parent to show the item in its new home.
+      if (!newParent) {
+        await this.refreshFileTreeRoot();
+      } else if (this.treeState.childrenByPath.has(newParent)) {
+        await this.loadDirectorySubtree(newParent);
+      } else {
+        this.renderFileTree();
+      }
+
+      this.notify(`[files] moved ${fileName} to ${newParent || "root"}`);
+    } catch (err) {
+      window.alert(`Move failed: ${String(err)}`);
     }
   }
 
