@@ -42,3 +42,4 @@ src-tauri/gen/
 #   when the user chooses).
 .prism/second-pass/
 .prism/skills/auto/
+.prism/state.json
