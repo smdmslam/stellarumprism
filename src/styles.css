@@ -4581,12 +4581,30 @@ input:checked + .toggle-slider:before {
   pointer-events: auto !important;
 }
 
-/* Tree View "Viewing" Indicator (Star) */
-.tree-view-indicator {
+/* Tree View "Pin to Reader" Button (Star) */
+.tree-pin-btn {
   margin-left: auto;
-  color: #fbbf24; /* Amber star */
-  font-size: 10px;
-  opacity: 0.8;
-  filter: drop-shadow(0 0 2px rgba(251, 191, 36, 0.4));
-  padding-right: 8px;
+  background: none;
+  border: none;
+  color: #4b5563; /* Gray star when unpinned */
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.4;
+  padding: 4px 8px;
+  transition: all 120ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-pin-btn:hover {
+  opacity: 1;
+  color: #94a3b8;
+  transform: scale(1.1);
+}
+
+.tree-pin-btn.is-pinned {
+  color: #fbbf24; /* Amber star when pinned */
+  opacity: 1;
+  filter: drop-shadow(0 0 3px rgba(251, 191, 36, 0.4));
 }

@@ -1,6 +1,6 @@
 /**
  * Controller for the Pop-out Reader Modal.
- * Supports Comparative Mode (two different files) and Split View.
+ * Manages "Pinned" files for side-by-side comparison.
  */
 
 import { FileEditor } from "./file-editor";
@@ -22,7 +22,6 @@ export class ReaderUI {
   private left: PaneState = { path: null, cwd: null, editor: null, hostId: "reader-left" };
   private right: PaneState = { path: null, cwd: null, editor: null, hostId: "reader-right" };
   private isSplit = false;
-  private lastFocusedPane: "left" | "right" = "left";
   private onChange?: () => void;
 
   constructor() {
@@ -41,28 +40,91 @@ export class ReaderUI {
     return this.overlay.getAttribute("aria-hidden") === "false";
   }
 
-  public getOpenPaths(): string[] {
+  public getPinnedPaths(): string[] {
     const paths: string[] = [];
     if (this.left.path) paths.push(this.left.path);
     if (this.right.path) paths.push(this.right.path);
     return paths;
   }
 
-  public async open(cwd: string, path: string): Promise<void> {
-    // If the reader is already open and in split mode, load into the "other" pane
-    // than the last focused one, or just the right pane if it's empty.
-    if (this.isVisible() && this.isSplit) {
-      if (this.lastFocusedPane === "left") {
-        await this.loadPane("right", cwd, path);
-      } else {
-        await this.loadPane("left", cwd, path);
-      }
+  /** Toggle a file's pinned status in the reader. */
+  public async togglePin(cwd: string, path: string): Promise<void> {
+    if (this.left.path === path) {
+      await this.unpin("left");
+    } else if (this.right.path === path) {
+      await this.unpin("right");
     } else {
-      // First time opening or single pane mode
+      await this.pin(cwd, path);
+    }
+  }
+
+  private async pin(cwd: string, path: string): Promise<void> {
+    // Determine where to pin: 
+    // 1. If left is empty, pin to left.
+    // 2. If left is full, pin to right (enable split).
+    // 3. If both full, replace right (active targeting).
+    if (!this.left.path) {
+      await this.loadPane("left", cwd, path);
+    } else {
+      if (!this.isSplit) {
+        this.isSplit = true;
+        this.renderGrid();
+        // Re-load left because the host DOM changed
+        if (this.left.path && this.left.cwd) await this.loadPane("left", this.left.cwd, this.left.path);
+      }
+      await this.loadPane("right", cwd, path);
+    }
+    
+    if (!this.isVisible()) {
+      this.overlay.setAttribute("aria-hidden", "false");
+    }
+  }
+
+  private async unpin(side: "left" | "right"): Promise<void> {
+    const pane = side === "left" ? this.left : this.right;
+    pane.editor?.destroy();
+    pane.editor = null;
+    pane.path = null;
+    pane.cwd = null;
+
+    if (side === "left" && this.right.path) {
+      // Move right to left if we unpinned the primary
+      const rPath = this.right.path;
+      const rCwd = this.right.cwd!;
+      await this.unpin("right");
+      await this.pin(rCwd, rPath);
+    }
+
+    if (this.isSplit && (!this.left.path || !this.right.path)) {
+      this.isSplit = false;
+      this.renderGrid();
+      if (this.left.path && this.left.cwd) await this.loadPane("left", this.left.cwd, this.left.path);
+    }
+
+    if (!this.left.path && !this.right.path) {
+      this.close();
+    }
+    
+    this.onChange?.();
+  }
+
+  public async open(cwd: string, path: string): Promise<void> {
+    // Standard "Open" behavior: if already pinned, just show. 
+    // If not pinned, treat as a "Quick Load" into the current active pane.
+    if (this.left.path === path || this.right.path === path) {
       this.overlay.setAttribute("aria-hidden", "false");
       this.renderGrid();
-      await this.loadPane("left", cwd, path);
+      if (this.left.path && this.left.cwd) await this.loadPane("left", this.left.cwd, this.left.path);
+      if (this.right.path && this.right.cwd) await this.loadPane("right", this.right.cwd, this.right.path);
+      return;
     }
+    
+    // Quick load logic
+    if (!this.isVisible()) {
+      this.overlay.setAttribute("aria-hidden", "false");
+      this.renderGrid();
+    }
+    await this.loadPane("left", cwd, path);
   }
 
   private async loadPane(side: "left" | "right", cwd: string, path: string): Promise<void> {
@@ -73,9 +135,8 @@ export class ReaderUI {
     const host = document.getElementById(pane.hostId);
     if (!host) return;
 
-    // Clear existing
     pane.editor?.destroy();
-    host.innerHTML = `<div style="padding: 24px; color: #6b7280;">Loading ${path}...</div>`;
+    host.innerHTML = `<div style="padding: 24px; color: #6b7280;">Loading...</div>`;
 
     try {
       const result = await invoke<{ content: string }>("read_file_text", { cwd, path });
@@ -94,11 +155,6 @@ export class ReaderUI {
         onDirtyChange: () => this.updateSaveButton(),
       });
       
-      // Wire focus tracking
-      editorHost.addEventListener("focusin", () => {
-        this.lastFocusedPane = side;
-      });
-
       this.updateSaveButton();
       pane.editor.focus();
       this.onChange?.();
@@ -114,29 +170,16 @@ export class ReaderUI {
         <div id="reader-right" class="reader-col" style="${this.isSplit ? "" : "display: none;"}"></div>
       </div>
     `;
+    this.splitBtn.classList.toggle("active", this.isSplit);
   }
 
   private async toggleSplit(): Promise<void> {
     this.isSplit = !this.isSplit;
-    this.splitBtn.classList.toggle("active", this.isSplit);
-    
     this.renderGrid();
-
-    // Re-mount editors into the new DOM
-    if (this.left.path && this.left.cwd) {
-      await this.loadPane("left", this.left.cwd, this.left.path);
-    }
     
-    if (this.isSplit) {
-      if (this.right.path && this.right.cwd) {
-        await this.loadPane("right", this.right.cwd, this.right.path);
-      } else if (this.left.path && this.left.cwd) {
-        // Default to same file on right if empty (Book Mode starter)
-        await this.loadPane("right", this.left.cwd, this.left.path);
-      }
-    } else {
-      this.right.editor?.destroy();
-      this.right.editor = null;
+    if (this.left.path && this.left.cwd) await this.loadPane("left", this.left.cwd, this.left.path);
+    if (this.isSplit && this.right.path && this.right.cwd) {
+      await this.loadPane("right", this.right.cwd, this.right.path);
     }
     this.onChange?.();
   }
@@ -151,14 +194,11 @@ export class ReaderUI {
     this.right.editor?.destroy();
     this.left.editor = null;
     this.right.editor = null;
-    this.left.path = null;
-    this.right.path = null;
     this.overlay.setAttribute("aria-hidden", "true");
     this.onChange?.();
   }
 
   private async save(): Promise<void> {
-    // Save the pane that is currently dirty (or both)
     const panes = [this.left, this.right];
     for (const pane of panes) {
       if (pane.editor?.isDirty() && pane.path && pane.cwd) {
@@ -187,10 +227,6 @@ export class ReaderUI {
     document.getElementById("reader-close")?.addEventListener("click", () => this.close());
     this.saveBtn.addEventListener("click", () => this.save());
     this.splitBtn.addEventListener("click", () => this.toggleSplit());
-
-    this.overlay.addEventListener("mousedown", (e) => {
-      if (e.target === this.overlay) this.close();
-    });
 
     window.addEventListener("keydown", (e) => {
       if (this.isVisible()) {

@@ -3484,6 +3484,13 @@ export class Workspace {
 
       this.treeState = updateSelection(this.treeState, rows, path, mode);
 
+      const pinBtn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-action="toggle-pin"]');
+      if (pinBtn) {
+        e.stopPropagation();
+        void readerUI.togglePin(this.cwd!, path);
+        return;
+      }
+
       if (kind === "dir" && mode === "single") {
         void this.handleTreeToggle(path);
       } else if (kind === "file" && mode === "single") {
@@ -3684,8 +3691,9 @@ export class Workspace {
     addItem("Rename", "✏", () => {
       void this.promptRenameTreeItem(path);
     });
-    addItem("Open in Pop-out", "\u2197", () => {
-      void readerUI.open(this.cwd!, path);
+    const isPinned = readerUI.getPinnedPaths().includes(path);
+    addItem(isPinned ? "Unpin from Reader" : "Pin to Reader", "\u2197", () => {
+      void readerUI.togglePin(this.cwd!, path);
     });
     addItem("Move", "\u2192", () => {
       void this.promptMoveTreeItem(path);
@@ -4111,8 +4119,8 @@ export class Workspace {
     } else if (row.loadState.kind === "error") {
       trailing = `<span class="file-tree-detail file-tree-detail-error" title="${escapeAttr(row.loadState.message)}">!</span>`;
     }
-    const isOpen = readerUI.getOpenPaths().includes(e.path);
-    const viewingIndicator = isOpen ? `<span class="tree-view-indicator" title="Viewing in Pop-out Reader">\u2605</span>` : "";
+    const isPinned = readerUI.getPinnedPaths().includes(e.path);
+    const pinIndicator = `<button class="tree-pin-btn${isPinned ? " is-pinned" : ""}" data-action="toggle-pin" title="${isPinned ? "Unpin from Reader" : "Pin to Reader"}">\u2605</button>`;
 
     return (
       `<div class="file-tree-row ${kindClass}${selected}${active}" ` +
@@ -4121,7 +4129,7 @@ export class Workspace {
       `aria-level="${row.depth + 1}" ` +
       `aria-expanded="${e.kind === "dir" ? (row.expanded ? "true" : "false") : ""}">` +
       `${icon}<span class="file-tree-name">${escapeHtml(e.name)}</span>` +
-      viewingIndicator +
+      pinIndicator +
       detail +
       trailing +
       `</div>`
