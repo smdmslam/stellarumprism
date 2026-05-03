@@ -37,7 +37,7 @@ use agent::{
 };
 use approval::{agent_clear_session_approval, agent_tool_decision, ApprovalState};
 use file_ref::{
-    create_dir, list_dir_entries, list_directory_tree, move_file, read_file_scoped,
+    create_dir, list_dir_entries, list_directory_tree, move_file, open_in_browser, read_file_scoped,
     read_file_snippet, read_file_text, remove_dir_all, remove_file, resolve_home_path,
     select_file_in_explorer, write_file_text,
 };
@@ -108,6 +108,7 @@ pub fn run() {
             remove_dir_all,
             resolve_home_path,
             select_file_in_explorer,
+            open_in_browser,
             read_session_state,
             write_session_state,
             run_pnpm_script,

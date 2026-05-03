@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preview 1: Cosmic Dark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: 'Space Grotesk', sans-serif; 
+      background: radial-gradient(circle at 20% 80%, #2c3e50 0%, #1a1a2e 50%, #0f0f23 100%); 
+      color: #fff; 
+      overflow: hidden;
+      height: 100vh; height: 100dvh;
+    }
+    .slide {
+      height: 100vh; height: 100dvh; 
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: clamp(2rem, 5vw, 4rem);
+      text-align: center;
+      position: relative;
+    }
+    .slide::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-image: 
+        radial-gradient(2px 2px at 20px 30px, #eee, transparent),
+        radial-gradient(2px 2px at 40px 70px, rgba(255,255,255,0.8), transparent),
+        radial-gradient(1px 1px at 90px 40px, #fff, transparent),
+        radial-gradient(1px 1px at 130px 80px, rgba(255,255,255,0.6), transparent);
+      background-repeat: repeat;
+      background-size: 200px 100px;
+      animation: twinkle 20s linear infinite;
+      opacity: 0.3;
+    }
+    @keyframes twinkle {
+      0%, 100% { opacity: 0.3; }
+      50% { opacity: 0.6; }
+    }
+    h1 { 
+      font-size: clamp(3rem, 8vw, 6rem); 
+      font-weight: 800; 
+      background: linear-gradient(135deg, #a8e6cf 0%, #88d8a3 50%, #00b4d8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 1rem;
+      opacity: 0; transform: translateY(30px);
+      animation: reveal 1s ease-out 0.5s forwards;
+    }
+    .subtitle { 
+      font-size: clamp(1.5rem, 4vw, 2.5rem); 
+      font-weight: 400; 
+      color: #e0e0e0;
+      max-width: 80%;
+      opacity: 0; transform: translateY(30px);
+      animation: reveal 1s ease-out 1s forwards;
+    }
+    .tagline { 
+      font-size: clamp(1.1rem, 2.5vw, 1.5rem); 
+      color: #b0b0b0;
+      margin-top: 2rem;
+      opacity: 0;
+      animation: reveal 1s ease-out 1.5s forwards;
+    }
+    @keyframes reveal {
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <section class="slide">
+    <h1>Prism</h1>
+    <p class="subtitle">The verification layer for AI-built software.</p>
+    <p class="tagline">AI generates the code. Prism makes it safe to ship.</p>
+  </section>
+</body>
+</html>

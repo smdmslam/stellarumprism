@@ -18,7 +18,6 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use opener;
 
 const MAX_FILE_BYTES: usize = 256 * 1024; // 256 KB
@@ -95,6 +94,14 @@ pub fn select_file_in_explorer(cwd: String, path: String) -> Result<(), String> 
         opener::reveal(&parent).map_err(|e| e.to_string())?;
     }
 
+    Ok(())
+}
+
+/// Open the given path in the system default browser or file handler.
+#[tauri::command]
+pub fn open_in_browser(cwd: String, path: String) -> Result<(), String> {
+    let resolved = resolve_path(&cwd, &path)?;
+    opener::open(&resolved).map_err(|e| e.to_string())?;
     Ok(())
 }
 

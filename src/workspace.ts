@@ -3765,6 +3765,9 @@ export class Workspace {
     addItem("Open Reader", "↗", () => {
       void readerUI.open(this.cwd!, path);
     });
+    addItem("Open in Browser", "⎗", () => {
+      void invoke("open_in_browser", { cwd: this.cwd, path });
+    });
     addItem("Move", "→", () => {
       void this.promptMoveTreeItem(path);
     });
