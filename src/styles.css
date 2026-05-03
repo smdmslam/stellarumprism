@@ -4694,3 +4694,13 @@ input:checked + .toggle-slider:before {
   font-weight: 600;
   letter-spacing: 0.02em;
 }
+
+/* Reveal Highlight Flash */
+.file-tree-row-highlight-flash {
+  animation: file-tree-reveal-flash 1.5s ease-out;
+}
+
+@keyframes file-tree-reveal-flash {
+  0% { background-color: rgba(125, 211, 252, 0.4); }
+  100% { background-color: transparent; }
+}

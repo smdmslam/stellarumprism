@@ -37,9 +37,8 @@ use agent::{
 };
 use approval::{agent_clear_session_approval, agent_tool_decision, ApprovalState};
 use file_ref::{
-    create_dir, list_dir_entries, list_directory_tree, move_file, read_file_scoped,
     read_file_snippet, read_file_text, remove_dir_all, remove_file, resolve_home_path,
-    write_file_text,
+    select_file_in_explorer, write_file_text,
 };
 use load_chat::load_chat_markdown;
 use save_chat::save_chat_markdown;
@@ -107,6 +106,7 @@ pub fn run() {
             remove_file,
             remove_dir_all,
             resolve_home_path,
+            select_file_in_explorer,
             read_session_state,
             write_session_state,
             run_pnpm_script,

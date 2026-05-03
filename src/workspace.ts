@@ -775,7 +775,9 @@ export class Workspace {
     // panel via AgentView, which uses standard CSS for word-aware
     // wrap and resize-friendly layout.
     const agentStageEl = this.root.querySelector<HTMLElement>(".agent-stage");
-    this.agentView = new AgentView(agentStageEl ?? this.root);
+    this.agentView = new AgentView(agentStageEl ?? this.root, {
+      onFileClick: (path: string) => void this.revealInTree(path),
+    });
     this.agent = new AgentController({
       view: this.agentView,
       blocks: this.blocks,
@@ -4096,6 +4098,59 @@ export class Workspace {
     } catch (err) {
       treeEl.innerHTML =
         `<div class="file-tree-error">failed to list cwd: ${escapeHtml(String(err))}</div>`;
+    }
+  }
+
+  /**
+   * Reveal a path in the IDE file tree. Expands all parent directories
+   * and scrolls the target into view.
+   */
+  public async revealInTree(path: string): Promise<void> {
+    this.setSidebarTab("files");
+    if (!this.fileTreeRootLoaded) {
+      await this.refreshFileTreeRoot();
+    }
+
+    // The tree state uses absolute paths. We need to expand all parents.
+    const parts = path.split("/");
+    for (let i = 2; i < parts.length; i++) {
+      const parent = parts.slice(0, i).join("/");
+      if (!parent || parent === "" || parent === "/") continue;
+
+      // If parent is not expanded, toggle it.
+      if (!this.treeState.expanded.has(parent)) {
+        const r = toggleExpanded(this.treeState, parent, true);
+        this.treeState = r.state;
+        if (r.needsLoad) {
+          await this.loadDirectorySubtree(parent);
+        }
+      }
+    }
+
+    // Select the target path.
+    const rows = flattenVisibleRows(this.treeState);
+    this.treeState = updateSelection(this.treeState, rows, path, "single");
+    this.renderFileTree();
+
+    // Scroll into view with a slight delay to allow rendering.
+    setTimeout(() => {
+      const rowEl = this.root.querySelector(`.file-tree-row[data-path="${path}"]`);
+      if (rowEl) {
+        rowEl.scrollIntoView({ block: "center", behavior: "smooth" });
+        // Visual feedback flash.
+        rowEl.classList.add("file-tree-row-highlight-flash");
+        setTimeout(() => rowEl.classList.remove("file-tree-row-highlight-flash"), 1500);
+      }
+    }, 100);
+  }
+
+  /** Reveal a path in the OS-native file explorer. */
+  public async revealInOsExplorer(path: string): Promise<void> {
+    if (!this.cwd) return;
+    try {
+      await invoke("select_file_in_explorer", { cwd: this.cwd, path });
+    } catch (err) {
+      console.error("failed to reveal in OS explorer:", err);
     }
   }
 

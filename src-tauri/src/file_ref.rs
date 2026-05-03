@@ -53,6 +53,48 @@ pub struct DirListing {
     pub truncated: bool,
 }
 
+/// Reveal the given path in the OS-native file explorer (Finder on macOS,
+/// Explorer on Windows). If it's a file, selects it; if it's a directory,
+/// opens it.
+#[tauri::command]
+pub fn select_file_in_explorer(cwd: String, path: String) -> Result<(), String> {
+    let resolved = resolve_path(&cwd, &path)?;
+    
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        Command::new("open")
+            .arg("-R")
+            .arg(&resolved)
+            .spawn()
+            .map_err(|e| format!("failed to open Finder: {}", e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        let mut arg = std::ffi::OsString::from("/select,");
+        arg.push(resolved);
+        Command::new("explorer.exe")
+            .arg(arg)
+            .spawn()
+            .map_err(|e| format!("failed to open Explorer: {}", e))?;
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        // Linux/other: best effort, open the parent directory.
+        let parent = if resolved.is_dir() {
+            resolved
+        } else {
+            resolved.parent().unwrap_or(Path::new(".")).to_path_buf()
+        };
+        opener::reveal(&parent).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 /// Directory-listing helper for the `@path` autocomplete in the editor.
 ///
 /// `partial` is whatever the user has typed after `@`: could be empty,

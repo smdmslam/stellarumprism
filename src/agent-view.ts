@@ -133,9 +133,15 @@ export interface AgentViewApi {
   clear(): void;
 }
 
+export interface AgentViewCallbacks {
+  /** Triggered when a modified file chip is clicked. */
+  onFileClick: (path: string) => void;
+}
+
 export class AgentView implements AgentViewApi {
   private readonly root: HTMLElement;
   private readonly scrollHost: HTMLElement;
+  private readonly cb?: AgentViewCallbacks;
   /** True while streaming should keep the latest output in view. */
   private followStream = true;
 
@@ -151,8 +157,9 @@ export class AgentView implements AgentViewApi {
   private currentReview: HTMLElement | null = null;
   private currentReviewMarkdown = "";
 
-  constructor(host: HTMLElement) {
+  constructor(host: HTMLElement, cb?: AgentViewCallbacks) {
     this.root = host;
+    this.cb = cb;
     this.scrollHost = document.createElement("div");
     this.scrollHost.className = "agent-stage-scroll";
     this.root.appendChild(this.scrollHost);
@@ -307,6 +314,10 @@ export class AgentView implements AgentViewApi {
       const parts = w.path.split(/[\/\\]/);
       const name = parts[parts.length - 1] || w.path;
       chip.title = w.path;
+      if (this.cb) {
+        chip.style.cursor = "pointer";
+        chip.onclick = () => this.cb!.onFileClick(w.path);
+      }
 
       const iconEl = document.createElement("span");
       iconEl.className = "file-chip-icon";
