@@ -324,6 +324,11 @@ export function renamePathInTree(
   };
 }
 
+/** Set the primary selected path (focus anchor). */
+export function setSelected(state: TreeState, path: string | null): TreeState {
+  return { ...state, selected: path, selection: new Set(path ? [path] : []) };
+}
+
 /** Mark a path as failed-to-load with a message the UI can render. */
 export function setError(
   state: TreeState,
