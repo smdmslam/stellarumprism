@@ -444,6 +444,13 @@ All NOT STARTED.
   - **Example:** *"Prism Habit: I notice you're manually switching between `auth.ts` and `guard.ts`. Did you know you can Star (★) both to lock them in side-by-side mode?"*
   - **Why:** Increases feature discoverability and improves user speed over time.
 
+- **11.4 Habit Management UI (Settings):**
+  - **Status:** NOT STARTED
+  - **Requirement:** A new tab in Settings to list all discovered patterns.
+  - **Action:** Users can "Promote to Rule," "Disable," or "Delete" specific habits. 
+  - **Manual Entry:** Allow users to manually add their own "Personal Habits" for the system to reinforce.
+  - **Why:** Provides transparency and user agency over the background coaching system.
+
 ---
 
 ---
