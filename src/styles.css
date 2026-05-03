@@ -3686,7 +3686,12 @@ input:checked + .toggle-slider:before {
   flex: 0 0 auto;
   font-size: 10px;
   color: #6b7280;
+  font-family: "JetBrains Mono", monospace;
   font-variant-numeric: tabular-nums;
+}
+.file-tree-size-detail {
+  width: 9ch;
+  text-align: right;
 }
 .file-tree-detail-loading { color: #facc15; }
 .file-tree-detail-error {
@@ -4612,14 +4617,14 @@ input:checked + .toggle-slider:before {
 
 /* Tree View "Pin to Reader" Button (Star) */
 .tree-pin-btn {
-  margin-left: auto;
+  flex: 0 0 2ch;
   background: none;
   border: none;
   color: #4b5563; /* Gray star when unpinned */
   font-size: 11px;
   cursor: pointer;
   opacity: 0.4;
-  padding: 4px 12px; /* Larger hit area */
+  padding: 0;
   transition: all 120ms ease;
   display: flex;
   align-items: center;

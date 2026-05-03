@@ -4237,7 +4237,7 @@ export class Workspace {
     }
     const detail =
       detailParts.length > 0
-        ? `<span class="file-tree-detail">${detailParts.join(" · ")}</span>`
+        ? `<span class="file-tree-detail file-tree-size-detail">${detailParts.join(" · ")}</span>`
         : "";
     let trailing = "";
     if (row.loadState.kind === "loading") {
