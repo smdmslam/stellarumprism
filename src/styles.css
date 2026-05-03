@@ -4456,6 +4456,40 @@ input:checked + .toggle-slider:before {
   letter-spacing: -0.01em;
 }
 
+.reader-title {
+  font-family: var(--prism-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pane-header {
+  padding: 8px 16px;
+  background: #0a0c11;
+  border-bottom: 1px solid #1f2937;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.pane-filename {
+  font-family: var(--prism-font-sans);
+  font-size: 13px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.pane-path {
+  font-family: var(--prism-font-mono);
+  font-size: 10px;
+  color: #4b5563;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .reader-path {
   font-family: var(--prism-font-mono);
   font-size: 11px;
@@ -4489,6 +4523,14 @@ input:checked + .toggle-slider:before {
 .reader-col {
   height: 100%;
   width: 100%;
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.reader-col-editor {
+  flex: 1;
   overflow: hidden;
   position: relative;
 }

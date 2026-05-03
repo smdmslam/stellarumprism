@@ -92,9 +92,8 @@
     <div id="reader-overlay" class="settings-overlay" aria-hidden="true">
       <div id="reader-card" class="settings-card reader-card">
         <header class="reader-header">
-          <div class="reader-title-group">
-            <span id="reader-filename" class="reader-filename"></span>
-            <span id="reader-path" class="reader-path"></span>
+          <div class="reader-global-actions">
+            <span class="reader-title">Pop-out Reader</span>
           </div>
           <div class="reader-actions">
             <button id="reader-split" class="settings-action-btn" title="Toggle Split View">
@@ -105,7 +104,7 @@
           </div>
         </header>
         <main id="reader-content" class="reader-main">
-          <!-- FileEditor instance injected here -->
+          <!-- FileEditor instances and per-pane headers injected here -->
         </main>
       </div>
     </div>

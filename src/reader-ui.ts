@@ -1,63 +1,96 @@
 /**
  * Controller for the Pop-out Reader Modal.
+ * Supports Comparative Mode (two different files) and Split View.
  */
 
 import { FileEditor } from "./file-editor";
 import { invoke } from "@tauri-apps/api/core";
 
+interface PaneState {
+  path: string | null;
+  cwd: string | null;
+  editor: FileEditor | null;
+  hostId: string;
+}
+
 export class ReaderUI {
   private readonly overlay: HTMLElement;
   private readonly content: HTMLElement;
-  private readonly filenameEl: HTMLElement;
-  private readonly pathEl: HTMLElement;
   private readonly saveBtn: HTMLButtonElement;
   private readonly splitBtn: HTMLButtonElement;
   
-  private leftEditor: FileEditor | null = null;
-  private rightEditor: FileEditor | null = null;
+  private left: PaneState = { path: null, cwd: null, editor: null, hostId: "reader-left" };
+  private right: PaneState = { path: null, cwd: null, editor: null, hostId: "reader-right" };
   private isSplit = false;
-  
-  private currentPath: string | null = null;
-  private currentCwd: string | null = null;
+  private lastFocusedPane: "left" | "right" = "left";
 
   constructor() {
     this.overlay = document.getElementById("reader-overlay")!;
     this.content = document.getElementById("reader-content")!;
-    this.filenameEl = document.getElementById("reader-filename")!;
-    this.pathEl = document.getElementById("reader-path")!;
     this.saveBtn = document.getElementById("reader-save") as HTMLButtonElement;
     this.splitBtn = document.getElementById("reader-split") as HTMLButtonElement;
     this.wireEvents();
   }
 
+  public isVisible(): boolean {
+    return this.overlay.getAttribute("aria-hidden") === "false";
+  }
+
   public async open(cwd: string, path: string): Promise<void> {
-    this.currentPath = path;
-    this.currentCwd = cwd;
-    this.isSplit = false;
+    // If the reader is already open and in split mode, load into the "other" pane
+    // than the last focused one, or just the right pane if it's empty.
+    if (this.isVisible() && this.isSplit) {
+      if (this.lastFocusedPane === "left") {
+        await this.loadPane("right", cwd, path);
+      } else {
+        await this.loadPane("left", cwd, path);
+      }
+    } else {
+      // First time opening or single pane mode
+      this.overlay.setAttribute("aria-hidden", "false");
+      this.renderGrid();
+      await this.loadPane("left", cwd, path);
+    }
+  }
+
+  private async loadPane(side: "left" | "right", cwd: string, path: string): Promise<void> {
+    const pane = side === "left" ? this.left : this.right;
+    pane.cwd = cwd;
+    pane.path = path;
     
-    const parts = path.split("/");
-    const name = parts[parts.length - 1] ?? "unknown";
-    
-    this.filenameEl.textContent = name;
-    this.pathEl.textContent = path;
-    this.overlay.setAttribute("aria-hidden", "false");
-    this.content.innerHTML = `<div style="padding: 24px; color: #6b7280;">Loading...</div>`;
-    this.saveBtn.style.display = "none";
-    this.splitBtn.classList.remove("active");
+    const host = document.getElementById(pane.hostId);
+    if (!host) return;
+
+    // Clear existing
+    pane.editor?.destroy();
+    host.innerHTML = `<div style="padding: 24px; color: #6b7280;">Loading ${path}...</div>`;
 
     try {
       const result = await invoke<{ content: string }>("read_file_text", { cwd, path });
-      this.initialContent = result.content;
-      this.renderGrid();
+      const filename = path.split("/").pop() ?? "unknown";
       
-      const leftHost = document.getElementById("reader-left")!;
-      this.leftEditor = new FileEditor(leftHost, result.content, path, {
+      host.innerHTML = `
+        <div class="pane-header">
+          <span class="pane-filename">${filename}</span>
+          <span class="pane-path">${path}</span>
+        </div>
+        <div id="${pane.hostId}-editor" class="reader-col-editor"></div>
+      `;
+
+      const editorHost = document.getElementById(`${pane.hostId}-editor`)!;
+      pane.editor = new FileEditor(editorHost, result.content, path, {
         onDirtyChange: () => this.updateSaveButton(),
       });
       
-      this.leftEditor.focus();
+      // Wire focus tracking
+      editorHost.addEventListener("focusin", () => {
+        this.lastFocusedPane = side;
+      });
+
+      this.updateSaveButton();
+      pane.editor.focus();
     } catch (err) {
-      this.content.innerHTML = `<div style="padding: 24px; color: #ef4444;">Failed to read file: ${String(err)}</div>`;
+      host.innerHTML = `<div style="padding: 24px; color: #ef4444;">Error: ${String(err)}</div>`;
     }
   }
 
@@ -70,80 +103,69 @@ export class ReaderUI {
     `;
   }
 
-  private toggleSplit(): void {
-    if (!this.leftEditor || !this.currentPath) return;
-    
+  private async toggleSplit(): Promise<void> {
     this.isSplit = !this.isSplit;
     this.splitBtn.classList.toggle("active", this.isSplit);
     
-    const grid = document.getElementById("reader-grid");
-    const rightHost = document.getElementById("reader-right");
+    this.renderGrid();
+
+    // Re-mount editors into the new DOM
+    if (this.left.path && this.left.cwd) {
+      await this.loadPane("left", this.left.cwd, this.left.path);
+    }
     
     if (this.isSplit) {
-      grid?.classList.add("is-split");
-      if (rightHost) {
-        rightHost.style.display = "block";
-        // Clone current content from left editor into right
-        const content = this.leftEditor.getValue();
-        this.rightEditor = new FileEditor(rightHost, content, this.currentPath, {
-          onDirtyChange: () => this.updateSaveButton(),
-        });
+      if (this.right.path && this.right.cwd) {
+        await this.loadPane("right", this.right.cwd, this.right.path);
+      } else if (this.left.path && this.left.cwd) {
+        // Default to same file on right if empty (Book Mode starter)
+        await this.loadPane("right", this.left.cwd, this.left.path);
       }
     } else {
-      grid?.classList.remove("is-split");
-      if (rightHost) {
-        rightHost.style.display = "none";
-        if (this.rightEditor) {
-          this.rightEditor.destroy();
-          this.rightEditor = null;
-        }
-      }
+      this.right.editor?.destroy();
+      this.right.editor = null;
     }
   }
 
   private updateSaveButton(): void {
-    const isDirty = (this.leftEditor?.isDirty() || this.rightEditor?.isDirty());
+    const isDirty = (this.left.editor?.isDirty() || this.right.editor?.isDirty());
     this.saveBtn.style.display = isDirty ? "block" : "none";
   }
 
   public close(): void {
-    this.leftEditor?.destroy();
-    this.rightEditor?.destroy();
-    this.leftEditor = null;
-    this.rightEditor = null;
+    this.left.editor?.destroy();
+    this.right.editor?.destroy();
+    this.left.editor = null;
+    this.right.editor = null;
+    this.left.path = null;
+    this.right.path = null;
     this.overlay.setAttribute("aria-hidden", "true");
-    this.currentPath = null;
-    this.currentCwd = null;
   }
 
   private async save(): Promise<void> {
-    const editor = this.leftEditor || this.rightEditor;
-    if (!editor || !this.currentPath || !this.currentCwd) return;
-    
-    // Use the content from whichever editor was last focused/edited
-    // (In a split view, this is a bit ambiguous, but we take the first available)
-    const content = editor.getValue();
-    try {
-      this.saveBtn.textContent = "Saving...";
-      this.saveBtn.disabled = true;
-      
-      await invoke("write_file_text", {
-        cwd: this.currentCwd,
-        path: this.currentPath,
-        content,
-        expectedMtimeSecs: null,
-      });
-      
-      this.leftEditor?.markClean(content);
-      this.rightEditor?.markClean(content);
-      this.saveBtn.textContent = "Save";
-      this.saveBtn.disabled = false;
-      this.saveBtn.style.display = "none";
-    } catch (err) {
-      alert(`Failed to save: ${String(err)}`);
-      this.saveBtn.textContent = "Save";
-      this.saveBtn.disabled = false;
+    // Save the pane that is currently dirty (or both)
+    const panes = [this.left, this.right];
+    for (const pane of panes) {
+      if (pane.editor?.isDirty() && pane.path && pane.cwd) {
+        const content = pane.editor.getValue();
+        try {
+          this.saveBtn.textContent = "Saving...";
+          this.saveBtn.disabled = true;
+          await invoke("write_file_text", {
+            cwd: pane.cwd,
+            path: pane.path,
+            content,
+            expectedMtimeSecs: null,
+          });
+          pane.editor.markClean(content);
+        } catch (err) {
+          alert(`Failed to save ${pane.path}: ${String(err)}`);
+        }
+      }
     }
+    this.saveBtn.textContent = "Save";
+    this.saveBtn.disabled = false;
+    this.updateSaveButton();
   }
 
   private wireEvents(): void {
@@ -156,7 +178,7 @@ export class ReaderUI {
     });
 
     window.addEventListener("keydown", (e) => {
-      if (this.overlay.getAttribute("aria-hidden") === "false") {
+      if (this.isVisible()) {
         if (e.key === "Escape") this.close();
         if ((e.metaKey || e.ctrlKey) && e.key === "s") {
           e.preventDefault();
