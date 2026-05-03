@@ -24,12 +24,18 @@ This document outlines key features of the Prism project, providing a high-level
 *   **Pop-out Comparative Reader/Editor:** A large-format, dual-column floating modal designed for side-by-side code analysis. It enables a "Cinema Mode" for complex files, supporting independent scrolling, syntax highlighting, and search across two distinct panes simultaneously.
 *   **Persistent Silent Pinning (★):** A non-interruptive staging mechanism in the file explorer. Users can "Star" files to silently add them to the comparative buffer without forcing the modal open, allowing for a fluid "collect-then-compare" workflow.
 *   **Active-Pane Visual Targeting:** Uses high-fidelity "Prism Cyan" highlights and focus glows to indicate exactly which pane is targeted for new content, ensuring an intuitive and predictable dual-editing experience.
-*   **Surgical File Explorer Updates:** Replaced destructive full-tree refreshes with localized, state-preserving updates. Deleting, renaming, or moving files now occurs instantly without losing your folder expansion state, ensuring a stable and fluid workspace layout.
+*   **Surgical File Explorer Updates:** Replaced destructive full-tree refreshes with localized, state-preserving updates. Deleting, renaming, or moving files now occurs instantly with surgical precision—tree state (expansion and selection) is preserved, and labels update in real-time without losing context.
+*   **Custom Session Management:** Empowering users to define their own context. Tabs can be manually renamed via the context menu using a native-feeling modal. These custom titles drive professional, clean chat naming on disk (e.g., `feature-branch-logic.md`), replacing the previous verbose date-stamped filenames.
 
 ### Real-Time Economic Awareness
 *   **Runway-based Energy Gauge:** A high-fidelity 5-bar "Fuel Gauge" in the toolbar that visualizes AI credit balance. Each bar represents a fixed **$30 increment** of runway, providing a physical, intuitive mental model of remaining "work time."
 *   **Cumulative Task Token Tracking:** Real-time metadata in the prompt area that sums token usage across an entire agentic task. It provides transparent "burn rate" visibility for multi-turn workflows and automatically resets for fresh sessions.
 *   **Integrated Billing Substrate:** Live synchronization between the frontend UI and backend credit data, ensuring financial transparency is never an "afterthought" but a core part of the active development loop.
+
+### Deep AI Diagnostics & Substrate Grounding
+*   **LSP-Native Diagnostics Substrate:** Integration with professional Language Server Protocol (LSP) engines (rust-analyzer, typescript-language-server, pyright). Prism now gathers high-fidelity, type-aware diagnostics directly from the compiler's own analysis thread, providing a "Grade A" source of ground truth for the AI.
+*   **Zero-Config "pnpm-ready" Detection:** Intelligent backend path resolution that automatically discovers locally-installed LSP servers in `node_modules/.bin`. This ensures the agent is contextually aware and project-native, even in complex monorepo or pnpm environments.
+*   **Contextual Purge:** Cleaned the agentic prompt architecture to remove "real-world" date terminology. The model now receives minimalist, authoritative context that doesn't bleed into user-facing chat logs or filenames, maintaining a professional workspace aesthetic.
 
 ## Future Enhancements & Roadmap
 *   _This section will be populated with upcoming features and strategic directions._
