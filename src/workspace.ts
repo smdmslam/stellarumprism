@@ -4946,18 +4946,6 @@ export class Workspace {
     slug: string;
     exportTitle: string;
   }> {
-    const history = await this.agent.getHistory();
-    let lastUser = "";
-    for (let i = history.length - 1; i >= 0; i--) {
-      const m = history[i];
-      if (m.role === "user") {
-        const t = m.content.trim().replace(/\s+/g, " ");
-        if (t.length > 0) {
-          lastUser = t;
-          break;
-        }
-      }
-    }
     const slug = slugify(this.title) || "chat";
     const exportTitle = this.title;
     return { slug, exportTitle };
@@ -5473,7 +5461,6 @@ function renderHistoryMarkdown(msgs: { role: string; content: string }[]): strin
 /** Same visible truncation rules as the tab strip auto-title. */
 function truncateLikeTabTitle(text: string): string {
   const trimmed = text.trim().replace(/\s+/g, " ");
-  if (trimmed.length === 0) return "";
   return trimmed.length > 36 ? trimmed.slice(0, 33) + "\u2026" : trimmed;
 }
 
@@ -5485,11 +5472,6 @@ function slugify(s: string): string {
     .slice(0, 40);
 }
 
-function shortStamp(): string {
-  const d = new Date();
-  const pad = (n: number) => n.toString().padStart(2, "0");
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
-}
 
 const TOPIC_STOPWORDS = new Set([
   "the","and","for","with","this","that","from","into","about","what","when","where","which",
