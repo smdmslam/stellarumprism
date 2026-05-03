@@ -21,7 +21,9 @@ This document outlines key features of the Prism project, providing a high-level
 *   **Pricing Constants Correction:** Fixed inaccuracies in pricing constants used for usage estimation, preventing discrepancies in cost calculations.
 
 ### IDE Surface & Productivity
-*   **Immersive Pop-out Reader/Editor:** A large-format, high-fidelity floating modal for focused code reading and editing. Accessible via right-click in the file explorer, it provides a distraction-free "Cinema Mode" for complex files with full syntax highlighting, search, and auto-save.
+*   **Pop-out Comparative Reader/Editor:** A large-format, dual-column floating modal designed for side-by-side code analysis. It enables a "Cinema Mode" for complex files, supporting independent scrolling, syntax highlighting, and search across two distinct panes simultaneously.
+*   **Persistent Silent Pinning (★):** A non-interruptive staging mechanism in the file explorer. Users can "Star" files to silently add them to the comparative buffer without forcing the modal open, allowing for a fluid "collect-then-compare" workflow.
+*   **Active-Pane Visual Targeting:** Uses high-fidelity "Prism Cyan" highlights and focus glows to indicate exactly which pane is targeted for new content, ensuring an intuitive and predictable dual-editing experience.
 *   **Surgical File Explorer Updates:** Replaced destructive full-tree refreshes with localized, state-preserving updates. Deleting, renaming, or moving files now occurs instantly without losing your folder expansion state, ensuring a stable and fluid workspace layout.
 
 ## Future Enhancements & Roadmap
