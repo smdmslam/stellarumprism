@@ -204,6 +204,16 @@ export interface AgentControllerOptions {
    * Track A path. See `MASTER-Plan-II.md#7.3`.
    */
   onAdditionalSkillsEngage?: (slugs: string[]) => void;
+  /**
+   * Fires exactly once per turn after the final assistant response
+   * has been assembled and all mode-specific completion logic has
+   * finished. Used by the workspace to refresh credit balances,
+   * update token counters, and handle post-turn housekeeping.
+   */
+  onTurnComplete?: (info: {
+    totalTokens?: number;
+    estimatedCostUsd?: number;
+  }) => void;
 }
 
 /**
@@ -1123,13 +1133,7 @@ export class AgentController {
       );
     }
 
-    // Uninspected-answer notice (Q1c). Independent of the rigor
-    // violation above: when the user's prompt was inventory-shaped
-    // AND zero file-read tool calls fired AND the response is
-    // non-trivial, surface a clear notice. Catches the most common
-    // hallucination class for weaker models \u2014 quiet fabrication
-    // (no \u2713 Observed marker emitted, just confident prose) that
-    // the rigor scanner doesn't catch.
+    // Uninspected-answer notice
     if (
       this.currentTurnInventoryShaped &&
       this.currentTurnToolCount === 0 &&
@@ -1141,48 +1145,41 @@ export class AgentController {
       );
     }
 
-    // \"Files modified\" footer.
+    // "Files modified" footer.
     if (this.currentTurnWrites.length > 0) {
       this.opts.view.appendFilesModified(this.currentTurnWrites);
     }
 
-    // \"Done in Ns \u00b7 N tools \u00b7 model\" turn footer.
+    // Turn footer (Done in Ns \u00b7 N tools \u00b7 model).
     if (this.currentTurnStartedAt !== null) {
       const elapsedMs = Date.now() - this.currentTurnStartedAt;
-      const summaryLine = formatTurnFooter({
+      const footer = formatTurnFooter({
         elapsedMs,
         toolCount: this.currentTurnToolCount,
-        model: shortSlug(this.currentResolvedModel ?? this.model),
+        model: this.currentResolvedModel ?? this.model,
         totalTokens: payload?.total_tokens,
         estimatedCostUsd: payload?.estimated_cost_usd,
       });
-      this.opts.view.appendNotice("turn-footer", summaryLine);
+      this.opts.view.appendNotice("turn-footer", footer);
     }
+
+    // External turn completion hook (used by workspace for billing/telemetry).
+    this.opts.onTurnComplete?.({
+      totalTokens: payload?.total_tokens,
+      estimatedCostUsd: payload?.estimated_cost_usd,
+    });
 
     this.renderActionBar(extractCodeBlocks(this.responseBuffer));
     this.opts.view.endTurn();
     this.clearListeners();
-    // Fire mode-specific completion hook for audit + build-family
-    // turns. Capture mode/model/response BEFORE clearing currentMode so
-    // the handlers can read them.
+
+    // Mode-specific completion hooks.
     const finishedMode = this.currentMode;
     const respText = this.responseBuffer;
     const modelForHook = this.currentResolvedModel ?? this.model;
-    this.currentMode = null;
-    this.currentResolvedModel = null;
-    // Reset grounded-rigor + footer state so a follow-up turn starts
-    // clean. (query() resets these too, but doing it here means a stray
-    // event arriving after a cancel can't carry old state forward.)
-    this.currentGroundedActive = false;
-    this.currentTurnToolCount = 0;
-    this.currentTurnStartedAt = null;
-    this.currentTurnWrites = [];
-    this.currentTurnInventoryShaped = false;
-
     const hasResponse = respText.trim().length > 0;
+
     if (finishedMode === "audit" && hasResponse) {
-      // Snapshot the probes + substrate runs BEFORE clearing so the
-      // workspace handler gets the immutable lists this turn captured.
       const probesForHook = this.currentRuntimeProbes.slice();
       const substrateForHook = this.currentSubstrateRuns.slice();
       try {
@@ -1212,14 +1209,26 @@ export class AgentController {
         console.error("onBuildComplete threw", e);
       }
     }
+
+    // Reset turn state.
+    this.currentMode = null;
+    this.currentResolvedModel = null;
+    this.currentTurnStartedAt = null;
+    this.currentGroundedActive = false;
+    this.currentTurnToolCount = 0;
+    this.currentTurnWrites = [];
+    this.currentRuntimeProbes = [];
+    this.currentSubstrateRuns = [];
+    this.currentTurnInventoryShaped = false;
+
     // Refresh session count so the UI badge stays accurate.
     void this.refreshSessionInfo().then(() => {
       // Suggest forking at ~40 turns (80 messages).
       if (this.messageCount >= 80 && !this.suggestedFork) {
         this.suggestedFork = true;
         this.opts.view.appendNotice(
-          "stall",
-          "Thread is getting long (~40 turns). Consider starting a new chat (`/clear` or use the + button) to keep the agent focused.",
+          "grounded-warning",
+          "This conversation is getting long (~40 turns). For best performance and lower costs, consider starting a fresh session if you're shifting topics.",
         );
       }
     });

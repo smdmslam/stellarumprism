@@ -796,6 +796,10 @@ export class Workspace {
           void this.engageSkill(slug);
         }
       },
+      onTurnComplete: (info) => {
+        if (info.totalTokens) this.updateTaskCost(info.totalTokens);
+        void this.refreshBillingInfo();
+      },
     });
     this.setupEditor();
     this.setupAttachments();
@@ -805,6 +809,7 @@ export class Workspace {
     this.setupLayoutDividers();
     this.setupFileEditorKeybindings();
     this.setupBadges();
+    void this.refreshBillingInfo();
     this.updateModelBadge();
     this.updateSkillsToggleUI();
     this.updateStrictToggleUI();
@@ -2821,6 +2826,18 @@ export class Workspace {
 
     // Update tooltip with exact balance
     container.title = `Credit Energy: $${credits.toFixed(2)} remaining (${finalCount} bars of runway)`;
+  }
+
+  /** Fetch the latest credit balance and update the global energy gauge. */
+  public async refreshBillingInfo(): Promise<void> {
+    try {
+      const info = await invoke<{
+        balance_usd: number;
+      }>("get_subscription_info");
+      Workspace.updateGlobalEnergyGauge(info.balance_usd);
+    } catch (e) {
+      console.warn("[billing] failed to refresh info", e);
+    }
   }
 
   /**
