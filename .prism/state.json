@@ -15,10 +15,10 @@
   },
   "recent_files": [],
   "layout": {
-    "sidebar_width": 267,
+    "sidebar_width": 318,
     "problems_width": 360,
     "preview_height": 465,
-    "agent_pane_width": 584,
+    "agent_pane_width": 467,
     "preview_visible": true,
     "terminal_visible": true,
     "agent_visible": true

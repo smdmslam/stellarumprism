@@ -10,7 +10,7 @@ export class ReaderUI {
   private readonly content: HTMLElement;
   private readonly filenameEl: HTMLElement;
   private readonly pathEl: HTMLElement;
-  private readonly saveBtn: HTMLElement;
+  private readonly saveBtn: HTMLButtonElement;
   private currentEditor: FileEditor | null = null;
   private currentPath: string | null = null;
   private currentCwd: string | null = null;
@@ -20,7 +20,7 @@ export class ReaderUI {
     this.content = document.getElementById("reader-content")!;
     this.filenameEl = document.getElementById("reader-filename")!;
     this.pathEl = document.getElementById("reader-path")!;
-    this.saveBtn = document.getElementById("reader-save")!;
+    this.saveBtn = document.getElementById("reader-save") as HTMLButtonElement;
     this.wireEvents();
   }
 
@@ -38,10 +38,10 @@ export class ReaderUI {
     this.saveBtn.style.display = "none";
 
     try {
-      const content = await invoke<string>("read_file_text", { cwd, path });
+      const result = await invoke<{ content: string }>("read_file_text", { cwd, path });
       this.content.innerHTML = "";
       
-      this.currentEditor = new FileEditor(this.content, content, path, {
+      this.currentEditor = new FileEditor(this.content, result.content, path, {
         onDirtyChange: (dirty) => {
           this.saveBtn.style.display = dirty ? "block" : "none";
         },
