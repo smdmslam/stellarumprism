@@ -50,3 +50,17 @@ The `vc-pitchdeck-` files are a grouped companion set for creating, rewriting, r
 - Audit a deck for red flags before sending to investors
 
 If more pitch-deck companions are added later, keep the `vc-pitchdeck-` prefix so they stay grouped naturally in folder listings.
+
+## Agentic Collaboration skill family
+
+The `claude-code-` files define how Prism interacts with other specialized AI agents, specifically for high-intensity refactoring and deep code manipulation.
+
+### Files
+- `claude-code-protocol.md` — The handoff and synergy workflow for using the `claude` CLI agent inside Prism.
+
+### Example usage
+- Handoff a complex multi-file refactor to Claude Code.
+- Use Prism to verify and ground the output of a Claude Code session.
+- Establish a "Senior Architect" (Prism) + "High-Speed Builder" (Claude Code) relationship.
+
+If more collaboration protocols are added later, keep the `claude-code-` prefix so they stay grouped naturally.

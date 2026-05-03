@@ -21,6 +21,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::collections::HashSet;
 
 use serde::Serialize;
 
@@ -72,47 +73,87 @@ pub struct SkillBody {
 pub fn list_skills(cwd: String) -> Result<Vec<SkillSummary>, String> {
     let dir = skills_dir(&cwd)?;
     if !dir.exists() {
-        // Empty corpus is a normal state, not an error.
         return Ok(Vec::new());
     }
-    let entries = fs::read_dir(&dir)
-        .map_err(|e| format!("cannot read {}: {}", dir.display(), e))?;
 
     let mut out: Vec<SkillSummary> = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !is_skill_file(&path) {
-            continue;
+    // We use a simple recursive walk.
+    fn walk_dir(root: &Path, current: &Path, out: &mut Vec<SkillSummary>) {
+        let Ok(entries) = fs::read_dir(current) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk_dir(root, &path, out);
+            } else if is_skill_file(&path) {
+                if let Ok(metadata) = fs::metadata(&path) {
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        // Slug is the path relative to root, minus .md
+                        let slug = path.strip_prefix(root)
+                            .unwrap_or(&path)
+                            .with_extension("")
+                            .to_string_lossy()
+                            .into_owned();
+                        
+                        let (frontmatter, body) = parse_frontmatter(&content);
+                        let name = frontmatter
+                            .iter()
+                            .find(|(k, _)| k == "name")
+                            .map(|(_, v)| v.clone())
+                            .unwrap_or_else(|| derive_name(body, &slug));
+                        let description = frontmatter
+                            .iter()
+                            .find(|(k, _)| k == "description")
+                            .map(|(_, v)| v.clone())
+                            .unwrap_or_else(|| derive_description(body).unwrap_or_else(|| slug.clone()));
+                        
+                        out.push(SkillSummary {
+                            slug,
+                            name,
+                            description,
+                            size_bytes: metadata.len(),
+                        });
+                    }
+                }
+            }
         }
-        let Ok(metadata) = fs::metadata(&path) else {
-            continue;
-        };
-        let Ok(content) = fs::read_to_string(&path) else {
-            // Best-effort: skip unreadable files (binary garbage, perms).
-            continue;
-        };
-        let slug = file_slug(&path);
-        let (frontmatter, body) = parse_frontmatter(&content);
-        let name = frontmatter
-            .iter()
-            .find(|(k, _)| k == "name")
-            .map(|(_, v)| v.clone())
-            .unwrap_or_else(|| derive_name(body, &slug));
-        let description = frontmatter
-            .iter()
-            .find(|(k, _)| k == "description")
-            .map(|(_, v)| v.clone())
-            .unwrap_or_else(|| derive_description(body).unwrap_or_else(|| slug.clone()));
-        out.push(SkillSummary {
-            slug,
-            name,
-            description,
-            size_bytes: metadata.len(),
-        });
     }
-    // Stable alphabetical order so the LLM-aware manifest is
-    // deterministic across turns.
+
+    walk_dir(&dir, &dir, &mut out);
+    
+    // Stable alphabetical order.
     out.sort_by(|a, b| a.slug.cmp(&b.slug));
+    Ok(out)
+}
+
+/// List all subdirectories under `<cwd>/.prism/skills/`.
+#[tauri::command]
+pub fn list_skill_folders(cwd: String) -> Result<Vec<String>, String> {
+    let dir = skills_dir(&cwd)?;
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut folders = HashSet::new();
+    
+    fn walk_folders(root: &Path, current: &Path, folders: &mut HashSet<String>) {
+        let Ok(entries) = fs::read_dir(current) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Ok(rel) = path.strip_prefix(root) {
+                    let rel_str = rel.to_string_lossy().into_owned();
+                    if !rel_str.is_empty() {
+                        folders.insert(rel_str.clone());
+                    }
+                }
+                walk_folders(root, &path, folders);
+            }
+        }
+    }
+
+    walk_folders(&dir, &dir, &mut folders);
+    let mut out: Vec<String> = folders.into_iter().collect();
+    out.sort();
     Ok(out)
 }
 

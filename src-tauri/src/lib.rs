@@ -46,7 +46,7 @@ use save_chat::save_chat_markdown;
 use recipes::{run_pnpm_script, write_recipe_report};
 use second_pass::{read_latest_audit_report, write_audit_report};
 use session::{read_session_state, write_session_state};
-use skills::{list_skills, read_skill};
+use skills::{list_skill_folders, list_skills, read_skill};
 use workspace_state::{
     read_latest_build_report, read_workspace_state, write_build_report, write_workspace_state,
 };
@@ -113,6 +113,7 @@ pub fn run() {
             run_pnpm_script,
             write_recipe_report,
             list_skills,
+            list_skill_folders,
             read_skill,
             get_usage_summary,
             billing::get_subscription_info,

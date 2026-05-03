@@ -38,6 +38,7 @@ export interface AppSettings {
   enabledSkills: Record<string, boolean>;
   /** Saved virtual skill groupings (search-defined, not filesystem). */
   savedSearchGroups: SavedSearchGroup[];
+  enabledSkillFolders: Record<string, boolean>;
   /** UI theme preference */
   theme: "dark" | "light" | "system";
   /** Sidebar default visibility for new tabs */
@@ -57,6 +58,7 @@ const STORAGE_KEY = "prism-settings-v1";
 const DEFAULT_SETTINGS: AppSettings = {
   enabledModels: {}, // empty means all are enabled by default (legacy behavior)
   enabledSkills: {},
+  enabledSkillFolders: {},
   savedSearchGroups: [],
   theme: "dark",
   sidebarDefaultVisible: true,
@@ -159,6 +161,18 @@ export class SettingsManager {
     for (const p of paths) {
       this.current.enabledSkills[p] = enabled;
     }
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  isSkillFolderEnabled(folder: string): boolean {
+    const override = this.current.enabledSkillFolders[folder];
+    if (override === undefined) return true; // Enabled by default
+    return override;
+  }
+
+  setSkillFolderEnabled(folder: string, enabled: boolean): void {
+    this.current.enabledSkillFolders[folder] = enabled;
     this.save();
     window.dispatchEvent(new CustomEvent("prism-settings-changed"));
   }

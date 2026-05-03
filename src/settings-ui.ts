@@ -27,7 +27,9 @@ function escapeHtml(s: string): string {
 
 type SkillFileEntry = {
   name: string;
-  path: string;
+  slug: string;
+  sizeBytes: number;
+  description: string;
 };
 
 const SKILLS_SEARCH_DEBOUNCE_MS = 250;
@@ -397,39 +399,49 @@ export class SettingsUI {
     });
 
     try {
-      const skillsPath = `${cwd}/.prism/skills`;
-      const result = await invoke<any>("list_dir_entries", { cwd: skillsPath, partial: "" });
-      const entries = result.entries as any[];
-      const skillFiles = entries.filter(e => e.kind === "file" && e.name.endsWith(".md"));
-
-      if (skillFiles.length === 0) {
-        skillsListEl.innerHTML = `<div class="empty-state">No skills found in .prism/skills/</div>`;
-        return;
-      }
+      const skills = await invoke<any[]>("list_skills", { cwd });
+      const folders = await invoke<string[]>("list_skill_folders", { cwd });
 
       // Grouping logic: Root files in "Other", subdirectories as Families
       const families: Record<string, SkillFileEntry[]> = {};
-      const familyNames = ["Other"];
-
-      const rootFiles = entries.filter(e => e.kind === "file" && e.name.endsWith(".md"));
-      if (rootFiles.length > 0) {
-        families["Other"] = rootFiles.map(f => ({ name: f.name, path: `${skillsPath}/${f.name}` }));
-      }
-
-      for (const entry of entries) {
-        if (entry.kind === "dir") {
-          familyNames.push(entry.name);
-          const subResult = await invoke<any>("list_dir_entries", { cwd: `${skillsPath}/${entry.name}`, partial: "" });
-          const subFiles = (subResult.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
-          if (subFiles.length > 0) {
-            families[entry.name] = subFiles.map(f => ({ name: f.name, path: `${skillsPath}/${entry.name}/${f.name}` }));
-          }
+      
+      for (const s of skills) {
+        let family = "Other";
+        if (s.slug.includes("/")) {
+          family = s.slug.split("/").slice(0, -1).join("/");
         }
+        if (!families[family]) families[family] = [];
+        families[family].push({
+          name: s.name,
+          slug: s.slug,
+          sizeBytes: s.sizeBytes,
+          description: s.description
+        });
       }
+
+      const familyNames = Object.keys(families).sort();
 
       const renderList = (filter = "") => {
         const filteredFamilies = filterSkillFamilies(families, filter);
         let html = "";
+
+        // ---- Skill Folders Awareness --------------------------------------
+        if (folders.length > 0 && !filter) {
+          html += `
+            <div class="settings-subsection-title" style="margin-top: 0; margin-bottom: 12px; font-size: 11px; text-transform: uppercase; color: #4b5563; font-weight: 700; letter-spacing: 0.05em;">Skill Folders Awareness</div>
+            <div class="skill-folders-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; margin-bottom: 24px; padding: 12px; background: rgba(15, 21, 32, 0.4); border-radius: 8px; border: 1px solid #1f2937;">
+          `;
+          for (const folder of folders) {
+            const isEnabled = settings.isSkillFolderEnabled(folder);
+            html += `
+              <div class="skill-folder-item" style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" class="skill-folder-toggle" id="folder-toggle-${folder}" data-folder="${folder}" ${isEnabled ? "checked" : ""}>
+                <label for="folder-toggle-${folder}" style="font-size: 12px; color: #94a3b8; cursor: pointer; user-select: none;">${folder}</label>
+              </div>
+            `;
+          }
+          html += `</div>`;
+        }
 
         // ---- Saved-search groups (virtual; user-defined) ------------------
         // Render BEFORE filesystem families so the user's curated views
@@ -466,15 +478,15 @@ export class SettingsUI {
                     ? `<div class="empty-state" style="font-size:11px;color:#6b7280;padding:8px 12px;">No skills currently match \u201c${escapeHtml(group.searchTerm)}\u201d.</div>`
                     : matches
                         .map((f) => {
-                          const displayName = f.name.replace(".md", "");
                           return `
                             <div class="skill-item">
                               <div class="skill-item-info">
-                                <div class="skill-item-name">${escapeHtml(displayName)}</div>
+                                <div class="skill-item-name">${escapeHtml(f.name)}</div>
+                                <div class="skill-item-desc" style="font-size:10px;color:#4b5563;">${escapeHtml(f.description)}</div>
                               </div>
                               <div class="skill-item-controls">
                                 <label class="prism-toggle mini">
-                                  <input type="checkbox" class="skill-toggle" data-path="${escapeHtml(f.path)}" ${settings.isSkillEnabled(f.path) ? "checked" : ""}>
+                                  <input type="checkbox" class="skill-toggle" data-path="${escapeHtml(f.slug)}" ${settings.isSkillEnabled(f.slug) ? "checked" : ""}>
                                   <span class="toggle-slider"></span>
                                 </label>
                               </div>
@@ -490,8 +502,8 @@ export class SettingsUI {
 
         // ---- Filesystem families (existing behavior) ----------------------
         for (const { familyName, files } of filteredFamilies) {
-          const allPaths = files.map(f => f.path);
-          const allEnabled = files.length > 0 && files.every(f => settings.isSkillEnabled(f.path));
+          const allPaths = files.map(f => f.slug);
+          const allEnabled = files.length > 0 && files.every(f => settings.isSkillEnabled(f.slug));
           
           html += `
             <div class="skill-family">
@@ -507,18 +519,18 @@ export class SettingsUI {
               </div>
               <div class="skill-family-content">
                 ${files.map(f => {
-                  const displayName = f.name.replace(".md", "");
                   return `
                     <div class="skill-item">
                       <div class="skill-item-info">
-                        <div class="skill-item-name">${displayName}</div>
+                        <div class="skill-item-name">${escapeHtml(f.name)}</div>
+                        <div class="skill-item-desc" style="font-size:10px;color:#4b5563;">${escapeHtml(f.description)}</div>
                       </div>
                       <div class="skill-item-controls">
-                        <select class="skill-move-select" data-path="${f.path}" data-current="${familyName}">
+                        <select class="skill-move-select" data-path="${escapeHtml(f.slug)}" data-current="${escapeHtml(familyName)}">
                           ${familyNames.map(name => `<option value="${name}" ${name === familyName ? "selected" : ""}>Move to ${name}</option>`).join("")}
                         </select>
                         <label class="prism-toggle mini">
-                          <input type="checkbox" class="skill-toggle" data-path="${f.path}" ${settings.isSkillEnabled(f.path) ? "checked" : ""}>
+                          <input type="checkbox" class="skill-toggle" data-path="${escapeHtml(f.slug)}" ${settings.isSkillEnabled(f.slug) ? "checked" : ""}>
                           <span class="toggle-slider"></span>
                         </label>
                       </div>
@@ -532,7 +544,14 @@ export class SettingsUI {
 
         skillsListEl.innerHTML = html || `<div class="empty-state">No skills matching "${filter}"</div>`;
 
-        // Wire toggles
+        // Folder awareness toggles
+        skillsListEl.querySelectorAll<HTMLInputElement>(".skill-folder-toggle").forEach(input => {
+          input.addEventListener("change", () => {
+            settings.setSkillFolderEnabled(input.dataset.folder!, input.checked);
+          });
+        });
+
+        // Skill toggles
         skillsListEl.querySelectorAll<HTMLInputElement>(".skill-toggle").forEach(input => {
           input.addEventListener("change", () => {
             settings.setSkillEnabled(input.dataset.path!, input.checked);
@@ -881,9 +900,6 @@ export class SettingsUI {
           </div>
         </div>
 
-        <p style="font-size: 10px; color: #6b7280; margin-top: 16px; line-height: 1.4;">
-          * Credit cost is calculated as actual AI provider cost \u00d7 20. This covers platform overhead, infrastructure, and development.
-        </p>
       `;
 
       container.innerHTML = html;

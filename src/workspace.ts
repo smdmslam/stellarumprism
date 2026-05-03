@@ -1122,10 +1122,17 @@ export class Workspace {
         // Bare /skills — list the corpus.
         void listSkills(this.cwd)
           .then((skills) => {
+            const awarenessFiltered = skills.filter(s => {
+              if (s.slug.includes("/")) {
+                const folder = s.slug.split("/").slice(0, -1).join("/");
+                return settings.isSkillFolderEnabled(folder);
+              }
+              return true;
+            });
             if (this.agentView) {
-              this.agentView.appendReport(renderSkillsMarkdown(skills));
+              this.agentView.appendReport(renderSkillsMarkdown(awarenessFiltered));
             } else {
-              this.notify(`[skills] ${skills.length} skill(s) in .prism/skills/`);
+              this.notify(`[skills] ${awarenessFiltered.length} skill(s) in .prism/skills/`);
             }
           })
           .catch((err) => {
@@ -2873,7 +2880,15 @@ export class Workspace {
       return "";
     }
     const engagedSlugs = new Set(this.engagedSkills.keys());
-    const candidates = skills.filter((s) => !engagedSlugs.has(s.slug));
+    const candidates = skills.filter((s) => {
+      if (engagedSlugs.has(s.slug)) return false;
+      // Folder awareness check
+      if (s.slug.includes("/")) {
+        const folder = s.slug.split("/").slice(0, -1).join("/");
+        if (!settings.isSkillFolderEnabled(folder)) return false;
+      }
+      return true;
+    });
     if (candidates.length === 0) return "";
     const out: string[] = [];
     out.push("## Available skills");
