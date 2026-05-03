@@ -92,6 +92,8 @@ import {
   flattenVisibleRows,
   formatBytes as formatTreeBytes,
   moveSelection,
+  removePathsFromTree,
+  renamePathInTree,
   setChildren,
   setError as setTreeError,
   setLoading as setTreeLoading,
@@ -3816,10 +3818,13 @@ export class Workspace {
       // call here used `src` / `dst` which serde silently dropped,
       // making rename a no-op. Use the canonical names.
       await invoke("move_file", { cwd: this.cwd, from: path, to: newPath });
-      // If the renamed file was open in the editor, close it so the
       // stale path reference doesn't linger.
       if (this.openFilePath === path) this.closeFileEditor();
-      void this.refreshFileTreeRoot();
+
+      // Immediately rename in the local tree state to reflect the change
+      // without resetting expansion/load states of other folders.
+      this.treeState = renamePathInTree(this.treeState, path, newPath);
+      this.renderFileTree();
     } catch (err) {
       window.alert(`Rename failed: ${String(err)}`);
     }
@@ -3853,18 +3858,14 @@ export class Workspace {
       } else {
         await invoke("remove_file", { cwd: this.cwd, path });
       }
-      // If the deleted file was open in the editor, close it so the
       // stale path reference doesn't linger as a phantom buffer.
       if (this.openFilePath === path) this.closeFileEditor();
-      // Drop cached children so the now-deleted row stops showing
-      // under any expanded parent. Mirrors the post-rename refresh.
-      this.fileTreeRootLoaded = false;
-      this.treeState = {
-        ...this.treeState,
-        childrenByPath: new Map(),
-        loadStateByPath: new Map(),
-      };
-      await this.refreshFileTreeRoot();
+
+      // Immediately remove from the local tree state to reflect the deletion
+      // without resetting expansion/load states of other folders.
+      this.treeState = removePathsFromTree(this.treeState, [path]);
+      this.renderFileTree();
+
       this.notify(`[files] deleted ${stripAnsi(path)}`);
     } catch (err) {
       window.alert(`Could not delete: ${String(err)}`);

@@ -21,6 +21,6 @@
     "agent_pane_width": 712,
     "preview_visible": true,
     "terminal_visible": true,
-    "agent_visible": true
+    "agent_visible": false
   }
 }

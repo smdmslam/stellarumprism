@@ -200,6 +200,133 @@ export function setChildren(
   };
 }
 
+/**
+ * Remove one or more absolute paths from the tree state. Returns the
+ * updated state without performing disk I/O. Use this to immediately
+ * reflect a deletion in the UI while keeping the rest of the tree's
+ * expansion and load state intact.
+ */
+export function removePathsFromTree(
+  state: TreeState,
+  paths: string[],
+): TreeState {
+  const pathSet = new Set(paths);
+
+  // 1. Update root entries if they contain any of the deleted paths.
+  let root = state.root;
+  if (root) {
+    const entries = root.entries.filter((e) => !pathSet.has(e.path));
+    if (entries.length !== root.entries.length) {
+      root = { ...root, entries };
+    }
+  }
+
+  // 2. Update child listings.
+  const childrenByPath = new Map(state.childrenByPath);
+  for (const path of paths) {
+    childrenByPath.delete(path);
+  }
+  // Also filter entries in any other loaded subtrees.
+  for (const [parentPath, listing] of childrenByPath.entries()) {
+    const entries = listing.entries.filter((e) => !pathSet.has(e.path));
+    if (entries.length !== listing.entries.length) {
+      childrenByPath.set(parentPath, { ...listing, entries });
+    }
+  }
+
+  // 3. Clean up metadata / transient state.
+  const loadStateByPath = new Map(state.loadStateByPath);
+  const expanded = new Set(state.expanded);
+  const selection = new Set(state.selection);
+  let selected = state.selected;
+
+  for (const path of paths) {
+    loadStateByPath.delete(path);
+    expanded.delete(path);
+    selection.delete(path);
+    if (selected === path) selected = null;
+  }
+
+  return {
+    ...state,
+    root,
+    childrenByPath,
+    loadStateByPath,
+    expanded,
+    selection,
+    selected,
+  };
+}
+
+/**
+ * Rename a path in the tree state. If `oldPath` is a directory, all
+ * nested entries in the cache are also migrated to the new path prefix.
+ * Returns the updated state without disk I/O.
+ */
+export function renamePathInTree(
+  state: TreeState,
+  oldPath: string,
+  newPath: string,
+): TreeState {
+  const migrate = (p: string) => {
+    if (p === oldPath) return newPath;
+    if (p.startsWith(oldPath + "/")) {
+      return newPath + p.substring(oldPath.length);
+    }
+    return p;
+  };
+
+  // 1. Update root entries.
+  let root = state.root;
+  if (root) {
+    const entries = root.entries.map((e) => ({
+      ...e,
+      path: migrate(e.path),
+    }));
+    root = { ...root, entries };
+  }
+
+  // 2. Update child listings.
+  const childrenByPath = new Map<string, RawTreeListing>();
+  for (const [p, listing] of state.childrenByPath.entries()) {
+    const newP = migrate(p);
+    const entries = listing.entries.map((e) => ({
+      ...e,
+      path: migrate(e.path),
+    }));
+    childrenByPath.set(newP, { ...listing, dir: newP, entries });
+  }
+
+  // 3. Update transient state.
+  const loadStateByPath = new Map<string, LoadState>();
+  for (const [p, s] of state.loadStateByPath.entries()) {
+    loadStateByPath.set(migrate(p), s);
+  }
+
+  const expanded = new Set<string>();
+  for (const p of state.expanded) {
+    expanded.add(migrate(p));
+  }
+
+  const selection = new Set<string>();
+  for (const p of state.selection) {
+    selection.add(migrate(p));
+  }
+
+  let selected = state.selected;
+  if (selected) selected = migrate(selected);
+
+  return {
+    ...state,
+    root,
+    childrenByPath,
+    loadStateByPath,
+    expanded,
+    selection,
+    selected,
+  };
+}
+
 /** Mark a path as failed-to-load with a message the UI can render. */
 export function setError(
   state: TreeState,
