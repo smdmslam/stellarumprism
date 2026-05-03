@@ -347,19 +347,17 @@ All items NOT STARTED except 5.9 (DONE) and recent verifier-cost audit partial (
 - **Issue:** Default to premium models inflates casual chat costs.
 - **Action:** Audit `config.rs` and `router.ts`; set `auto-thrifty` as default.
 
-#### 5.12 Visual Budget Indicator (Toolbar "Fuel Gauge") (NEW 2026-05-03)
-- **Status:** NOT STARTED
+#### 5.12 Visual Budget Indicator (Toolbar "Fuel Gauge") ✅ DONE
+- **Status:** IMPLEMENTED (2026-05-03)
 - **Goal:** Real-time visibility of remaining credits directly in the primary toolbar.
-- **Design:** Five small vertical bars (OpenRouter uptime style).
-- **Logic:** Map `(remaining_credits / total_budget)` to a 5-bar scale.
-- **Aesthetics:** Luminous green/cyan bars that dim or change color as budget depletes.
-- **Why:** Moves AI economics from a "hidden tab" to a first-class UI element, allowing for effortless spend awareness.
+- **Implementation:** Five vertical bars in `#tb-energy`. Each bar = **$30 increment** of runway.
+- **Aesthetics:** Luminous Prism Cyan bars; hover shows exact balance tooltip.
 
-#### 5.13 Task Token/Cost Metadata Row (NEW 2026-05-03)
-- **Status:** NOT STARTED
+#### 5.13 Task Token/Cost Metadata Row ✅ DONE
+- **Status:** IMPLEMENTED (2026-05-03)
 - **Goal:** Display real-time task metrics (tokens/cost/turns) directly in the prompt area.
-- **Design:** A dedicated metadata row above the path badge.
-- **Why:** Provides immediate feedback on the "weight" of the current task and helps users manage session length and cost.
+- **Implementation:** Cumulative `taskTokens` accumulator updates after every turn; resets on `/new`.
+- **Aesthetics:** Compact mono font above path badge.
 
 ---
 
@@ -528,6 +526,8 @@ All NOT STARTED.
 
 ### Models / Cost (Phase 5)
 ✅ 5.9 Model curation (0cc2dd3 refresh)
+✅ 5.12 Visual Budget Indicator (Fuel Gauge)
+✅ 5.13 Task Token Metadata (Cumulative sum)
 *(5.10 partial: audit confirmed)*
 
 ### Skills (Phase 7)
@@ -552,7 +552,7 @@ All NOT STARTED.
 | **2** Daily-use | 10 | 8/10 DONE | 2.11 (Find) and 2.12 (History Persistence) remaining. |
 | **3** File Explorer | 7 | 7/7 DONE | Clean. |
 | **4** Protocols | 5 | 1/5 DONE | UI discoverability critical next. |
-| **5** AI Usage / Billing | 11 | 1/11 DONE (partial) | **CRITICAL PATH** — instrumentation urgent. |
+| **5** AI Usage / Billing | 13 | 3/13 DONE | **CRITICAL PATH** — Fuel Gauge and Tokens shipped. |
 | **6** Analysis Engine | 2 | 0/2 DONE | Tie to Phase 5 verifier work. |
 | **7** Skills | 6 | 4/6 DONE | v1 runtime shipped; 7.5–7.6 deferred. |
 | **8** Plumbing | 5 | 5/5 DONE | Clean. |
@@ -560,7 +560,7 @@ All NOT STARTED.
 | **10** Design Evolution | 12 | 0/12 DONE | "Cyber-Noir" aesthetics, Features, & IDE Editor. |
 | **11** Prism Habits | 3 | 0/3 DONE | Adaptive behavioral coaching & interaction mining. |
 
-**Overall:** 39/78 items DONE (~50%)
+**Overall:** 41/80 items DONE (~51%)
 
 ---
 

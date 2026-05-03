@@ -26,5 +26,10 @@ This document outlines key features of the Prism project, providing a high-level
 *   **Active-Pane Visual Targeting:** Uses high-fidelity "Prism Cyan" highlights and focus glows to indicate exactly which pane is targeted for new content, ensuring an intuitive and predictable dual-editing experience.
 *   **Surgical File Explorer Updates:** Replaced destructive full-tree refreshes with localized, state-preserving updates. Deleting, renaming, or moving files now occurs instantly without losing your folder expansion state, ensuring a stable and fluid workspace layout.
 
+### Real-Time Economic Awareness
+*   **Runway-based Energy Gauge:** A high-fidelity 5-bar "Fuel Gauge" in the toolbar that visualizes AI credit balance. Each bar represents a fixed **$30 increment** of runway, providing a physical, intuitive mental model of remaining "work time."
+*   **Cumulative Task Token Tracking:** Real-time metadata in the prompt area that sums token usage across an entire agentic task. It provides transparent "burn rate" visibility for multi-turn workflows and automatically resets for fresh sessions.
+*   **Integrated Billing Substrate:** Live synchronization between the frontend UI and backend credit data, ensuring financial transparency is never an "afterthought" but a core part of the active development loop.
+
 ## Future Enhancements & Roadmap
 *   _This section will be populated with upcoming features and strategic directions._
