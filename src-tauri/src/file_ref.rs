@@ -775,8 +775,17 @@ pub fn move_file(cwd: String, from: String, to: String) -> Result<String, String
     let resolved_from = resolve_path(&cwd, &from)?;
     let resolved_to = resolve_path(&cwd, &to)?;
 
-    // If 'to' is a directory, move into it with same name
-    let target = if resolved_to.is_dir() {
+    // If 'to' is a directory, move into it with same name.
+    // NOTE: On case-insensitive filesystems (macOS, Windows), renaming
+    // 'History' to 'history' will report that 'history' already exists
+    // (it's the same item). We check for physical identity via canonicalize
+    // to avoid moving the folder into itself.
+    let is_same_physical = match (resolved_from.canonicalize(), resolved_to.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+
+    let target = if !is_same_physical && resolved_to.is_dir() {
         let name = resolved_from.file_name().ok_or("invalid source filename")?;
         resolved_to.join(name)
     } else {
