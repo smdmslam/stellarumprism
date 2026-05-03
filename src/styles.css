@@ -4601,11 +4601,13 @@ input:checked + .toggle-slider:before {
   font-size: 11px;
   cursor: pointer;
   opacity: 0.4;
-  padding: 4px 8px;
+  padding: 4px 12px; /* Larger hit area */
   transition: all 120ms ease;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
+  z-index: 10;
 }
 
 .tree-pin-btn:hover {

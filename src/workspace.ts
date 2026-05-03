@@ -3470,6 +3470,7 @@ export class Workspace {
     const treeEl = this.root.querySelector<HTMLElement>(".file-tree");
     if (!treeEl) return;
     treeEl.addEventListener("click", (e) => {
+      const pinBtn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-action="toggle-pin"]');
       const row = (e.target as HTMLElement | null)?.closest<HTMLElement>(
         "[data-path]",
       );
@@ -3477,6 +3478,15 @@ export class Workspace {
       const path = row.dataset.path!;
       const kind = row.dataset.kind ?? "file";
 
+      // 1. Handle Pin Toggle (Star click)
+      if (pinBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        void readerUI.togglePin(this.cwd!, path);
+        return;
+      }
+
+      // 2. Handle Normal Selection
       const rows = flattenVisibleRows(this.treeState);
       let mode: "single" | "toggle" | "range" = "single";
       if (e.shiftKey) mode = "range";
@@ -3484,17 +3494,10 @@ export class Workspace {
 
       this.treeState = updateSelection(this.treeState, rows, path, mode);
 
-      const pinBtn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-action="toggle-pin"]');
-      if (pinBtn) {
-        e.stopPropagation();
-        void readerUI.togglePin(this.cwd!, path);
-        return;
-      }
-
       if (kind === "dir" && mode === "single") {
         void this.handleTreeToggle(path);
       } else if (kind === "file" && mode === "single") {
-        // Single click opens the file in the editable buffer.
+        // Single click opens the file in the main workspace editor.
         void this.openFileInEditor(path);
       }
       this.renderFileTree();
@@ -3680,9 +3683,8 @@ export class Workspace {
     addItem("Rename", "✏", () => {
       void this.promptRenameTreeItem(path);
     });
-    const isPinned = readerUI.getPinnedPaths().includes(path);
-    addItem(isPinned ? "Unpin from Reader" : "Pin to Reader", "\u2197", () => {
-      void readerUI.togglePin(this.cwd!, path);
+    addItem("Open Reader", "\u2197", () => {
+      void readerUI.open(this.cwd!, path);
     });
     addItem("Move", "\u2192", () => {
       void this.promptMoveTreeItem(path);
