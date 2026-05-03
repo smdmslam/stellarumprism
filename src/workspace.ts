@@ -182,6 +182,7 @@ export class Workspace {
   private title = "New Tab";
   /** True if we have already auto-titled this tab based on user input. */
   private autoTitleDone = false;
+  private taskTokens = 0;
   private cwd = ""; // populated by OSC 7 from the shell integration
 
   public getId(): string { return this.id; }
@@ -797,7 +798,8 @@ export class Workspace {
         }
       },
       onTurnComplete: (info) => {
-        if (info.totalTokens) this.updateTaskCost(info.totalTokens);
+        this.taskTokens += info.totalTokens || 0;
+        this.updateTaskCost(this.taskTokens);
         void this.refreshBillingInfo();
       },
     });
@@ -2739,6 +2741,8 @@ export class Workspace {
       this.lastChatTopicKeywords = [];
       this.topicShiftNudged = false;
       this.longThreadNudged = false;
+      this.taskTokens = 0;
+      this.updateTaskCost(0);
       this.cb.onTitleChange(this.id, this.title);
       this.notify("[agent] new session \u2014 history cleared and title reset");
     });
