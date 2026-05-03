@@ -76,6 +76,10 @@ Visualizing the industry-breaking shift:
 1. **The Standard Curve (Warp/Others):** A linear diagonal. Quality is directly tied to spend. To get "Genius" results, you must pay "Genius" prices. Dropping to cheaper models results in an exponential decay in utility.
 2. **The Prism Curve:** A high horizontal floor. Because the *scaffolding* enforces the methodology, even a mid-tier model is "forced" into a high-reasoning output. Prism breaks the paradigm by decoupling **Accuracy** from **LLM Cost**.
 
+### 🔗 Interaction: Recipes vs. Verify Button
+- **Recipes (e.g., /audit, /refactor, "Security Protocol"):** These are **Deep Workflows**. They are intentional sequences of `/functions` designed for specific high-stakes outcomes.
+- **Verify Button (Strict Mode):** This is **Protocol Democratization**. It forces the casual `/chat` agent to follow the same rigorous "Grounded" rules that the Deep Workflows use. Turning on "Always Verify" ensures that even simple questions are handled with the same truth-seeking discipline as a full Security Protocol.
+
 **Competitive Edge:** Prism delivers "Auto Genius" quality at "Flash Lite" prices. We have achieved what market leaders with 100x the funding have not: **Architecturally-Enforced Intelligence.**
 
 ---
@@ -260,8 +264,9 @@ Visualizing the industry-breaking shift:
 
 #### 4.1 Toolbar Protocols menu
 - **Status:** NOT STARTED
-- **Issue:** Toolbar button for protocols; grouped recipes.
-- **Design:** UI placement and layout needed.
+- **Issue:** Toolbar button for protocols; grouped recipes (e.g., "Security Protocol", "Harden Loop").
+- **Design:** UI placement for "Umbrella" names that initiate a sequence of underlying `/functions`.
+- **Relationship:** These recipes represent the "Peak Performance" of the ADE; the **Verify** button ensures this performance is the baseline for all chat.
 - **Dependencies:** `/protocol` slash works; extend to UI.
 
 #### 4.2 Disabled / inapplicable recipe entries
