@@ -20,5 +20,9 @@ This document outlines key features of the Prism project, providing a high-level
 *   **Grok Defaults Migration (v4.1) & Pricing Synchronization:** Updated the project's dependency on Grok to version 4.1 and synchronized pricing models, ensuring compatibility and accurate cost estimations.
 *   **Pricing Constants Correction:** Fixed inaccuracies in pricing constants used for usage estimation, preventing discrepancies in cost calculations.
 
+### IDE Surface & Productivity
+*   **Immersive Pop-out Reader/Editor:** A large-format, high-fidelity floating modal for focused code reading and editing. Accessible via right-click in the file explorer, it provides a distraction-free "Cinema Mode" for complex files with full syntax highlighting, search, and auto-save.
+*   **Surgical File Explorer Updates:** Replaced destructive full-tree refreshes with localized, state-preserving updates. Deleting, renaming, or moving files now occurs instantly without losing your folder expansion state, ensuring a stable and fluid workspace layout.
+
 ## Future Enhancements & Roadmap
 *   _This section will be populated with upcoming features and strategic directions._
