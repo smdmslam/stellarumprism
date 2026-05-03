@@ -4622,37 +4622,45 @@ input:checked + .toggle-slider:before {
   filter: drop-shadow(0 0 3px rgba(125, 211, 252, 0.4));
 }
 
-/* ---------- toolbar substrate status & fuel gauge ---------- */
+/* ---------- toolbar substrate status & energy gauge ---------- */
 
-.substrate-status {
+.tb-indicator {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
-  background: rgba(15, 23, 42, 0.4);
-  border: 1px solid rgba(125, 211, 252, 0.1);
-  border-radius: 6px;
-  user-select: none;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+  white-space: nowrap;
 }
 
-.fuel-gauge {
+.indicator-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #4ade80; /* Substrate green */
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.4);
+}
+
+.energy-gauge {
   display: flex;
   align-items: flex-end;
   gap: 2px;
   height: 10px;
+  padding: 0 4px;
 }
 
 .fuel-bar {
   width: 3px;
   height: 100%;
-  background: rgba(148, 163, 184, 0.2);
+  background: rgba(148, 163, 184, 0.15);
   border-radius: 1px;
-  transition: all 200ms ease;
+  transition: all 250ms ease;
 }
 
 .fuel-bar.active {
   background: #7dd3fc;
-  box-shadow: 0 0 4px rgba(125, 211, 252, 0.5);
+  box-shadow: 0 0 4px rgba(125, 211, 252, 0.4);
 }
 
 /* Stagger heights like signal bars */
@@ -4662,23 +4670,15 @@ input:checked + .toggle-slider:before {
 .fuel-bar:nth-child(4) { height: 85%; }
 .fuel-bar:nth-child(5) { height: 100%; }
 
-.substrate-label {
-  font-size: 10px;
-  font-weight: 600;
-  color: #94a3b8;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-/* ---------- prompt info row (cost metrics) ---------- */
+/* ---------- prompt info row (token metrics) ---------- */
 
 .input-info-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 4px 12px;
+  padding: 4px 14px;
   border-bottom: 1px solid rgba(125, 211, 252, 0.05);
-  background: rgba(15, 23, 42, 0.2);
+  background: rgba(15, 23, 42, 0.3);
 }
 
 .info-item {
@@ -4689,13 +4689,8 @@ input:checked + .toggle-slider:before {
   font-family: var(--font-mono);
 }
 
-.info-label {
-  color: #64748b;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
 .info-value {
   color: #7dd3fc;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }

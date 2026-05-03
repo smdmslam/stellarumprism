@@ -450,8 +450,7 @@ export class Workspace {
           <div class="attachments"></div>
           <div class="input-bar">
             <div class="input-info-row">
-              <span class="info-item cost-metric" title="Current Task Estimated Cost">
-                <span class="info-label">Cost</span>
+              <span class="info-item cost-metric" title="Current Task Estimated Token Usage">
                 <span class="info-value" id="task-cost-display">0.0k tokens</span>
               </span>
             </div>
