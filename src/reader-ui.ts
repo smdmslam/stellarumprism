@@ -105,13 +105,39 @@ export class ReaderUI {
     this.onChange?.();
   }
 
-  public async open(cwd: string, path: string): Promise<void> {
-    // Standard "Open" behavior (e.g. from context menu)
-    // If reader is open, target the active pane. If not, open as pinned.
+  public async open(cwd: string, paths: string | string[]): Promise<void> {
+    const pathList = Array.isArray(paths) ? paths : [paths];
+    if (pathList.length === 0) return;
+
+    // If reader is closed, open it and pin the first one or two.
     if (!this.isVisible()) {
-      await this.pin(cwd, path);
+      await this.pin(cwd, pathList[0]);
+      if (pathList.length > 1) {
+        this.isSplit = true;
+        this.renderGrid();
+        // Re-load left because the host DOM changed during renderGrid()
+        if (this.left.path && this.left.cwd) {
+          await this.loadPane("left", this.left.cwd, this.left.path);
+        }
+        await this.loadPane("right", cwd, pathList[1]);
+      }
     } else {
-      await this.loadPane(this.activeSide, cwd, path);
+      // If already open, just update the active pane(s).
+      if (pathList.length > 1 && !this.isSplit) {
+        this.isSplit = true;
+        this.renderGrid();
+        // Re-load existing content because the host DOM changed
+        const existingSide = this.activeSide === "left" ? "right" : "left";
+        const pane = existingSide === "left" ? this.left : this.right;
+        if (pane.path && pane.cwd) {
+          await this.loadPane(existingSide, pane.cwd, pane.path);
+        }
+      }
+      await this.loadPane(this.activeSide, cwd, pathList[0]);
+      if (pathList.length > 1) {
+        const otherSide = this.activeSide === "left" ? "right" : "left";
+        await this.loadPane(otherSide, cwd, pathList[1]);
+      }
     }
   }
 

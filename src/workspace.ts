@@ -3548,7 +3548,7 @@ export class Workspace {
   private wireFileTree(): void {
     const treeEl = this.root.querySelector<HTMLElement>(".file-tree");
     if (!treeEl) return;
-    treeEl.addEventListener("click", (e) => {
+    treeEl.addEventListener("click", async (e) => {
       const pinBtn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-action="toggle-pin"]');
       const row = (e.target as HTMLElement | null)?.closest<HTMLElement>(
         "[data-path]",
@@ -3558,10 +3558,18 @@ export class Workspace {
       const kind = row.dataset.kind ?? "file";
 
       // 1. Handle Pin Toggle (Star click)
+      // 1. Handle Pin Toggle (Star click)
       if (pinBtn) {
         e.preventDefault();
         e.stopPropagation();
-        void readerUI.togglePin(this.cwd!, path, true);
+        // Sync: Starring a file also toggles its selection state.
+        // This allows building a multi-selection by clicking stars
+        // without needing to hold Cmd/Shift.
+        const rows = flattenVisibleRows(this.treeState);
+        this.treeState = updateSelection(this.treeState, rows, path, "toggle");
+        // Await the pin toggle so the subsequent render sees the updated state.
+        await readerUI.togglePin(this.cwd!, path, true);
+        this.renderFileTree();
         return;
       }
 
@@ -3691,17 +3699,21 @@ export class Workspace {
       menu.appendChild(sep);
     };
 
+    const pinned = readerUI.getPinnedPaths();
     const selection = Array.from(this.treeState.selection);
-    const isMulti = selection.length > 1;
+    // "Select is Select": Union of blue-highlighted and starred paths.
+    const activePaths = Array.from(new Set([...selection, ...pinned]));
+    const count = activePaths.length;
+    const isMulti = count > 1;
 
     // -- Batch / Copy actions -------------------------------------------------------
     if (isMulti) {
-      addItem(`Copy ${selection.length} Paths`, "⎘", () => {
-        void navigator.clipboard.writeText(selection.join("\n"));
+      addItem(`Copy ${count} Paths`, "⎘", () => {
+        void navigator.clipboard.writeText(activePaths.join("\n"));
       });
-      addItem(`Add ${selection.length} to Prompt`, "@", () => {
+      addItem(`Add ${count} to Prompt`, "@", () => {
         const cwd = this.cwd;
-        const rels = selection.map(p => 
+        const rels = activePaths.map(p => 
           cwd && p.startsWith(cwd)
             ? p.slice(cwd.endsWith("/") ? cwd.length : cwd.length + 1)
             : p
@@ -3742,6 +3754,9 @@ export class Workspace {
       addItem("Open in Editor", "✎", () => {
         void this.openFileInEditor(path);
       });
+      addItem(isMulti ? `Open ${count} in Reader` : "Open in Reader", "↗", () => {
+        void readerUI.open(this.cwd!, isMulti ? activePaths : path);
+      });
     }
 
     // -- Create siblings / children ----------------------------------------
@@ -3761,9 +3776,6 @@ export class Workspace {
     addSep();
     addItem("Rename", "✏", () => {
       void this.promptRenameTreeItem(path);
-    });
-    addItem("Open Reader", "↗", () => {
-      void readerUI.open(this.cwd!, path);
     });
     addItem("Open in Browser", "⎗", () => {
       void invoke("open_in_browser", { cwd: this.cwd, path });
@@ -4214,7 +4226,7 @@ export class Workspace {
     const e = row.entry;
     const indentPx = 8 + row.depth * 14;
     const selected = row.selected ? " file-tree-row-selected" : "";
-    const active = row.active ? " file-tree-row-active" : "";
+    const active = row.selected ? " file-tree-row-active" : "";
     const kindClass = `file-tree-row-${e.kind}`;
     let icon = "";
     if (e.kind === "dir") {
@@ -4245,7 +4257,8 @@ export class Workspace {
     } else if (row.loadState.kind === "error") {
       trailing = `<span class="file-tree-detail file-tree-detail-error" title="${escapeAttr(row.loadState.message)}">!</span>`;
     }
-    const isPinned = readerUI.getPinnedPaths().includes(e.path);
+    // "Select is Select": Star is lit if pinned OR currently selected in the tree.
+    const isPinned = readerUI.getPinnedPaths().includes(e.path) || row.selected;
     const pinIndicator = (e.kind === "file") 
       ? `<button class="tree-pin-btn${isPinned ? " is-pinned" : ""}" data-action="toggle-pin" title="${isPinned ? "Unpin from Reader" : "Pin to Reader"}">\u2605</button>`
       : "";

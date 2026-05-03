@@ -3627,7 +3627,7 @@ input:checked + .toggle-slider:before {
   font-size: 12px;
   outline: none;
 }
-.file-tree:focus { box-shadow: inset 2px 0 0 #7dd3fc; }
+.file-tree:focus { outline: none; }
 .file-tree::-webkit-scrollbar { width: 8px; }
 .file-tree::-webkit-scrollbar-track { background: transparent; }
 .file-tree::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 4px; }
@@ -4617,14 +4617,14 @@ input:checked + .toggle-slider:before {
 
 /* Tree View "Pin to Reader" Button (Star) */
 .tree-pin-btn {
-  flex: 0 0 2ch;
+  flex: 0 0 4ch;
   background: none;
   border: none;
   color: #4b5563; /* Gray star when unpinned */
   font-size: 11px;
   cursor: pointer;
   opacity: 0.4;
-  padding: 0;
+  padding: 6px 0; /* Vertical hit area */
   transition: all 120ms ease;
   display: flex;
   align-items: center;
