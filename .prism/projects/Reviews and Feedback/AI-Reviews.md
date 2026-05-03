@@ -13,3 +13,5 @@ Prism demonstrated its value during the "Pop-out Reader" and "Surgical Explorer"
 
 **User Reflection:**
 > "Prism feels like having a senior engineer constantly looking over your shoulder, not just for syntax, but for the actual integrity of the project's logic. It found a needle in a haystack of 28 tests that I wouldn't have bothered running until much later."
+
+"Prism was definitely the MVP here—catching that test failure before the push saved us from a broken build. It’s a great testament to the "Grounded" architecture we're building."

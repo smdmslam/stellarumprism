@@ -4475,6 +4475,28 @@ input:checked + .toggle-slider:before {
   background: #0d0f14;
 }
 
+.reader-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  height: 100%;
+  width: 100%;
+}
+
+.reader-grid.is-split {
+  grid-template-columns: 1fr 1fr;
+}
+
+.reader-col {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.reader-col + .reader-col {
+  border-left: 1px solid #1f2937;
+}
+
 .reader-main .cm-editor {
   height: 100%;
 }
