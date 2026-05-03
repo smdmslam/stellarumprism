@@ -22,6 +22,7 @@ export class ReaderUI {
   private left: PaneState = { path: null, cwd: null, editor: null, hostId: "reader-left" };
   private right: PaneState = { path: null, cwd: null, editor: null, hostId: "reader-right" };
   private isSplit = false;
+  private activeSide: "left" | "right" = "left";
   private onChange?: () => void;
 
   constructor() {
@@ -59,11 +60,12 @@ export class ReaderUI {
   }
 
   private async pin(cwd: string, path: string): Promise<void> {
-    // Determine where to pin: 
-    // 1. If left is empty, pin to left.
-    // 2. If left is full, pin to right (enable split).
-    // 3. If both full, replace right (active targeting).
+    if (!this.isVisible()) {
+      this.overlay.setAttribute("aria-hidden", "false");
+    }
+
     if (!this.left.path) {
+      this.renderGrid();
       await this.loadPane("left", cwd, path);
     } else {
       if (!this.isSplit) {
@@ -73,10 +75,6 @@ export class ReaderUI {
         if (this.left.path && this.left.cwd) await this.loadPane("left", this.left.cwd, this.left.path);
       }
       await this.loadPane("right", cwd, path);
-    }
-    
-    if (!this.isVisible()) {
-      this.overlay.setAttribute("aria-hidden", "false");
     }
   }
 
@@ -88,7 +86,6 @@ export class ReaderUI {
     pane.cwd = null;
 
     if (side === "left" && this.right.path) {
-      // Move right to left if we unpinned the primary
       const rPath = this.right.path;
       const rCwd = this.right.cwd!;
       await this.unpin("right");
@@ -109,28 +106,20 @@ export class ReaderUI {
   }
 
   public async open(cwd: string, path: string): Promise<void> {
-    // Standard "Open" behavior: if already pinned, just show. 
-    // If not pinned, treat as a "Quick Load" into the current active pane.
-    if (this.left.path === path || this.right.path === path) {
-      this.overlay.setAttribute("aria-hidden", "false");
-      this.renderGrid();
-      if (this.left.path && this.left.cwd) await this.loadPane("left", this.left.cwd, this.left.path);
-      if (this.right.path && this.right.cwd) await this.loadPane("right", this.right.cwd, this.right.path);
-      return;
-    }
-    
-    // Quick load logic
+    // Standard "Open" behavior (e.g. from context menu)
+    // If reader is open, target the active pane. If not, open as pinned.
     if (!this.isVisible()) {
-      this.overlay.setAttribute("aria-hidden", "false");
-      this.renderGrid();
+      await this.pin(cwd, path);
+    } else {
+      await this.loadPane(this.activeSide, cwd, path);
     }
-    await this.loadPane("left", cwd, path);
   }
 
   private async loadPane(side: "left" | "right", cwd: string, path: string): Promise<void> {
     const pane = side === "left" ? this.left : this.right;
     pane.cwd = cwd;
     pane.path = path;
+    this.activeSide = side;
     
     const host = document.getElementById(pane.hostId);
     if (!host) return;
@@ -155,7 +144,14 @@ export class ReaderUI {
         onDirtyChange: () => this.updateSaveButton(),
       });
       
+      // Track focus to set activeSide
+      editorHost.addEventListener("focusin", () => {
+        this.activeSide = side;
+        this.updateActivePaneUI();
+      });
+
       this.updateSaveButton();
+      this.updateActivePaneUI();
       pane.editor.focus();
       this.onChange?.();
     } catch (err) {
@@ -171,6 +167,18 @@ export class ReaderUI {
       </div>
     `;
     this.splitBtn.classList.toggle("active", this.isSplit);
+    this.updateActivePaneUI();
+  }
+
+  private updateActivePaneUI(): void {
+    const grid = document.getElementById("reader-grid");
+    if (!grid) return;
+    
+    const leftCol = document.getElementById("reader-left");
+    const rightCol = document.getElementById("reader-right");
+    
+    leftCol?.classList.toggle("is-active", this.activeSide === "left");
+    rightCol?.classList.toggle("is-active", this.activeSide === "right");
   }
 
   private async toggleSplit(): Promise<void> {
@@ -194,6 +202,8 @@ export class ReaderUI {
     this.right.editor?.destroy();
     this.left.editor = null;
     this.right.editor = null;
+    this.left.path = null;
+    this.right.path = null;
     this.overlay.setAttribute("aria-hidden", "true");
     this.onChange?.();
   }

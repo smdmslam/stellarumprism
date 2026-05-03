@@ -4527,6 +4527,17 @@ input:checked + .toggle-slider:before {
   position: relative;
   display: flex;
   flex-direction: column;
+  transition: box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.reader-col.is-active {
+  background: rgba(59, 130, 246, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.2);
+}
+
+.reader-col.is-active .pane-header {
+  background: #0d121d;
+  border-bottom-color: rgba(59, 130, 246, 0.3);
 }
 
 .reader-col-editor {

@@ -3496,11 +3496,6 @@ export class Workspace {
       } else if (kind === "file" && mode === "single") {
         // Single click opens the file in the editable buffer.
         void this.openFileInEditor(path);
-        
-        // Live Sync with Pop-out Reader: 
-        if (readerUI.isVisible()) {
-          void readerUI.open(this.cwd!, path);
-        }
       }
       this.renderFileTree();
     });
@@ -3535,9 +3530,6 @@ export class Workspace {
           this.treeState = updateSelection(this.treeState, rows, next, e.shiftKey ? "range" : "single");
         }
         this.renderFileTree();
-        if (readerUI.isVisible() && next) {
-          void readerUI.open(this.cwd!, next);
-        }
         return;
       }
       if (e.key === "ArrowUp") {
@@ -3547,9 +3539,6 @@ export class Workspace {
           this.treeState = updateSelection(this.treeState, rows, next, e.shiftKey ? "range" : "single");
         }
         this.renderFileTree();
-        if (readerUI.isVisible() && next) {
-          void readerUI.open(this.cwd!, next);
-        }
         return;
       }
       if (e.key === "ArrowRight") {
@@ -4120,7 +4109,9 @@ export class Workspace {
       trailing = `<span class="file-tree-detail file-tree-detail-error" title="${escapeAttr(row.loadState.message)}">!</span>`;
     }
     const isPinned = readerUI.getPinnedPaths().includes(e.path);
-    const pinIndicator = `<button class="tree-pin-btn${isPinned ? " is-pinned" : ""}" data-action="toggle-pin" title="${isPinned ? "Unpin from Reader" : "Pin to Reader"}">\u2605</button>`;
+    const pinIndicator = (e.kind === "file") 
+      ? `<button class="tree-pin-btn${isPinned ? " is-pinned" : ""}" data-action="toggle-pin" title="${isPinned ? "Unpin from Reader" : "Pin to Reader"}">\u2605</button>`
+      : "";
 
     return (
       `<div class="file-tree-row ${kindClass}${selected}${active}" ` +
