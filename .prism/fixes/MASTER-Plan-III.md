@@ -425,6 +425,29 @@ All NOT STARTED.
 
 ---
 
+### Phase 11 — Behavioral Nudges & Prism Habits (NEW 2026-05-03)
+**Context:** Use low-cost, high-speed LLMs (e.g., Gemini Flash Lite) to analyze rolling user behavior and offer adaptive coaching.
+
+- **11.1 Rolling Interaction Logger:**
+  - **Status:** NOT STARTED
+  - **Requirement:** Implement a lightweight, privacy-first logger for user actions (e.g., "toggled file A/B 5 times", "ran /audit with no search filters", "pinned 2 files").
+  - **Why:** Provides the "evidence" for habit mining.
+
+- **11.2 The Habit Miner (Background Loop):**
+  - **Status:** NOT STARTED
+  - **Requirement:** A background process that triggers every ~20 interactions. Sends the anonymized action log to a cheap model to identify anti-patterns or discoverability gaps.
+  - **Why:** Automates the detection of suboptimal workflows without user intervention.
+
+- **11.3 Adaptive Nudge UI:**
+  - **Status:** NOT STARTED
+  - **Requirement:** Subtle, non-intrusive "Habit Cards" in the agent pane or status bar. 
+  - **Example:** *"Prism Habit: I notice you're manually switching between `auth.ts` and `guard.ts`. Did you know you can Star (★) both to lock them in side-by-side mode?"*
+  - **Why:** Increases feature discoverability and improves user speed over time.
+
+---
+
+---
+
 ---
 
 ## ✅ SECTION 2: ITEMS ALREADY DONE
@@ -491,8 +514,9 @@ All NOT STARTED.
 | **8** Plumbing | 5 | 5/5 DONE | Clean. |
 | **9** Backlog | 4 | 0/4 DONE | Nice-to-have. |
 | **10** Design Evolution | 12 | 0/12 DONE | "Cyber-Noir" aesthetics, Features, & IDE Editor. |
+| **11** Prism Habits | 3 | 0/3 DONE | Adaptive behavioral coaching & interaction mining. |
 
-**Overall:** 39/75 items DONE (~52%)
+**Overall:** 39/78 items DONE (~50%)
 
 ---
 
