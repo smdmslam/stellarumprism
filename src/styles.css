@@ -3730,9 +3730,9 @@ input:checked + .toggle-slider:before {
 .layout-divider:hover,
 .layout-divider.dragging,
 .layout-divider:focus-visible {
-  background: rgba(125, 211, 252, 0.4);
-  /* Cyber-Noir glow */
-  box-shadow: 0 0 8px rgba(125, 211, 252, 0.5);
+  background: rgba(125, 211, 252, 0.15);
+  /* Subdued Cyber-Noir glow */
+  box-shadow: 0 0 4px rgba(125, 211, 252, 0.2);
   outline: none;
 }
 .layout-divider-preview {
@@ -3754,8 +3754,8 @@ input:checked + .toggle-slider:before {
 .layout-divider-preview:hover,
 .layout-divider-preview.dragging,
 .layout-divider-preview:focus-visible {
-  background: rgba(125, 211, 252, 0.4);
-  box-shadow: 0 0 8px rgba(125, 211, 252, 0.5);
+  background: rgba(125, 211, 252, 0.15);
+  box-shadow: 0 0 4px rgba(125, 211, 252, 0.2);
   outline: none;
 }
 /* Vertical divider between the center pane and the agent pane. */
@@ -3779,8 +3779,8 @@ input:checked + .toggle-slider:before {
 .layout-divider-pane:hover,
 .layout-divider-pane.dragging,
 .layout-divider-pane:focus-visible {
-  background: rgba(125, 211, 252, 0.4);
-  box-shadow: 0 0 8px rgba(125, 211, 252, 0.5);
+  background: rgba(125, 211, 252, 0.15);
+  box-shadow: 0 0 4px rgba(125, 211, 252, 0.2);
   outline: none;
 }
 /* Hide the problems-panel divider when the panel is hidden. */
