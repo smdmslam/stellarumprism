@@ -91,6 +91,7 @@ export type NoticeKind =
   | "answer-rule" // "─── answer ───"
   | "stall" // "stream silent for Ns"
   | "files-modified" // end-of-turn write-tools footer
+  | "write-timeline" // ordered per-turn write attempt log
   | "turn-footer" // "done in Ns · N tools · model"
   | "grounded-warning"; // grounded-chat rigor caution
 
@@ -119,6 +120,8 @@ export interface AgentViewApi {
   appendReview(piece: string): void;
   /** Render a list of modified files as interactive chips. */
   appendFilesModified(writes: WriteEntry[]): void;
+  /** Render an ordered per-turn log of write attempts. */
+  appendWriteTimeline(writes: WriteEntry[]): void;
   /** Render an inline diff card for a specific file change. */
   appendDiff(info: AgentDiffInfo): void;
   /** Render a typed notice line (router note, header, footer, etc.). */
@@ -342,13 +345,18 @@ export class AgentView implements AgentViewApi {
       nameEl.textContent = name;
       chip.appendChild(nameEl);
 
-      if (w.stats && (w.stats.added > 0 || w.stats.removed > 0)) {
+      if (w.operation === "overwrite") {
+        const overwriteEl = document.createElement("span");
+        overwriteEl.className = "file-chip-overwrite";
+        overwriteEl.textContent = "overwrite";
+        chip.appendChild(overwriteEl);
+      } else if (w.stats && ((w.stats.added ?? 0) > 0 || (w.stats.removed ?? 0) > 0)) {
         const statsEl = document.createElement("span");
         statsEl.className = "file-chip-stats";
-        if (w.stats.added > 0) {
+        if ((w.stats.added ?? 0) > 0) {
           statsEl.innerHTML += `<span class="file-chip-added">+${w.stats.added}</span>`;
         }
-        if (w.stats.removed > 0) {
+        if ((w.stats.removed ?? 0) > 0) {
           statsEl.innerHTML += `<span class="file-chip-removed">-${w.stats.removed}</span>`;
         }
         chip.appendChild(statsEl);
@@ -358,6 +366,45 @@ export class AgentView implements AgentViewApi {
     }
 
     container.appendChild(chips);
+    this.currentTurn!.appendChild(container);
+    this.scrollToBottomIfFollowing();
+  }
+
+  appendWriteTimeline(writes: WriteEntry[]): void {
+    if (writes.length === 0) return;
+    if (!this.currentTurn) this.beginTurn("");
+
+    const container = document.createElement("div");
+    container.className = "agent-notice agent-notice-write-timeline";
+
+    const heading = document.createElement("div");
+    heading.className = "files-modified-heading";
+    heading.innerHTML = `Write Timeline <span class="files-modified-count">${writes.length}</span>`;
+    container.appendChild(heading);
+
+    const list = document.createElement("div");
+    list.className = "write-timeline-list";
+
+    for (const w of writes) {
+      const row = document.createElement("div");
+      row.className = "write-timeline-row" + (w.ok ? "" : " write-timeline-row-failed");
+
+      const status = document.createElement("span");
+      status.className = "write-timeline-status";
+      status.textContent = w.ok ? "✓" : "✗";
+      row.appendChild(status);
+
+      const text = document.createElement("span");
+      text.className = "write-timeline-text";
+      const op = w.operation ? ` — ${w.operation}` : "";
+      const summary = w.summary ? `: ${stripAnsi(w.summary)}` : "";
+      text.textContent = `${w.tool} ${w.path}${op}${summary}`;
+      row.appendChild(text);
+
+      list.appendChild(row);
+    }
+
+    container.appendChild(list);
     this.currentTurn!.appendChild(container);
     this.scrollToBottomIfFollowing();
   }

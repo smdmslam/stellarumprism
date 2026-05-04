@@ -31,8 +31,12 @@ export interface WriteEntry {
    *  user can see "the model tried to edit X and failed" rather than a
    *  silently-dropped attempt. */
   ok: boolean;
-  /** Estimated line changes. */
-  stats?: { added: number; removed: number };
+  /** High-level operation semantics for truthful UI labeling. */
+  operation?: "create" | "overwrite" | "edit";
+  /** Estimated line changes when they are actually knowable. */
+  stats?: { added?: number; removed?: number };
+  /** Short human-readable result summary from the tool event. */
+  summary?: string;
 }
 
 /**
@@ -64,14 +68,21 @@ export function extractWritePath(argsJson: string): string | null {
 }
 
 /**
- * Estimate line changes (+N -M) from a tool's arguments.
- * For `edit_file`, we compare line counts of the replaced snippet vs the new one.
- * For `write_file`, we treat it as adding all lines in the new content.
+ * Estimate line changes for a write tool.
+ *
+ * Truthfulness rule:
+ * - `edit_file` knows both old_string and new_string, so we can report
+ *   both removed and added counts.
+ * - `write_file` create knows only the new content, which is enough to
+ *   report additive semantics.
+ * - `write_file` overwrite lacks old content in Phase 1, so removal
+ *   counts are unknown and we suppress line stats entirely.
  */
 export function calculateWriteStats(
   tool: string,
   argsJson: string,
-): { added: number; removed: number } | undefined {
+  payloadJson?: string,
+): { added?: number; removed?: number } | undefined {
   try {
     const parsed = JSON.parse(argsJson);
     if (tool === "edit_file") {
@@ -82,9 +93,19 @@ export function calculateWriteStats(
       return { added, removed };
     }
     if (tool === "write_file") {
+      let created = true;
+      if (payloadJson) {
+        try {
+          const payload = JSON.parse(payloadJson) as { created?: unknown };
+          created = payload.created === true;
+        } catch {
+          created = true;
+        }
+      }
+      if (!created) return undefined;
       const content = String(parsed.content || "");
       const added = content.split("\n").length;
-      return { added, removed: 0 };
+      return { added };
     }
   } catch {
     /* ignore malformed */

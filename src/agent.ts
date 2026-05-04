@@ -1085,15 +1085,17 @@ export class AgentController {
     if (WRITE_TOOL_NAMES.has(info.name)) {
       const path = extractWritePath(info.args);
       if (path !== null) {
-        const stats = calculateWriteStats(info.name, info.args);
+        const operation = inferWriteOperation(info.name, info.payload);
+        const stats = calculateWriteStats(info.name, info.args, info.payload);
         this.currentTurnWrites.push({
           tool: info.name,
           path,
           ok: info.ok,
+          operation,
           stats,
+          summary: info.summary,
         });
         if (info.ok && approval) {
-          const operation = inferWriteOperation(info.name, info.payload);
           this.opts.view.appendDiff({
             path,
             diff: approval.preview,
@@ -1188,6 +1190,7 @@ export class AgentController {
 
     // "Files modified" footer.
     if (this.currentTurnWrites.length > 0) {
+      this.opts.view.appendWriteTimeline(this.currentTurnWrites);
       this.opts.view.appendFilesModified(this.currentTurnWrites);
     }
 
