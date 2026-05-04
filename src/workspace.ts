@@ -810,6 +810,18 @@ export class Workspace {
         void this.revealInTree(path);
         void this.openFileInEditor(path, line);
       },
+      onRevealInTree: (path: string) => {
+        void this.revealInTree(path);
+      },
+      onRevealInExplorer: (path: string) => {
+        void this.revealInTree(path);
+        if (!this.cwd) return;
+        void invoke("select_file_in_explorer", { cwd: this.cwd, path }).catch(
+          (err) => {
+            this.notifyError(`[reveal] ${String(err)}`);
+          },
+        );
+      },
     });
     this.agent = new AgentController({
       view: this.agentView,
@@ -4221,8 +4233,17 @@ export class Workspace {
       await this.refreshFileTreeRoot();
     }
 
-    // The tree state uses absolute paths. We need to expand all parents.
-    const parts = path.split("/");
+    // The tree state uses absolute paths rooted at cwd. If the agent/tool
+    // emitted a relative path (e.g. "docs/foo.md"), resolve it first.
+    const resolved =
+      path.startsWith("/")
+        ? path
+        : this.cwd
+          ? `${this.cwd.replace(/\/$/, "")}/${path.replace(/^\.\//, "").replace(/^\//, "")}`
+          : path;
+
+    // Expand all parents.
+    const parts = resolved.split("/");
     for (let i = 2; i < parts.length; i++) {
       const parent = parts.slice(0, i).join("/");
       if (!parent || parent === "" || parent === "/") continue;
@@ -4239,12 +4260,12 @@ export class Workspace {
 
     // Select the target path.
     const rows = flattenVisibleRows(this.treeState);
-    this.treeState = updateSelection(this.treeState, rows, path, "single");
+    this.treeState = updateSelection(this.treeState, rows, resolved, "single");
     this.renderFileTree();
 
     // Scroll into view with a slight delay to allow rendering.
     setTimeout(() => {
-      const rowEl = this.root.querySelector(`.file-tree-row[data-path="${path}"]`);
+      const rowEl = this.root.querySelector(`.file-tree-row[data-path="${resolved}"]`);
       if (rowEl) {
         rowEl.scrollIntoView({ block: "center", behavior: "smooth" });
         // Visual feedback flash.

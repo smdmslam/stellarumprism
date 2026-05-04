@@ -138,6 +138,10 @@ export interface AgentViewApi {
 export interface AgentViewCallbacks {
   /** Triggered when a modified file chip is clicked. */
   onFileClick: (path: string, lineNumber?: number) => void;
+  /** Reveal the file in the sidebar tree (expand parents + select). */
+  onRevealInTree?: (path: string) => void;
+  /** Reveal the file in the OS file explorer (Finder / Explorer) and select it. */
+  onRevealInExplorer?: (path: string) => void;
 }
 
 export class AgentView implements AgentViewApi {
@@ -406,7 +410,9 @@ export class AgentView implements AgentViewApi {
     if (this.cb) {
       revealBtn.onclick = (e) => {
         e.stopPropagation();
-        this.cb!.onFileClick(path);
+        if (this.cb!.onRevealInExplorer) this.cb!.onRevealInExplorer(path);
+        else if (this.cb!.onRevealInTree) this.cb!.onRevealInTree(path);
+        else this.cb!.onFileClick(path);
       };
     }
     header.appendChild(revealBtn);
