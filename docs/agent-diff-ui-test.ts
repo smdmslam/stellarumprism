@@ -8,9 +8,13 @@
  *
  * How to test:
  * 1. Shell cwd = repo root (or attach `@docs/agent-diff-ui-test.ts`).
- * 2. ASK mode — run the PROMPT block at the bottom of this comment.
+ * 2. ASK mode — run the PROMPT block at the bottom of this file (verbatim workflow).
  * 3. Approve `edit_file`; confirm preview shows “preview · more below” + fade.
  * 4. Click the diff **header** (not filename) → full hunk scrolls inside the card.
+ *
+ * **If `edit_file` says old_string not found:** the model retyped the file instead
+ * of copying it. Re-run with the prompt that forces `read_file` first and a
+ * paste from tool output.
  *
  * Not imported by the app; safe to delete after testing.
  */
@@ -23,25 +27,31 @@ export function getDemoStatus(): string {
 }
 
 /**
+ * Editable block: whole array is one `old_string` target (see PROMPT). Keep 12
+ * string lines so the diff is tall enough to overflow the preview clip.
+ */
+const PREVIEW_FIXTURE_LINES: string[] = [
+  "  // PREVIEW_BLOCK_V2 — replace this whole const in one edit (see file footer)",
+  "  const row01 = 'Mercury';",
+  "  const row02 = 'Venus';",
+  "  const row03 = 'Earth';",
+  "  const row04 = 'Mars';",
+  "  const row05 = 'Jupiter';",
+  "  const row06 = 'Saturn';",
+  "  const row07 = 'Uranus';",
+  "  const row08 = 'Neptune';",
+  "  const row09 = 'Pluto';",
+  "  const row10 = 'Ceres';",
+  "  const row11 = 'Eris';",
+  "  const row12 = 'Haumea';",
+];
+
+/**
  * Multi-line block (~12 lines) so one replacement overflows the **preview**
  * height (~10rem) and forces “more below” + expand to see the rest in-place.
  */
 export function previewFixtureBody(): string {
-  return [
-    "  // PREVIEW_BLOCK_V1 — agent replaces this whole return array in one edit",
-    "  const row01 = 'north';",
-    "  const row02 = 'east';",
-    "  const row03 = 'south';",
-    "  const row04 = 'west';",
-    "  const row05 = 'alpha';",
-    "  const row06 = 'bravo';",
-    "  const row07 = 'charlie';",
-    "  const row08 = 'delta';",
-    "  const row09 = 'echo';",
-    "  const row10 = 'foxtrot';",
-    "  const row11 = 'golf';",
-    "  const row12 = 'hotel';",
-  ].join("\n");
+  return PREVIEW_FIXTURE_LINES.join("\n");
 }
 
 /**
@@ -54,15 +64,16 @@ export function describeDemo(): string {
 /*
  * --- PROMPT (paste into agent, ASK mode) ---
  *
- * Use edit_file on docs/agent-diff-ui-test.ts. Replace the entire body of
- * previewFixtureBody() so the `return [` array lists the same 12 const rows
- * but change every string value from the compass+NATO set to a new theme,
- * e.g. planets 'mercury' … 'neptune' for row01–row12, or Greek 'alpha' …
- * 'omega' (twelve names). Keep the same structure and
- * PREVIEW_BLOCK comment but bump the comment to PREVIEW_BLOCK_V2.
- *
- * One edit_file call is enough — you should see a long diff: preview clipped,
- * then click the diff card header (not the filename) for full scroll inside
- * the agent chat.
+ * 1) Call read_file on docs/agent-diff-ui-test.ts and read the full file.
+ * 2) Call edit_file on the same path. You MUST set old_string by COPY-PASTING
+ *    from the read_file output only — the complete `const PREVIEW_FIXTURE_LINES`
+ *    declaration, from the line that starts with `const PREVIEW_FIXTURE_LINES`
+ *    through the closing `];` (inclusive). Do not retype or paraphrase; that
+ *    causes "old_string not found".
+ * 3) new_string: same const name and TypeScript shape, but change every value
+ *    string to a new theme (e.g. planets 'mercury'…'neptune' for row01–row12),
+ *    and change the first line’s comment to PREVIEW_BLOCK_V2.
+ * 4) One edit_file call. Then check the diff card: preview clip, then click the
+ *    diff header (not the filename) for full scroll in the agent panel.
  * --- end PROMPT ---
  */

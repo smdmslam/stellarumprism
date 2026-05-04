@@ -748,59 +748,136 @@ function parsePrismEditPreview(s: string): DiffHunk[] {
   ];
 }
 
-/**
- * Lightweight syntax highlighter for common languages.
- */
-function highlightCode(code: string, _lang: string): string {
-  if (!code) return "&nbsp;";
-  
-  let escaped = code
+/** HTML-escape a slice of already-escaped source (identity on safe text). */
+function escapeForSpan(s: string): string {
+  return s
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
 
-  // If it's a very long line, don't try to highlight it (perf)
+interface HighlightRegion {
+  start: number;
+  end: number;
+  cls: "cm-comment" | "cm-string";
+}
+
+function rangesOverlap(s1: number, e1: number, s2: number, e2: number): boolean {
+  return s1 < e2 && s2 < e1;
+}
+
+function mergeSortedRegions(regions: HighlightRegion[]): HighlightRegion[] {
+  const sorted = [...regions].sort((x, y) => x.start - y.start);
+  const out: HighlightRegion[] = [];
+  for (const r of sorted) {
+    if (out.length === 0) {
+      out.push(r);
+      continue;
+    }
+    const last = out[out.length - 1]!;
+    if (r.start >= last.end) {
+      out.push(r);
+    } else {
+      last.end = Math.max(last.end, r.end);
+    }
+  }
+  return out;
+}
+
+/** True if [pos, end) overlaps any merged comment region (strings inside // or block comments are skipped). */
+function overlapsCommentRegions(pos: number, end: number, comments: HighlightRegion[]): boolean {
+  for (const r of comments) {
+    if (rangesOverlap(pos, end, r.start, r.end)) return true;
+  }
+  return false;
+}
+
+const KEYWORD_LIST = [
+  "await", "break", "case", "catch", "class", "const", "continue", "debugger",
+  "default", "delete", "do", "else", "enum", "export", "extends", "false",
+  "finally", "for", "function", "if", "import", "in", "instanceof", "new",
+  "null", "return", "super", "switch", "this", "throw", "true", "try",
+  "typeof", "var", "void", "while", "with", "yield", "let", "static",
+  "pub", "fn", "use", "mod", "type", "impl", "trait", "where", "async", "struct",
+];
+
+/**
+ * Keyword / number / type highlighting on a gap of **escaped source text only**
+ * (never on HTML we already emitted — avoids matching `class` inside `<span …>`).
+ */
+function highlightCodeGap(gap: string): string {
+  let h = gap;
+  h = h.replace(
+    new RegExp(`\\b(${KEYWORD_LIST.join("|")})\\b`, "g"),
+    (m) => `<span class="cm-keyword">${m}</span>`,
+  );
+  h = h.replace(/\b\d+\b/g, (m) => `<span class="cm-number">${m}</span>`);
+  h = h.replace(
+    /\b[A-Z][a-zA-Z0-9_]*\b/g,
+    (m) => `<span class="cm-type">${m}</span>`,
+  );
+  return h;
+}
+
+/**
+ * Lightweight syntax highlighter for diff lines. Comments/strings are resolved on
+ * the raw escaped source first; keywords run only in gaps — so we never apply
+ * keyword regex to `<span class="cm-string">` attributes (that caused leaked
+ * `class="cm-…"` junk in the UI).
+ */
+function highlightCode(code: string, _lang: string): string {
+  if (!code) return "&nbsp;";
+
+  const escaped = escapeForSpan(code);
+
   if (escaped.length > 500) return escaped;
 
-  const rules: { regex: RegExp; cls: string }[] = [];
+  const commentParts: HighlightRegion[] = [];
 
-  // Comments
-  rules.push({ regex: /\/\/.*/g, cls: "cm-comment" });
-  rules.push({ regex: /\/\*[\s\S]*?\*\//g, cls: "cm-comment" });
-
-  // Strings
-  rules.push({ regex: /(["'])(?:(?=(\\?))\2.)*?\1/g, cls: "cm-string" });
-
-  // Keywords
-  const keywords = [
-    "await", "break", "case", "catch", "class", "const", "continue", "debugger",
-    "default", "delete", "do", "else", "enum", "export", "extends", "false",
-    "finally", "for", "function", "if", "import", "in", "instanceof", "new",
-    "null", "return", "super", "switch", "this", "throw", "true", "try",
-    "typeof", "var", "void", "while", "with", "yield", "let", "static",
-    "pub", "fn", "use", "mod", "type", "impl", "trait", "where", "async", "struct",
-  ];
-  rules.push({
-    regex: new RegExp(`\\b(${keywords.join("|")})\\b`, "g"),
-    cls: "cm-keyword",
-  });
-
-  // Numbers
-  rules.push({ regex: /\b\d+\b/g, cls: "cm-number" });
-
-  // Types (Capitalized)
-  rules.push({ regex: /\b[A-Z][a-zA-Z0-9_]*\b/g, cls: "cm-type" });
-
-  // Apply rules
-  // We use a mapping to avoid overlapping replacements
-  let highlighted = escaped;
-  for (const rule of rules) {
-    highlighted = highlighted.replace(rule.regex, (match) => {
-      return `<span class="${rule.cls}">${match}</span>`;
+  for (const m of escaped.matchAll(/\/\/.*$/gm)) {
+    commentParts.push({
+      start: m.index!,
+      end: m.index! + m[0].length,
+      cls: "cm-comment",
+    });
+  }
+  for (const m of escaped.matchAll(/\/\*[\s\S]*?\*\//g)) {
+    commentParts.push({
+      start: m.index!,
+      end: m.index! + m[0].length,
+      cls: "cm-comment",
     });
   }
 
-  return highlighted;
+  const comments = mergeSortedRegions(commentParts);
+
+  const allRegions: HighlightRegion[] = [...comments];
+
+  const strRe = /(["'])(?:(?=(\\?))\2.)*?\1/g;
+  for (const m of escaped.matchAll(strRe)) {
+    const start = m.index!;
+    const end = start + m[0].length;
+    if (overlapsCommentRegions(start, end, comments)) continue;
+    allRegions.push({ start, end, cls: "cm-string" });
+  }
+
+  const merged = mergeSortedRegions(allRegions);
+
+  let out = "";
+  let pos = 0;
+  for (const r of merged) {
+    if (pos < r.start) {
+      out += highlightCodeGap(escaped.slice(pos, r.start));
+    }
+    const slice = escaped.slice(r.start, r.end);
+    out += `<span class="${r.cls}">${slice}</span>`;
+    pos = r.end;
+  }
+  if (pos < escaped.length) {
+    out += highlightCodeGap(escaped.slice(pos));
+  }
+
+  return out || "&nbsp;";
 }
 
 /**

@@ -461,14 +461,14 @@ export class Workspace {
           <div class="input-bar">
             <div class="input-info-row">
               <span class="info-item cost-metric" title="Cumulative tokens this tab (updates when each turn completes; cancelled turns include usage only if the provider reported it)">
-                <span class="info-label">Tokens</span>
+                <span class="info-label">(t)</span>
                 <span class="info-value" id="task-cost-display">0.0k</span>
               </span>
               <span
                 class="info-item elapsed-metric"
                 title="Elapsed time for this in-flight agent request (per request; resets when the turn completes or is cancelled)"
               >
-                <span class="info-label">Elapsed time</span>
+                <span class="info-label">(et)</span>
                 <span class="info-value" id="task-elapsed-display">0:00</span>
               </span>
             </div>
