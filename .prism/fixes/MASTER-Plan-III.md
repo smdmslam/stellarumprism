@@ -227,6 +227,25 @@ Visualizing the industry-breaking shift:
   - **Why:** Essential for high-trust agent interaction; allows the user to verify changes without leaving the chat flow.
   - **Estimated scope:** ~5h (CSS styling + AgentView extension + diff parsing).
 
+#### 2.14 Diff Card v2 (Antigravity-style informational upgrade) (NEW 2026-05-04)
+- **Status:** NOT STARTED
+- **Goal:** Upgrade inline agent diff cards from flat unified text to a structured, high-signal change viewer modeled after modern AI IDEs.
+- **Requirements:**
+  1. **Structured hunks:** Parse/render hunk blocks with preserved context lines (do not drop blank lines).
+  2. **Line-number gutters:** Show old/new line numbers for removed/added/context rows.
+  3. **Collapsed unchanged ranges:** Render "`+N more lines`" style fold markers between distant change regions; allow expand/collapse.
+  4. **Header fidelity:** File icon + basename + `+/-` stats + clear expand state + reveal-in-tree action.
+  5. **Payload upgrade:** Move approval preview/diff payload toward structured hunk data (or full unified diff with reliable `@@ -a,b +c,d @@` metadata), not only truncated old/new snippets.
+  6. **Compatibility:** Keep existing `appendDiff(path, diff)` call sites working during migration.
+  7. **Intra-line diffing:** Highlight specific word/character changes within modified lines.
+  8. **Themed Highlighting:** Apply syntax highlighting to the diffed code blocks.
+  9. **Editor Sync:** Clicking a hunk scrolls the primary editor to the corresponding line.
+  10. **Hunk Metadata:** Show function/scope context in the `@@` headers.
+  11. **Cyber-Noir Aesthetic:** Luminous gutters (Neon Green/Red) and glassmorphism headers.
+- **Why:** Current diff cards prove a change happened; v2 should explain *what* changed with enough context for safe review directly in chat.
+- **Implementation notes:** Frontend work in `src/agent-view.ts` + `src/styles.css`; backend preview/diff emission upgrades in `src-tauri/src/tools.rs` and `src-tauri/src/agent.rs`.
+- **Estimated scope:** ~6-10h (parser + renderer + styling + payload migration + regression pass).
+
 ---
 
 ### Phase 3 — File Explorer / Viewer QoL (MEDIUM PRIORITY)

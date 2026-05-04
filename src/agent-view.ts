@@ -137,7 +137,7 @@ export interface AgentViewApi {
 
 export interface AgentViewCallbacks {
   /** Triggered when a modified file chip is clicked. */
-  onFileClick: (path: string) => void;
+  onFileClick: (path: string, lineNumber?: number) => void;
 }
 
 export class AgentView implements AgentViewApi {
@@ -360,27 +360,31 @@ export class AgentView implements AgentViewApi {
     // Extract basename and stats
     const parts = path.split(/[\/\\]/);
     const name = parts[parts.length - 1] || path;
-    const lines = diff.split("\n");
+    const hunks = parseUnifiedDiff(diff);
+    
     let added = 0;
     let removed = 0;
-    for (const line of lines) {
-      if (line.startsWith("+") && !line.startsWith("+++")) added++;
-      if (line.startsWith("-") && !line.startsWith("---")) removed++;
+    for (const hunk of hunks) {
+      for (const line of hunk.lines) {
+        if (line.type === "added") added++;
+        if (line.type === "removed") removed++;
+      }
     }
 
-    // Header
+    // Header (Glassmorphism + Stats)
     const header = document.createElement("div");
     header.className = "agent-diff-header";
     header.onclick = (e) => {
       // Toggle accordion if we didn't click the reveal icon specifically
-      if (!(e.target as HTMLElement).closest(".agent-diff-reveal")) {
+      if (!(e.target as HTMLElement).closest(".agent-diff-reveal") && 
+          !(e.target as HTMLElement).closest(".agent-diff-name")) {
         container.classList.toggle("agent-diff-card-collapsed");
       }
     };
 
     const chevronEl = document.createElement("span");
     chevronEl.className = "agent-diff-chevron";
-    chevronEl.innerHTML = "▾"; // Down triangle
+    chevronEl.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
     header.appendChild(chevronEl);
 
     const iconEl = document.createElement("span");
@@ -391,12 +395,20 @@ export class AgentView implements AgentViewApi {
     const nameEl = document.createElement("span");
     nameEl.className = "agent-diff-name";
     nameEl.textContent = name;
+    nameEl.title = path;
+    if (this.cb) {
+      nameEl.style.cursor = "pointer";
+      nameEl.onclick = (e) => {
+        e.stopPropagation();
+        this.cb!.onFileClick(path);
+      };
+    }
     header.appendChild(nameEl);
 
     const revealBtn = document.createElement("span");
     revealBtn.className = "agent-diff-reveal";
     revealBtn.title = "Reveal in explorer";
-    revealBtn.innerHTML = "↗"; // External link arrow
+    revealBtn.innerHTML = `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
     if (this.cb) {
       revealBtn.onclick = (e) => {
         e.stopPropagation();
@@ -417,16 +429,64 @@ export class AgentView implements AgentViewApi {
     const body = document.createElement("div");
     body.className = "agent-diff-body";
 
-    for (const line of lines) {
-      if (line.startsWith("---") || line.startsWith("+++")) continue;
-      if (line.trim().length === 0) continue;
-      const lineEl = document.createElement("div");
-      lineEl.className = "agent-diff-line";
-      if (line.startsWith("+")) lineEl.classList.add("agent-diff-line-added");
-      else if (line.startsWith("-")) lineEl.classList.add("agent-diff-line-removed");
-      else if (line.startsWith("@@")) lineEl.classList.add("agent-diff-line-hunk");
-      lineEl.textContent = line;
-      body.appendChild(lineEl);
+    const lang = name.split(".").pop() || "";
+
+    for (const hunk of hunks) {
+      const hunkHeader = document.createElement("div");
+      hunkHeader.className = "agent-diff-hunk-header";
+      hunkHeader.textContent = hunk.header;
+      if (this.cb) {
+        hunkHeader.style.cursor = "pointer";
+        hunkHeader.onclick = () => this.cb!.onFileClick(path, hunk.newStart);
+      }
+      body.appendChild(hunkHeader);
+
+      const hunkContent = document.createElement("div");
+      hunkContent.className = "agent-diff-hunk-content";
+
+      for (const line of hunk.lines) {
+        const lineEl = document.createElement("div");
+        lineEl.className = `agent-diff-line agent-diff-line-${line.type}`;
+        
+        const gutter = document.createElement("div");
+        gutter.className = "agent-diff-gutter";
+        
+        const oldNo = document.createElement("span");
+        oldNo.className = "agent-diff-ln agent-diff-ln-old";
+        oldNo.textContent = line.oldLine !== null ? String(line.oldLine) : "";
+        
+        const newNo = document.createElement("span");
+        newNo.className = "agent-diff-ln agent-diff-ln-new";
+        newNo.textContent = line.newLine !== null ? String(line.newLine) : "";
+        
+        gutter.appendChild(oldNo);
+        gutter.appendChild(newNo);
+        lineEl.appendChild(gutter);
+
+        const content = document.createElement("div");
+        content.className = "agent-diff-content";
+        
+        const prefix = document.createElement("span");
+        prefix.className = "agent-diff-prefix";
+        prefix.textContent = line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";
+        content.appendChild(prefix);
+
+        const code = document.createElement("code");
+        code.className = "agent-diff-code";
+        // Simple syntax highlighting
+        code.innerHTML = highlightCode(line.content, lang);
+        content.appendChild(code);
+        
+        lineEl.appendChild(content);
+
+        if (this.cb && line.newLine !== null) {
+          lineEl.style.cursor = "pointer";
+          lineEl.onclick = () => this.cb!.onFileClick(path, line.newLine!);
+        }
+
+        hunkContent.appendChild(lineEl);
+      }
+      body.appendChild(hunkContent);
     }
 
     container.appendChild(body);
@@ -514,6 +574,137 @@ export class AgentView implements AgentViewApi {
     // yielding to the user's intent to scroll back.
     return Math.ceil(scrollTop + clientHeight) >= scrollHeight - 10;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Diff Parsing & Highlighting (V2)
+// ---------------------------------------------------------------------------
+
+interface DiffLine {
+  type: "added" | "removed" | "context";
+  content: string;
+  oldLine: number | null;
+  newLine: number | null;
+}
+
+interface DiffHunk {
+  header: string;
+  oldStart: number;
+  newStart: number;
+  lines: DiffLine[];
+}
+
+/**
+ * Robust unified diff parser. Handles multiple hunks and preserves context.
+ */
+function parseUnifiedDiff(diff: string): DiffHunk[] {
+  const lines = diff.split("\n");
+  const hunks: DiffHunk[] = [];
+  let currentHunk: DiffHunk | null = null;
+  let oldLine = 0;
+  let newLine = 0;
+
+  for (const line of lines) {
+    if (line.startsWith("---") || line.startsWith("+++")) continue;
+
+    const hunkMatch = /^@@ -(\d+),?(\d*) \+(\d+),?(\d*) @@(.*)/.exec(line);
+    if (hunkMatch) {
+      currentHunk = {
+        header: line.trim(),
+        oldStart: parseInt(hunkMatch[1], 10),
+        newStart: parseInt(hunkMatch[3], 10),
+        lines: [],
+      };
+      oldLine = currentHunk.oldStart;
+      newLine = currentHunk.newStart;
+      hunks.push(currentHunk);
+      continue;
+    }
+
+    if (!currentHunk) continue;
+
+    if (line.startsWith("+")) {
+      currentHunk.lines.push({
+        type: "added",
+        content: line.slice(1),
+        oldLine: null,
+        newLine: newLine++,
+      });
+    } else if (line.startsWith("-")) {
+      currentHunk.lines.push({
+        type: "removed",
+        content: line.slice(1),
+        oldLine: oldLine++,
+        newLine: null,
+      });
+    } else {
+      // Context line (starts with space or is empty)
+      const content = line.startsWith(" ") ? line.slice(1) : line;
+      currentHunk.lines.push({
+        type: "context",
+        content,
+        oldLine: oldLine++,
+        newLine: newLine++,
+      });
+    }
+  }
+
+  return hunks;
+}
+
+/**
+ * Lightweight syntax highlighter for common languages.
+ */
+function highlightCode(code: string, lang: string): string {
+  if (!code) return "&nbsp;";
+  
+  let escaped = code
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // If it's a very long line, don't try to highlight it (perf)
+  if (escaped.length > 500) return escaped;
+
+  const rules: { regex: RegExp; cls: string }[] = [];
+
+  // Comments
+  rules.push({ regex: /\/\/.*/g, cls: "cm-comment" });
+  rules.push({ regex: /\/\*[\s\S]*?\*\//g, cls: "cm-comment" });
+
+  // Strings
+  rules.push({ regex: /(["'])(?:(?=(\\?))\2.)*?\1/g, cls: "cm-string" });
+
+  // Keywords
+  const keywords = [
+    "await", "break", "case", "catch", "class", "const", "continue", "debugger",
+    "default", "delete", "do", "else", "enum", "export", "extends", "false",
+    "finally", "for", "function", "if", "import", "in", "instanceof", "new",
+    "null", "return", "super", "switch", "this", "throw", "true", "try",
+    "typeof", "var", "void", "while", "with", "yield", "let", "static",
+    "pub", "fn", "use", "mod", "type", "impl", "trait", "where", "async", "struct",
+  ];
+  rules.push({
+    regex: new RegExp(`\\b(${keywords.join("|")})\\b`, "g"),
+    cls: "cm-keyword",
+  });
+
+  // Numbers
+  rules.push({ regex: /\b\d+\b/g, cls: "cm-number" });
+
+  // Types (Capitalized)
+  rules.push({ regex: /\b[A-Z][a-zA-Z0-9_]*\b/g, cls: "cm-type" });
+
+  // Apply rules
+  // We use a mapping to avoid overlapping replacements
+  let highlighted = escaped;
+  for (const rule of rules) {
+    highlighted = highlighted.replace(rule.regex, (match) => {
+      return `<span class="${rule.cls}">${match}</span>`;
+    });
+  }
+
+  return highlighted;
 }
 
 /**

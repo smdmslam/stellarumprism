@@ -470,6 +470,21 @@ export class FileEditor {
     this.view.dispatch({ effects: setDiagnosticsEffect.of(diagnostics) });
   }
 
+  /**
+   * Scroll the editor to a specific line and move the cursor there.
+   * Line is 1-indexed.
+   */
+  scrollToLine(line: number): void {
+    const safeLine = clampLine(this.view.state, line);
+    const lineInfo = this.view.state.doc.line(safeLine);
+    this.view.dispatch({
+      effects: [EditorView.scrollIntoView(lineInfo.from, { y: "center" })],
+      selection: { anchor: lineInfo.from },
+    });
+    // Ensure the editor has focus so the user sees the cursor.
+    this.view.focus();
+  }
+
   /** Tear down the underlying CodeMirror view. Idempotent. */
   destroy(): void {
     this.view.destroy();

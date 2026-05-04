@@ -776,9 +776,9 @@ export class Workspace {
     // wrap and resize-friendly layout.
     const agentStageEl = this.root.querySelector<HTMLElement>(".agent-stage");
     this.agentView = new AgentView(agentStageEl ?? this.root, {
-      onFileClick: (path: string) => {
+      onFileClick: (path: string, line?: number) => {
         void this.revealInTree(path);
-        void this.openFileInEditor(path);
+        void this.openFileInEditor(path, line);
       },
     });
     this.agent = new AgentController({
@@ -3741,6 +3741,9 @@ export class Workspace {
       addItem(isMulti ? `Open ${count} in Reader` : "Open in Reader", "↗", () => {
         void readerUI.open(this.cwd!, isMulti ? selectedPaths : path);
       });
+      addItem("Open in Browser", "⎗", () => {
+        void invoke("open_in_browser", { cwd: this.cwd, path });
+      });
     }
 
     // -- Create siblings / children ----------------------------------------
@@ -3760,9 +3763,6 @@ export class Workspace {
     addSep();
     addItem("Rename", "✏", () => {
       void this.promptRenameTreeItem(path);
-    });
-    addItem("Open in Browser", "⎗", () => {
-      void invoke("open_in_browser", { cwd: this.cwd, path });
     });
     addItem("Move", "→", () => {
       void this.promptMoveTreeItem(path);
@@ -4266,14 +4266,18 @@ export class Workspace {
    * If a file is already open and dirty, prompts before swapping; the
    * user can keep editing the current file by cancelling.
    */
-  private async openFileInEditor(path: string): Promise<void> {
+  private async openFileInEditor(path: string, lineNumber?: number): Promise<void> {
     const overlay = this.root.querySelector<HTMLElement>(".file-preview");
     if (!overlay) return;
 
     // Discard-confirmation when the user opens a different file with
-    // unsaved edits. Same file: re-opening is a no-op.
+    // unsaved edits. Same file: re-opening is a no-op (unless we need to jump).
     if (this.openFilePath === path) {
-      this.fileEditor?.focus();
+      if (lineNumber !== undefined) {
+        this.fileEditor?.scrollToLine(lineNumber);
+      } else {
+        this.fileEditor?.focus();
+      }
       return;
     }
     if (this.fileEditor?.isDirty()) {
@@ -4357,13 +4361,18 @@ export class Workspace {
     this.openFilePath = path;
     this.openFileMtime = loaded.mtime_secs;
 
+    this.fileEditor = new FileEditor(body, loaded.content, path, {
+      onDirtyChange: (dirty) => this.reflectDirty(dirty),
+    });
+
+    if (lineNumber !== undefined) {
+      this.fileEditor.scrollToLine(lineNumber);
+    }
+
     // Populate the size + relative-modified meta span. The full ISO
     // timestamp lands on the title attribute as a hover affordance for
     // anyone who needs the exact wall-clock time.
     this.updateFilePreviewMeta(loaded.size, loaded.mtime_secs);
-    this.fileEditor = new FileEditor(body, loaded.content, path, {
-      onDirtyChange: (dirty) => this.reflectDirty(dirty),
-    });
     // If we already have an audit report cached, push the matching
     // findings into the buffer so squiggles render immediately instead
     // of waiting for the next /audit run.
@@ -4373,6 +4382,7 @@ export class Workspace {
     // per workspace). Focus the buffer so the user can start typing
     // immediately.
     this.fileEditor.focus();
+    this.fitTerminal();
   }
 
   /**

@@ -1,0 +1,1 @@
+A funny thing happened to me on the way to the studio today
