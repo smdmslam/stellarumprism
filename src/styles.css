@@ -333,6 +333,22 @@ body {
   font-weight: 600;
   letter-spacing: 0.16em;
 }
+/* Dev-only instance / port hint (see dev-instance-badge.ts) */
+.titlebar-wordmark .wm-instance {
+  margin-left: 2px;
+  color: #64748b;
+  font-weight: 500;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: none;
+  max-width: 12em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.titlebar-wordmark .wm-instance[hidden] {
+  display: none !important;
+}
 
 /* ---------- global toolbar (ribbon) ---------- */
 

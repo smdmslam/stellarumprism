@@ -7,8 +7,11 @@ import { ToolbarManager } from "./toolbar";
 import { readSessionState } from "./session";
 import { initUsageSync } from "./services/usage-persistence";
 import { initPricing } from "./models";
+import { applyDevInstanceBadge } from "./dev-instance-badge";
 
 window.addEventListener("DOMContentLoaded", () => {
+  applyDevInstanceBadge();
+
   // Initialize Firebase usage sync and model pricing
   void initUsageSync();
   void initPricing();
