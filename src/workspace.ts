@@ -1806,10 +1806,11 @@ export class Workspace {
       if (!this.root.classList.contains("active")) return;
       if (e.key !== "/") return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      // If the keystroke originated from an editable control within this
-      // workspace (prompt editor, file editor, input/textarea/contenteditable),
-      // never hijack it for slash-command focus.
-      if (this.isEditorFocused(e.target)) return;
+
+      // If the keystroke originated from an editable control (prompt editor,
+      // file editor, settings search, reader, or terminal), never hijack it
+      // for global slash-command focus.
+      if (this.isEditorFocused(e)) return;
 
       const busy = this.blocks
         .getBlocks()
@@ -1830,35 +1831,33 @@ export class Workspace {
   }
 
   /**
-   * True if the active element is inside any editable surface in this
-   * workspace — the prompt CodeMirror (.editor-host) OR the file-editor
-   * CodeMirror (.file-preview-body). This prevents the slash-focus hijack
-   * from stealing `/` while the user is typing inside an open file.
+   * Returns true if the user is currently focused in an editor area: either
+   * CodeMirror, a terminal, or a native input/textarea.
    */
-  private isEditorFocused(target?: EventTarget | null): boolean {
-    const active = document.activeElement;
-    const eventTarget =
-      target instanceof Node && this.root.contains(target) ? target : null;
-    const candidate = (eventTarget ?? active) as Element | null;
-    if (!candidate) return false;
-
-    // 1. Check if focus is in any CodeMirror editor instance (prompt or file editor)
-    // within this workspace. CM6 wrapper uses .cm-editor.
-    if (candidate.closest(".cm-editor") && this.root.contains(candidate)) return true;
-
-    // 1b. Native editable controls inside the workspace should also opt out.
-    if (
-      candidate instanceof HTMLElement &&
-      this.root.contains(candidate) &&
-      (candidate.isContentEditable ||
-        candidate.closest("input, textarea, [contenteditable='true']"))
-    ) {
-      return true;
+  private isEditorFocused(event?: KeyboardEvent): boolean {
+    // 1. Check the event path if available (robust against shadow boundaries)
+    if (event) {
+      for (const n of event.composedPath()) {
+        if (!(n instanceof Element)) continue;
+        if (
+          n.closest(".cm-editor, .editor-host, .terminal-host, input, textarea, [contenteditable='true']") ||
+          (n instanceof HTMLElement && n.isContentEditable)
+        ) {
+          return true;
+        }
+      }
     }
 
-    // 2. Check if focus is in the terminal (xterm.js uses a hidden textarea).
-    const termHost = this.root.querySelector(".terminal-host");
-    if (termHost && termHost.contains(candidate)) return true;
+    // 2. Fallback to document.activeElement
+    const active = document.activeElement;
+    if (active instanceof Element) {
+      if (
+        active.closest(".cm-editor, .editor-host, .terminal-host, input, textarea, [contenteditable='true']") ||
+        (active instanceof HTMLElement && active.isContentEditable)
+      ) {
+        return true;
+      }
+    }
 
     return false;
   }
