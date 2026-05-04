@@ -472,6 +472,12 @@ export class Workspace {
             </div>
             <div class="input-meta">
               <span class="input-prefix" data-intent="command">\u276f</span>
+              <button
+                type="button"
+                class="cwd-home-badge"
+                title="Go to home directory (same as: cd ~)"
+                aria-label="Go to home directory"
+              >~</button>
               <span class="cwd-badge" title="Current working directory"></span>
               <span class="input-meta-spacer"></span>
               <div class="pill-group">
@@ -1021,8 +1027,15 @@ export class Workspace {
     this.root.querySelector(".input-bar")?.addEventListener("mousedown", (e) => {
       const t = e.target as HTMLElement;
       if (t.classList.contains("intent-badge") || t.classList.contains("model-badge")) return;
+      if (t.closest(".cwd-home-badge")) return;
       if (t.closest(".editor-host")) return;
       queueMicrotask(() => this.input.focus());
+    });
+
+    this.root.querySelector(".cwd-home-badge")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      void this.sendShellGoHome();
     });
 
     const editorHost = this.root.querySelector<HTMLElement>(".editor-host")!;
@@ -3218,6 +3231,16 @@ export class Workspace {
     // e.g. "~/Development/StellarumAtlas/src-tauri" → "…prism/src-tauri".
     el.textContent = truncateLeft(prettyPath(this.cwd), 34);
     el.title = this.cwd;
+  }
+
+  /** Inject `cd ~` into the shell; OSC 7 updates the cwd badge on the next prompt. */
+  private sendShellGoHome(): void {
+    void invoke("write_to_shell", {
+      sessionId: this.id,
+      data: "cd ~\r",
+    }).catch((err) => {
+      console.warn("[cwd] go home failed", err);
+    });
   }
 
   // -- blocks sidebar -------------------------------------------------------

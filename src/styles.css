@@ -2165,6 +2165,35 @@ input:checked + .toggle-slider:before {
 }
 .input-prefix[data-intent="agent"] { color: #c084fc; }
 
+/* Same chrome as `.cwd-badge`, but interactive — sends `cd ~` to the PTY. */
+.cwd-home-badge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(148, 163, 184, 0.08);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  font-family:
+    "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+  line-height: 1.2;
+  user-select: none;
+  cursor: pointer;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.cwd-home-badge:hover {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(125, 211, 252, 0.32);
+  color: #cbd5e1;
+}
+.cwd-home-badge:focus-visible {
+  outline: 1px solid rgba(125, 211, 252, 0.45);
+  outline-offset: 1px;
+}
+
 .cwd-badge {
   flex: 0 1 auto;
   min-width: 0;
