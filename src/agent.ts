@@ -183,9 +183,11 @@ export interface AgentControllerOptions {
    * consistent state.
    */
   onToolExecuted?: (info: {
+    call_id: string;
     name: string;
     args: string;
     ok: boolean;
+    payload: string;
   }) => void;
   /**
    * Read-only access to the current set of engaged skill slugs. Used
@@ -319,11 +321,18 @@ export class AgentController {
    */
   private currentTurnWrites: WriteEntry[] = [];
   /**
-   * Temporary cache for the unified diff preview provided during the
-   * approval phase. Read by `onToolCall` to render the inline diff
-   * card after a successful write. Reset on every turn.
+   * Approval previews keyed by tool call id. Used to pair the exact
+   * approval artifact with its eventual completion event, rather than
+   * assuming the latest preview belongs to the next successful write.
+   * Cleared at turn start and on terminal states so stale entries
+   * cannot leak across requests.
    */
-  private lastApprovalDiff: string | null = null;
+  private pendingApprovals = new Map<string, {
+    tool: string;
+    args: string;
+    preview: string;
+    round: number;
+  }>();
   // Markdown formatting moved out of the controller: the AgentView
   // (`./agent-view.ts`) now renders Markdown via `marked` directly
   // into the DOM. The previous ANSI-based inline-code / heading
@@ -586,7 +595,7 @@ export class AgentController {
     this.responseBuffer = "";
     this.currentRuntimeProbes = [];
     this.currentSubstrateRuns = [];
-    this.lastApprovalDiff = null;
+    this.pendingApprovals.clear();
     this.clearActionBar();
     // Reset the grounded-rigor counters so the previous turn's tool
     // calls or grounded flag don't leak into the new one.
@@ -696,11 +705,13 @@ export class AgentController {
         this.onToken(e.payload);
       }),
       await listen<{
+        call_id: string;
         name: string;
         args: string;
         summary: string;
         ok: boolean;
         round: number;
+        payload: string;
       }>(`agent-tool-${requestId}`, (e) => {
         this.onToolCall(e.payload);
       }),
@@ -796,7 +807,12 @@ export class AgentController {
     // The agent is waiting on us — reset the stall timer so we don't
     // prematurely scream "stalled" while a long approval is pending.
     this.resetStallTimer();
-    this.lastApprovalDiff = info.preview;
+    this.pendingApprovals.set(info.call_id, {
+      tool: info.tool,
+      args: info.args,
+      preview: info.preview,
+      round: info.round,
+    });
     if (info.tool === "read_skill") {
       void this.renderReadSkillApprovalCard(info);
       return;
@@ -1033,20 +1049,25 @@ export class AgentController {
   }
 
   private onToolCall(info: {
+    call_id: string;
     name: string;
     args: string;
     summary: string;
     ok: boolean;
     round: number;
+    payload: string;
   }): void {
     this.resetStallTimer();
+    const approval = this.pendingApprovals.get(info.call_id);
     // Notify external observers (workspace) that a tool finished.
     // Wrapped in try/catch so a buggy listener can't crash the turn.
     try {
       this.opts.onToolExecuted?.({
+        call_id: info.call_id,
         name: info.name,
         args: info.args,
         ok: info.ok,
+        payload: info.payload,
       });
     } catch (e) {
       console.error("onToolExecuted threw", e);
@@ -1071,10 +1092,16 @@ export class AgentController {
           ok: info.ok,
           stats,
         });
-        if (info.ok && this.lastApprovalDiff) {
-          this.opts.view.appendDiff(path, this.lastApprovalDiff);
-          this.lastApprovalDiff = null;
+        if (info.ok && approval) {
+          const operation = inferWriteOperation(info.name, info.payload);
+          this.opts.view.appendDiff({
+            path,
+            diff: approval.preview,
+            source: "approval-preview",
+            operation,
+          });
         }
+        this.pendingApprovals.delete(info.call_id);
       }
     }
     // Capture http_fetch invocations into a sibling probe trail so the
@@ -1234,6 +1261,7 @@ export class AgentController {
     this.currentRuntimeProbes = [];
     this.currentSubstrateRuns = [];
     this.currentTurnInventoryShaped = false;
+    this.pendingApprovals.clear();
 
     // Refresh session count so the UI badge stays accurate.
     void this.refreshSessionInfo().then(() => {
@@ -1265,6 +1293,7 @@ export class AgentController {
     this.currentTurnStartedAt = null;
     this.currentTurnWrites = [];
     this.currentTurnInventoryShaped = false;
+    this.pendingApprovals.clear();
   }
 
   // -- busy-state plumbing --------------------------------------------------
@@ -1728,9 +1757,23 @@ function parseHttpFetchProbe(
       method = parsed.method.trim().toUpperCase();
     }
   } catch {
-    // Non-JSON args (shouldn't happen from the agent loop) \u2014 swallow
+    // Non-JSON args (shouldn't happen from the agent loop) — swallow
     // and let url stay empty so we drop the probe below.
   }
   if (!url) return null;
   return { url, method, summary, ok, round };
+}
+
+function inferWriteOperation(
+  toolName: string,
+  payload: string,
+): "create" | "overwrite" | "edit" {
+  if (toolName === "edit_file") return "edit";
+  if (toolName !== "write_file") return "edit";
+  try {
+    const parsed = JSON.parse(payload) as { created?: unknown };
+    return parsed.created === true ? "create" : "overwrite";
+  } catch {
+    return "overwrite";
+  }
 }

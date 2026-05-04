@@ -1924,11 +1924,13 @@ pub async fn agent_query(
                         let _ = app_handle.emit(
                             &tool_event,
                             serde_json::json!({
+                                "call_id": call.id,
                                 "name": call.function.name,
                                 "args": call.function.arguments,
                                 "summary": inv.summary,
                                 "ok": inv.ok,
                                 "round": round,
+                                "payload": inv.payload,
                             }),
                         );
                         tool_summaries.push((

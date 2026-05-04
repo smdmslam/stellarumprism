@@ -101,6 +101,13 @@ export interface ToolCallInfo {
   summary: string;
 }
 
+export interface AgentDiffInfo {
+  path: string;
+  diff: string;
+  source: "approval-preview" | "tool-artifact";
+  operation?: "create" | "overwrite" | "edit";
+}
+
 export interface AgentViewApi {
   /** Open a new turn, echoing the user's prompt at the top. */
   beginTurn(userPrompt: string): void;
@@ -113,7 +120,7 @@ export interface AgentViewApi {
   /** Render a list of modified files as interactive chips. */
   appendFilesModified(writes: WriteEntry[]): void;
   /** Render an inline diff card for a specific file change. */
-  appendDiff(path: string, diff: string): void;
+  appendDiff(info: AgentDiffInfo): void;
   /** Render a typed notice line (router note, header, footer, etc.). */
   appendNotice(kind: NoticeKind, body: string): void;
   /**
@@ -355,11 +362,16 @@ export class AgentView implements AgentViewApi {
     this.scrollToBottomIfFollowing();
   }
 
-  appendDiff(path: string, diff: string): void {
+  appendDiff(info: AgentDiffInfo): void {
     if (!this.currentTurn) this.beginTurn("");
+
+    const { path, diff, source, operation } = info;
+    const isPreviewOnly = source === "approval-preview";
+    const isOverwritePreview = isPreviewOnly && operation === "overwrite";
 
     const container = document.createElement("div");
     container.className = "agent-diff-card agent-diff-card-collapsed";
+    if (isOverwritePreview) container.classList.add("agent-diff-card-preview-warning");
 
     // Extract basename and stats
     const parts = path.split(/[\/\\]/);
@@ -425,7 +437,15 @@ export class AgentView implements AgentViewApi {
 
     const expandHint = document.createElement("span");
     expandHint.className = "agent-diff-expand-hint";
-    expandHint.textContent = "preview";
+    if (isOverwritePreview) {
+      expandHint.textContent = "⚠ preview only";
+    } else if (isPreviewOnly && operation === "create") {
+      expandHint.textContent = "created · preview";
+    } else if (isPreviewOnly && operation === "edit") {
+      expandHint.textContent = "edited · preview";
+    } else {
+      expandHint.textContent = "preview";
+    }
     header.appendChild(expandHint);
 
     container.appendChild(header);
