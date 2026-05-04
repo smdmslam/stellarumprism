@@ -3552,7 +3552,6 @@ export class Workspace {
     const treeEl = this.root.querySelector<HTMLElement>(".file-tree");
     if (!treeEl) return;
     treeEl.addEventListener("click", async (e) => {
-      const pinBtn = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-action="toggle-pin"]');
       const row = (e.target as HTMLElement | null)?.closest<HTMLElement>(
         "[data-path]",
       );
@@ -3560,23 +3559,7 @@ export class Workspace {
       const path = row.dataset.path!;
       const kind = row.dataset.kind ?? "file";
 
-      // 1. Handle Pin Toggle (Star click)
-      // 1. Handle Pin Toggle (Star click)
-      if (pinBtn) {
-        e.preventDefault();
-        e.stopPropagation();
-        // Sync: Starring a file also toggles its selection state.
-        // This allows building a multi-selection by clicking stars
-        // without needing to hold Cmd/Shift.
-        const rows = flattenVisibleRows(this.treeState);
-        this.treeState = updateSelection(this.treeState, rows, path, "toggle");
-        // Await the pin toggle so the subsequent render sees the updated state.
-        await readerUI.togglePin(this.cwd!, path, true);
-        this.renderFileTree();
-        return;
-      }
-
-      // 2. Handle Normal Selection
+      // Normal selection (reader is opened from the context menu only).
       const rows = flattenVisibleRows(this.treeState);
       let mode: "single" | "toggle" | "range" = "single";
       if (e.shiftKey) mode = "range";
@@ -3702,21 +3685,19 @@ export class Workspace {
       menu.appendChild(sep);
     };
 
-    const pinned = readerUI.getPinnedPaths();
-    const selection = Array.from(this.treeState.selection);
-    // "Select is Select": Union of blue-highlighted and starred paths.
-    const activePaths = Array.from(new Set([...selection, ...pinned]));
-    const count = activePaths.length;
+    // Multi-file actions use tree selection only (Cmd/Ctrl-click).
+    const selectedPaths = Array.from(new Set(this.treeState.selection));
+    const count = selectedPaths.length;
     const isMulti = count > 1;
 
     // -- Batch / Copy actions -------------------------------------------------------
     if (isMulti) {
       addItem(`Copy ${count} Paths`, "⎘", () => {
-        void navigator.clipboard.writeText(activePaths.join("\n"));
+        void navigator.clipboard.writeText(selectedPaths.join("\n"));
       });
       addItem(`Add ${count} to Prompt`, "@", () => {
         const cwd = this.cwd;
-        const rels = activePaths.map(p => 
+        const rels = selectedPaths.map(p => 
           cwd && p.startsWith(cwd)
             ? p.slice(cwd.endsWith("/") ? cwd.length : cwd.length + 1)
             : p
@@ -3758,7 +3739,7 @@ export class Workspace {
         void this.openFileInEditor(path);
       });
       addItem(isMulti ? `Open ${count} in Reader` : "Open in Reader", "↗", () => {
-        void readerUI.open(this.cwd!, isMulti ? activePaths : path);
+        void readerUI.open(this.cwd!, isMulti ? selectedPaths : path);
       });
     }
 
@@ -4260,11 +4241,6 @@ export class Workspace {
     } else if (row.loadState.kind === "error") {
       trailing = `<span class="file-tree-detail file-tree-detail-error" title="${escapeAttr(row.loadState.message)}">!</span>`;
     }
-    // "Select is Select": Star is lit if pinned OR currently selected in the tree.
-    const isPinned = readerUI.getPinnedPaths().includes(e.path) || row.selected;
-    const pinIndicator = (e.kind === "file") 
-      ? `<button class="tree-pin-btn${isPinned ? " is-pinned" : ""}" data-action="toggle-pin" title="${isPinned ? "Unpin from Reader" : "Pin to Reader"}">\u2605</button>`
-      : "";
 
     return (
       `<div class="file-tree-row ${kindClass}${selected}${active}" ` +
@@ -4273,7 +4249,6 @@ export class Workspace {
       `aria-level="${row.depth + 1}" ` +
       `aria-expanded="${e.kind === "dir" ? (row.expanded ? "true" : "false") : ""}">` +
       `${icon}<span class="file-tree-name">${escapeHtml(e.name)}</span>` +
-      pinIndicator +
       detail +
       trailing +
       `</div>`

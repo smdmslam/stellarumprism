@@ -216,6 +216,16 @@ Visualizing the industry-breaking shift:
   3. **Custom Directory:** Add a button in Settings allowing users to choose an external path (e.g., a Dropbox/iCloud folder) for cross-device history sync.
 - **Why:** Makes chat history transparent, searchable via standard tools (grep), and portable across machines.
 - **Estimated scope:** ~4h (Rust backend for FS scanning + UI for directory picker).
+  
+- **2.13 Inline Editor / Diff Views in Agent Chat (NEW 2026-05-04):**
+  - **Status:** DONE
+  - **Goal:** Render actual code diffs or "mini-editor" blocks directly in the chat transcript instead of just naming the modified files.
+  - **Requirements:** 
+    1. **Diff Component:** A high-fidelity, mono-spaced diff renderer for the agent panel.
+    2. **Integration:** When `edit_file` or `write_file` tool calls succeed, automatically append a "Diff Card" showing the change.
+    3. **Interactive:** Clicking the diff card header should open the full file in the primary viewer (reuse `onFileClick` logic).
+  - **Why:** Essential for high-trust agent interaction; allows the user to verify changes without leaving the chat flow.
+  - **Estimated scope:** ~5h (CSS styling + AgentView extension + diff parsing).
 
 ---
 

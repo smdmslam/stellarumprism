@@ -112,6 +112,8 @@ export interface AgentViewApi {
   appendReview(piece: string): void;
   /** Render a list of modified files as interactive chips. */
   appendFilesModified(writes: WriteEntry[]): void;
+  /** Render an inline diff card for a specific file change. */
+  appendDiff(path: string, diff: string): void;
   /** Render a typed notice line (router note, header, footer, etc.). */
   appendNotice(kind: NoticeKind, body: string): void;
   /**
@@ -345,6 +347,69 @@ export class AgentView implements AgentViewApi {
     }
 
     container.appendChild(chips);
+    this.currentTurn!.appendChild(container);
+    this.scrollToBottomIfFollowing();
+  }
+
+  appendDiff(path: string, diff: string): void {
+    if (!this.currentTurn) this.beginTurn("");
+
+    const container = document.createElement("div");
+    container.className = "agent-diff-card";
+
+    // Extract basename and stats
+    const parts = path.split(/[\/\\]/);
+    const name = parts[parts.length - 1] || path;
+    const lines = diff.split("\n");
+    let added = 0;
+    let removed = 0;
+    for (const line of lines) {
+      if (line.startsWith("+") && !line.startsWith("+++")) added++;
+      if (line.startsWith("-") && !line.startsWith("---")) removed++;
+    }
+
+    // Header
+    const header = document.createElement("div");
+    header.className = "agent-diff-header";
+    if (this.cb) {
+      header.onclick = () => this.cb!.onFileClick(path);
+    }
+
+    const iconEl = document.createElement("span");
+    iconEl.className = "agent-diff-icon";
+    iconEl.innerHTML = getFileIcon(name);
+    header.appendChild(iconEl);
+
+    const nameEl = document.createElement("span");
+    nameEl.className = "agent-diff-name";
+    nameEl.textContent = name;
+    header.appendChild(nameEl);
+
+    const statsEl = document.createElement("div");
+    statsEl.className = "agent-diff-stats";
+    if (added > 0) statsEl.innerHTML += `<span class="agent-diff-added">+${added}</span>`;
+    if (removed > 0) statsEl.innerHTML += `<span class="agent-diff-removed">-${removed}</span>`;
+    header.appendChild(statsEl);
+
+    container.appendChild(header);
+
+    // Body
+    const body = document.createElement("div");
+    body.className = "agent-diff-body";
+
+    for (const line of lines) {
+      if (line.startsWith("---") || line.startsWith("+++")) continue;
+      if (line.trim().length === 0) continue;
+      const lineEl = document.createElement("div");
+      lineEl.className = "agent-diff-line";
+      if (line.startsWith("+")) lineEl.classList.add("agent-diff-line-added");
+      else if (line.startsWith("-")) lineEl.classList.add("agent-diff-line-removed");
+      else if (line.startsWith("@@")) lineEl.classList.add("agent-diff-line-hunk");
+      lineEl.textContent = line;
+      body.appendChild(lineEl);
+    }
+
+    container.appendChild(body);
     this.currentTurn!.appendChild(container);
     this.scrollToBottomIfFollowing();
   }

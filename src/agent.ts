@@ -318,6 +318,12 @@ export class AgentController {
    * the agent touched. Reset on every query().
    */
   private currentTurnWrites: WriteEntry[] = [];
+  /**
+   * Temporary cache for the unified diff preview provided during the
+   * approval phase. Read by `onToolCall` to render the inline diff
+   * card after a successful write. Reset on every turn.
+   */
+  private lastApprovalDiff: string | null = null;
   // Markdown formatting moved out of the controller: the AgentView
   // (`./agent-view.ts`) now renders Markdown via `marked` directly
   // into the DOM. The previous ANSI-based inline-code / heading
@@ -580,6 +586,7 @@ export class AgentController {
     this.responseBuffer = "";
     this.currentRuntimeProbes = [];
     this.currentSubstrateRuns = [];
+    this.lastApprovalDiff = null;
     this.clearActionBar();
     // Reset the grounded-rigor counters so the previous turn's tool
     // calls or grounded flag don't leak into the new one.
@@ -788,6 +795,7 @@ export class AgentController {
     // The agent is waiting on us — reset the stall timer so we don't
     // prematurely scream "stalled" while a long approval is pending.
     this.resetStallTimer();
+    this.lastApprovalDiff = info.preview;
     if (info.tool === "read_skill") {
       void this.renderReadSkillApprovalCard(info);
       return;
@@ -1062,6 +1070,10 @@ export class AgentController {
           ok: info.ok,
           stats,
         });
+        if (info.ok && this.lastApprovalDiff) {
+          this.opts.view.appendDiff(path, this.lastApprovalDiff);
+          this.lastApprovalDiff = null;
+        }
       }
     }
     // Capture http_fetch invocations into a sibling probe trail so the

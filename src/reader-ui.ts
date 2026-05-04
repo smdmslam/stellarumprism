@@ -41,24 +41,6 @@ export class ReaderUI {
     return this.overlay.getAttribute("aria-hidden") === "false";
   }
 
-  public getPinnedPaths(): string[] {
-    const paths: string[] = [];
-    if (this.left.path) paths.push(this.left.path);
-    if (this.right.path) paths.push(this.right.path);
-    return paths;
-  }
-
-  /** Toggle a file's pinned status in the reader. */
-  public async togglePin(cwd: string, path: string, silent = false): Promise<void> {
-    if (this.left.path === path) {
-      await this.unpin("left");
-    } else if (this.right.path === path) {
-      await this.unpin("right");
-    } else {
-      await this.pin(cwd, path, silent);
-    }
-  }
-
   private async pin(cwd: string, path: string, silent = false): Promise<void> {
     if (!silent && !this.isVisible()) {
       this.overlay.setAttribute("aria-hidden", "false");
@@ -76,33 +58,6 @@ export class ReaderUI {
       }
       await this.loadPane("right", cwd, path);
     }
-  }
-
-  private async unpin(side: "left" | "right"): Promise<void> {
-    const pane = side === "left" ? this.left : this.right;
-    pane.editor?.destroy();
-    pane.editor = null;
-    pane.path = null;
-    pane.cwd = null;
-
-    if (side === "left" && this.right.path) {
-      const rPath = this.right.path;
-      const rCwd = this.right.cwd!;
-      await this.unpin("right");
-      await this.pin(rCwd, rPath);
-    }
-
-    if (this.isSplit && (!this.left.path || !this.right.path)) {
-      this.isSplit = false;
-      this.renderGrid();
-      if (this.left.path && this.left.cwd) await this.loadPane("left", this.left.cwd, this.left.path);
-    }
-
-    if (!this.left.path && !this.right.path) {
-      this.close();
-    }
-    
-    this.onChange?.();
   }
 
   public async open(cwd: string, paths: string | string[]): Promise<void> {
@@ -228,7 +183,6 @@ export class ReaderUI {
     this.right.editor?.destroy();
     this.left.editor = null;
     this.right.editor = null;
-    // We keep this.left.path and this.right.path so pins persist in the explorer
     this.overlay.setAttribute("aria-hidden", "true");
     this.onChange?.();
   }

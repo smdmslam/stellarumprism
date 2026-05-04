@@ -1537,6 +1537,83 @@ input:checked + .toggle-slider:before {
   text-decoration: line-through;
   opacity: 0.7;
 }
+
+/* Inline Diff Card in Agent View */
+.agent-diff-card {
+  margin: 12px 0;
+  background: #0d0f14;
+  border: 1px solid #1f2937;
+  border-radius: 8px;
+  overflow: hidden;
+  font-family: var(--prism-font-mono);
+}
+
+.agent-diff-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(31, 41, 55, 0.4);
+  border-bottom: 1px solid #1f2937;
+  font-size: 11px;
+  color: #94a3b8;
+  cursor: pointer;
+  user-select: none;
+}
+
+.agent-diff-header:hover {
+  background: rgba(31, 41, 55, 0.6);
+}
+
+.agent-diff-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-diff-name {
+  flex: 1;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.agent-diff-stats {
+  display: flex;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.agent-diff-added { color: #4ade80; }
+.agent-diff-removed { color: #f87171; }
+
+.agent-diff-body {
+  padding: 8px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+}
+
+.agent-diff-line {
+  padding: 0 12px;
+  white-space: pre;
+}
+
+.agent-diff-line-added {
+  background: rgba(74, 222, 128, 0.1);
+  border-left: 3px solid #4ade80;
+}
+
+.agent-diff-line-removed {
+  background: rgba(248, 113, 113, 0.1);
+  border-left: 3px solid #f87171;
+}
+
+.agent-diff-line-hunk {
+  color: #64748b;
+  background: rgba(31, 41, 55, 0.2);
+  font-style: italic;
+}
+
 .agent-notice-turn-footer {
   color: #4b5563;
   font-size: 11px;
@@ -4613,36 +4690,6 @@ input:checked + .toggle-slider:before {
 #reader-overlay:not([aria-hidden="true"]) .reader-card,
 #reader-overlay:not([aria-hidden="true"]) .reader-card * {
   pointer-events: auto !important;
-}
-
-/* Tree View "Pin to Reader" Button (Star) */
-.tree-pin-btn {
-  flex: 0 0 4ch;
-  background: none;
-  border: none;
-  color: #4b5563; /* Gray star when unpinned */
-  font-size: 11px;
-  cursor: pointer;
-  opacity: 0.4;
-  padding: 6px 0; /* Vertical hit area */
-  transition: all 120ms ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  z-index: 10;
-}
-
-.tree-pin-btn:hover {
-  opacity: 1;
-  color: #94a3b8;
-  transform: scale(1.1);
-}
-
-.tree-pin-btn.is-pinned {
-  color: #7dd3fc; /* Prism Cyan when pinned */
-  opacity: 1;
-  filter: drop-shadow(0 0 3px rgba(125, 211, 252, 0.4));
 }
 
 /* ---------- toolbar substrate status & energy gauge ---------- */
