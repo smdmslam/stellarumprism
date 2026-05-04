@@ -273,7 +273,8 @@ test("calculateWriteStats: write_file create reports additive-only stats", () =>
     JSON.stringify({ path: "fresh.txt", content: "a\nb\n" }),
     JSON.stringify({ created: true }),
   );
-  assert.deepEqual(stats, { added: 3 });
+  // "a\nb\n" is 2 lines in editor-style counting.
+  assert.deepEqual(stats, { added: 2 });
 });
 
 test("calculateWriteStats: write_file overwrite suppresses fake line stats", () => {
@@ -304,4 +305,36 @@ test("calculateWriteStats: edit_file empty→empty reports zero line changes", (
     }),
   );
   assert.deepEqual(stats, { added: 0, removed: 0 });
+});
+
+test("calculateWriteStats: write_file create with trailing newline counts correctly", () => {
+  const stats = calculateWriteStats(
+    "write_file",
+    JSON.stringify({ path: "test.txt", content: "line 1\nline 2\n" }),
+    JSON.stringify({ created: true }),
+  );
+  // "line 1\nline 2\n" should be 2 lines, not 3.
+  assert.deepEqual(stats, { added: 2 });
+});
+
+test("calculateWriteStats: write_file create single line no newline", () => {
+  const stats = calculateWriteStats(
+    "write_file",
+    JSON.stringify({ path: "test.txt", content: "line 1" }),
+    JSON.stringify({ created: true }),
+  );
+  assert.deepEqual(stats, { added: 1 });
+});
+
+test("calculateWriteStats: edit_file handles trailing newlines in both strings", () => {
+  const stats = calculateWriteStats(
+    "edit_file",
+    JSON.stringify({
+      path: "src/a.ts",
+      old_string: "old\n",
+      new_string: "new\nline\n",
+    }),
+  );
+  // "old\n" (1 line) -> "new\nline\n" (2 lines)
+  assert.deepEqual(stats, { added: 2, removed: 1 });
 });

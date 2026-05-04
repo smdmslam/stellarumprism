@@ -68,7 +68,11 @@ export function extractWritePath(argsJson: string): string | null {
 }
 
 function countLines(text: string): number {
-  return text.length === 0 ? 0 : text.split("\n").length;
+  if (text.length === 0) return 0;
+  const parts = text.split("\n");
+  // If the string ends with a newline, the last element in the split
+  // array will be an empty string that shouldn't be counted as its own line.
+  return text.endsWith("\n") ? parts.length - 1 : parts.length;
 }
 
 /**
