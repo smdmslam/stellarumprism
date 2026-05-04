@@ -200,11 +200,7 @@ export function formatTurnFooter(s: TurnSummary): string {
   }
   if (s.totalTokens) {
     const t = s.totalTokens >= 1000 ? `${(s.totalTokens / 1000).toFixed(1)}k` : s.totalTokens;
-    let cost = "";
-    if (s.estimatedCostUsd !== undefined && s.estimatedCostUsd > 0) {
-      cost = `, $${s.estimatedCostUsd.toFixed(3)}`;
-    }
-    parts.push(`${t} tokens${cost}`);
+    parts.push(`${t} tokens`);
   }
   if (s.model) parts.push(s.model);
   return `[${parts.join(" \u00b7 ")}]`;
