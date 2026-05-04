@@ -449,7 +449,7 @@ export class Workspace {
                 </span>
                 <span class="strict-toggle-label">Always Verify</span>
               </button>
-              <button class="skills-toggle" type="button" data-aware="false" title="Toggle skill awareness \u2014 when on, the agent can request user-curated skills via the read_skill tool (each request is approved). Off by default." aria-label="Skill awareness" aria-pressed="false">skill awareness: off</button>
+              <button class="skills-toggle" type="button" data-aware="false" title="Allows the agent to discover and suggest pre-built solutions from your skills library. When active, the agent can request to load specialized knowledge to solve tasks faster, subject to your approval." aria-label="Skill awareness" aria-pressed="false">skill awareness: off</button>
             </div>
           </div>
           <div class="agent-stage" aria-label="Agent dialogue"></div>
@@ -2780,7 +2780,7 @@ export class Workspace {
     this.updateSkillsToggleUI();
     this.notify(
       this.skillsAware
-        ? "[agent] skill awareness on — the model can see available skills and request to load them"
+        ? "[agent] skill awareness on \u2014 the model can discover and suggest saved skills from your library"
         : "[agent] skill awareness off",
     );
   }
