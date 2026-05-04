@@ -374,13 +374,7 @@ export class AgentView implements AgentViewApi {
     // Header (Glassmorphism + Stats)
     const header = document.createElement("div");
     header.className = "agent-diff-header";
-    header.onclick = (e) => {
-      // Toggle accordion if we didn't click the reveal icon specifically
-      if (!(e.target as HTMLElement).closest(".agent-diff-reveal") && 
-          !(e.target as HTMLElement).closest(".agent-diff-name")) {
-        container.classList.toggle("agent-diff-card-collapsed");
-      }
-    };
+    header.title = "Click to show full diff or back to preview";
 
     const chevronEl = document.createElement("span");
     chevronEl.className = "agent-diff-chevron";
@@ -423,6 +417,11 @@ export class AgentView implements AgentViewApi {
     if (removed > 0) statsEl.innerHTML += `<span class="agent-diff-removed">-${removed}</span>`;
     header.appendChild(statsEl);
 
+    const expandHint = document.createElement("span");
+    expandHint.className = "agent-diff-expand-hint";
+    expandHint.textContent = "preview";
+    header.appendChild(expandHint);
+
     container.appendChild(header);
 
     // Body
@@ -437,7 +436,10 @@ export class AgentView implements AgentViewApi {
       hunkHeader.textContent = hunk.header;
       if (this.cb) {
         hunkHeader.style.cursor = "pointer";
-        hunkHeader.onclick = () => this.cb!.onFileClick(path, hunk.newStart);
+        hunkHeader.onclick = (ev) => {
+          ev.stopPropagation();
+          this.cb!.onFileClick(path, hunk.newStart);
+        };
       }
       body.appendChild(hunkHeader);
 
@@ -481,7 +483,10 @@ export class AgentView implements AgentViewApi {
 
         if (this.cb && line.newLine !== null) {
           lineEl.style.cursor = "pointer";
-          lineEl.onclick = () => this.cb!.onFileClick(path, line.newLine!);
+          lineEl.onclick = (ev) => {
+            ev.stopPropagation();
+            this.cb!.onFileClick(path, line.newLine!);
+          };
         }
 
         hunkContent.appendChild(lineEl);
@@ -491,6 +496,36 @@ export class AgentView implements AgentViewApi {
 
     container.appendChild(body);
     this.currentTurn!.appendChild(container);
+
+    /** ~6 code rows + hunk header — matches CSS `max-height` on collapsed body. */
+    const syncDiffPreviewOverflow = (): void => {
+      if (!container.classList.contains("agent-diff-card-collapsed")) {
+        expandHint.style.display = "none";
+        return;
+      }
+      expandHint.style.display = "";
+      const clipped = body.scrollHeight > body.clientHeight + 2;
+      container.classList.toggle("agent-diff-preview-overflow", clipped);
+      expandHint.textContent = clipped ? "preview · more below" : "preview";
+    };
+
+    requestAnimationFrame(() => {
+      syncDiffPreviewOverflow();
+      const ro = new ResizeObserver(() => syncDiffPreviewOverflow());
+      ro.observe(body);
+    });
+
+    header.addEventListener("click", (e) => {
+      if (
+        (e.target as HTMLElement).closest(".agent-diff-reveal") ||
+        (e.target as HTMLElement).closest(".agent-diff-name")
+      ) {
+        return;
+      }
+      container.classList.toggle("agent-diff-card-collapsed");
+      queueMicrotask(() => syncDiffPreviewOverflow());
+    });
+
     this.scrollToBottomIfFollowing();
   }
 

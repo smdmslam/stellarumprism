@@ -1629,16 +1629,49 @@ input:checked + .toggle-slider:before {
   font-family: var(--prism-font-mono);
 }
 
+.agent-diff-expand-hint {
+  font-size: 10px;
+  font-weight: 500;
+  color: #6b7280;
+  font-family: var(--prism-font-sans);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.agent-diff-card:not(.agent-diff-card-collapsed) .agent-diff-expand-hint {
+  display: none;
+}
+
 .agent-diff-added { color: #10b981; }
 .agent-diff-removed { color: #f43f5e; }
 
+/* Default: preview mode — ~6 code lines + hunk header (see agent-view appendDiff). */
 .agent-diff-body {
+  position: relative;
   background: #0b0d12;
   overflow-x: auto;
 }
 
 .agent-diff-card-collapsed .agent-diff-body {
-  display: none;
+  max-height: 10rem;
+  overflow-y: hidden;
+}
+
+/* Expanded: full diff, scroll if huge */
+.agent-diff-card:not(.agent-diff-card-collapsed) .agent-diff-body {
+  max-height: min(70vh, 28rem);
+  overflow-y: auto;
+}
+
+.agent-diff-card-collapsed.agent-diff-preview-overflow .agent-diff-body::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2.25rem;
+  background: linear-gradient(to bottom, rgba(11, 13, 18, 0), #0b0d12 85%);
+  pointer-events: none;
 }
 
 .agent-diff-hunk-header {
