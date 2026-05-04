@@ -19,7 +19,6 @@ import {
   autocompletion,
   completionKeymap,
   completionStatus,
-  startCompletion,
   type CompletionContext,
   type CompletionResult,
 } from "@codemirror/autocomplete";
@@ -676,9 +675,13 @@ function slashCompletions(
         from,
         filter: false,
         options: dirEntries.map((e) => {
-          const display = e.name + "/";
+          // Show `name/` in the list so folders read clearly; insert `name` only
+          // (no trailing slash) so the user can press Enter to run `/cd` without
+          // backspacing. Type `/` after a folder to continue browsing.
+          const label = e.name + "/";
+          const insertText = e.name;
           return {
-            label: display,
+            label,
             detail: recoveredFrom ? "folder (recovered)" : "folder",
             type: "folder",
             apply: (
@@ -688,11 +691,11 @@ function slashCompletions(
               applyTo: number,
             ) => {
               view.dispatch({
-                changes: { from: applyFrom, to: applyTo, insert: display },
-                selection: { anchor: applyFrom + display.length },
+                changes: { from: applyFrom, to: applyTo, insert: insertText },
+                selection: { anchor: applyFrom + insertText.length },
               });
-              // Drill in: re-open the popup to show this folder's children.
-              setTimeout(() => startCompletion(view), 0);
+              // Do not auto re-open completion: that made Enter "drill" again
+              // instead of letting a second Enter submit the `/cd` line.
             },
           };
         }),
@@ -727,10 +730,10 @@ function slashCompletions(
           filter: false, // Rust filtered server-side already.
           options: listing.entries.map((e) => {
             const isDir = e.kind === "dir";
-            const display = e.name + (isDir ? "/" : "");
-            const fullPath = dirPart + display;
+            const label = e.name + (isDir ? "/" : "");
+            const fullPath = dirPart + e.name;
             return {
-              label: display,
+              label,
               detail: isDir ? "folder" : e.kind,
               type: isDir ? "folder" : "file",
               apply: (
@@ -743,11 +746,7 @@ function slashCompletions(
                   changes: { from: applyFrom, to: applyTo, insert: fullPath },
                   selection: { anchor: applyFrom + fullPath.length },
                 });
-                // After picking a folder, immediately re-open the menu so
-                // the user sees the next level without retyping.
-                if (isDir) {
-                  setTimeout(() => startCompletion(view), 0);
-                }
+                // Same as /cd: do not auto re-open; type `/` to drill deeper.
               },
             };
           }),
