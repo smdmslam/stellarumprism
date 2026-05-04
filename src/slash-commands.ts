@@ -259,7 +259,9 @@ export function renderModelsMarkdown(current?: string): string {
         (m) =>
           m.tier === "main" &&
           settings.isModelEnabled(m.slug, m.enabled !== false),
-      ),
+      )
+        .slice()
+        .sort(compareModelsByCostDesc),
     },
     {
       title: "Explore",
@@ -267,7 +269,9 @@ export function renderModelsMarkdown(current?: string): string {
         (m) =>
           m.tier === "explore" &&
           settings.isModelEnabled(m.slug, m.enabled !== false),
-      ),
+      )
+        .slice()
+        .sort(compareModelsByCostDesc),
     },
   ];
 
