@@ -776,7 +776,10 @@ export class Workspace {
     // wrap and resize-friendly layout.
     const agentStageEl = this.root.querySelector<HTMLElement>(".agent-stage");
     this.agentView = new AgentView(agentStageEl ?? this.root, {
-      onFileClick: (path: string) => void this.revealInTree(path),
+      onFileClick: (path: string) => {
+        void this.revealInTree(path);
+        void this.openFileInEditor(path);
+      },
     });
     this.agent = new AgentController({
       view: this.agentView,
