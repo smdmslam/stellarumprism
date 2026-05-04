@@ -31,28 +31,16 @@ window.addEventListener("DOMContentLoaded", () => {
   // Global toolbar controller.
   const toolbar = new ToolbarManager({ tabManager: tabs });
 
-  // Session restore. Read once at startup; if any tabs are persisted,
-  // rehydrate each in its saved cwd. Otherwise (first launch, missing
-  // file, parse error, or zero saved tabs) fall back to the original
-  // "open a single fresh tab" behavior so we never leave the user
-  // staring at an empty workspace.
+  // Open one tab immediately so `#workspaces` is never empty while
+  // `read_session_state` round-trips through Tauri. If session.json has
+  // tabs, replace this bootstrap tab with the persisted set.
+  tabs.newTab();
+
   void (async () => {
     const session = await readSessionState();
-    if (session.tabs.length === 0) {
-      tabs.newTab();
-      return;
+    if (session.tabs.length > 0) {
+      await tabs.replaceWithPersistedTabs(session.tabs);
     }
-    for (const t of session.tabs) {
-      tabs.newTab({
-        id: t.id,
-        cwd: t.cwd,
-        title: t.title,
-        sidebarVisible: t.sidebar_visible,
-        previewVisible: t.preview_visible,
-        terminalVisible: t.terminal_visible,
-        consoleVisible: t.console_visible,
-        agentVisible: t.agent_visible,
-      });
-    }
+    toolbar.updateLayoutButtons();
   })();
 });

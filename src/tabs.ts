@@ -6,6 +6,14 @@
 import { Workspace, type WorkspaceRestoreOptions } from "./workspace";
 import { writeSessionState, type PersistedTab } from "./session";
 
+type CloseTabOptions = {
+  /**
+   * When closing the last tab, skip the default behavior of opening a fresh
+   * tab (used when replacing bootstrap tabs with session restore).
+   */
+  suppressAutoNewWhenEmpty?: boolean;
+};
+
 export interface TabManagerOptions {
   tabStripEl: HTMLElement;
   workspacesParent: HTMLElement;
@@ -188,7 +196,32 @@ export class TabManager {
     return this.workspaces.find((w) => w.id === this.activeId) || null;
   }
 
-  async closeTab(id: string): Promise<void> {
+  /**
+   * Replace all open tabs with `persisted` from disk. Used after showing an
+   * optimistic first tab so startup never renders an empty `#workspaces`.
+   */
+  async replaceWithPersistedTabs(persisted: PersistedTab[]): Promise<void> {
+    if (persisted.length === 0) return;
+    while (this.workspaces.length > 0) {
+      await this.closeTab(this.workspaces[0].id, {
+        suppressAutoNewWhenEmpty: true,
+      });
+    }
+    for (const t of persisted) {
+      this.newTab({
+        id: t.id,
+        cwd: t.cwd,
+        title: t.title,
+        sidebarVisible: t.sidebar_visible,
+        previewVisible: t.preview_visible,
+        terminalVisible: t.terminal_visible,
+        consoleVisible: t.console_visible,
+        agentVisible: t.agent_visible,
+      });
+    }
+  }
+
+  async closeTab(id: string, options?: CloseTabOptions): Promise<void> {
     const idx = this.workspaces.findIndex((w) => w.id === id);
     if (idx < 0) return;
     const ws = this.workspaces[idx];
@@ -219,7 +252,9 @@ export class TabManager {
 
     if (this.workspaces.length === 0) {
       this.activeId = null;
-      this.newTab();
+      if (!options?.suppressAutoNewWhenEmpty) {
+        this.newTab();
+      }
       return;
     }
     if (this.activeId === id) {

@@ -5,7 +5,7 @@
   "identifier": "com.stellarum.prism",
   "build": {
     "beforeDevCommand": "pnpm dev",
-    "devUrl": "http://localhost:1420",
+    "devUrl": "http://localhost:2000",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "../dist"
   },
