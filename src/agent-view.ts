@@ -484,12 +484,16 @@ export class AgentView implements AgentViewApi {
 
     const expandHint = document.createElement("span");
     expandHint.className = "agent-diff-expand-hint";
-    if (isOverwritePreview) {
+    if (source === "tool-artifact" && operation === "overwrite") {
+      expandHint.textContent = "overwrite · actual diff";
+    } else if (isOverwritePreview) {
       expandHint.textContent = "⚠ preview only";
     } else if (isPreviewOnly && operation === "create") {
       expandHint.textContent = "created · preview";
     } else if (isPreviewOnly && operation === "edit") {
       expandHint.textContent = "edited · preview";
+    } else if (source === "tool-artifact") {
+      expandHint.textContent = "actual diff";
     } else {
       expandHint.textContent = "preview";
     }

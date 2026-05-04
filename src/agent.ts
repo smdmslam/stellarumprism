@@ -15,6 +15,11 @@ import {
   type WriteEntry,
 } from "./turn-summary";
 import type { RuntimeProbe, SubstrateRun } from "./findings";
+import {
+  extractWriteArtifactDiff,
+  inferWriteOperation,
+  parseHttpFetchProbeForAgent,
+} from "./agent-write-artifacts";
 
 /**
  * Universal tool-capable fallback used when the resolved model can't do
@@ -1096,10 +1101,11 @@ export class AgentController {
           summary: info.summary,
         });
         if (info.ok && approval) {
+          let artifactDiff = extractWriteArtifactDiff(info.payload);
           this.opts.view.appendDiff({
             path,
-            diff: approval.preview,
-            source: "approval-preview",
+            diff: artifactDiff ?? approval.preview,
+            source: artifactDiff ? "tool-artifact" : "approval-preview",
             operation,
           });
         }
@@ -1110,7 +1116,7 @@ export class AgentController {
     // audit report can preserve runtime evidence even when the model
     // forgets the `evidence:` stanza on a finding line.
     if (info.name === "http_fetch") {
-      const probe = parseHttpFetchProbe(info.args, info.summary, info.ok, info.round);
+      const probe = parseHttpFetchProbeForAgent(info.args, info.summary, info.ok, info.round);
       if (probe) this.currentRuntimeProbes.push(probe);
     }
     // Capture every substrate-cell invocation so the audit report can
@@ -1734,49 +1740,3 @@ function prettyToolArgs(toolName: string, json: string): string {
   }
 }
 
-/**
- * Parse the args + summary of an `http_fetch` tool-call event into a
- * `RuntimeProbe` record. Returns null when the args don't carry a URL
- * (which means the call was rejected before reaching the substrate, so
- * there's no probe to record).
- *
- * Args come over the wire as a JSON string \u2014 e.g.
- *   `{"url":"http://localhost:3000/api/health","method":"GET"}`
- * but we tolerate malformed or non-JSON args by falling back to a
- * minimal record so the probe trail never silently disappears.
- */
-function parseHttpFetchProbe(
-  args: string,
-  summary: string,
-  ok: boolean,
-  round: number,
-): RuntimeProbe | null {
-  let url = "";
-  let method = "GET";
-  try {
-    const parsed = JSON.parse(args) as { url?: unknown; method?: unknown };
-    if (typeof parsed.url === "string") url = parsed.url.trim();
-    if (typeof parsed.method === "string" && parsed.method.trim()) {
-      method = parsed.method.trim().toUpperCase();
-    }
-  } catch {
-    // Non-JSON args (shouldn't happen from the agent loop) — swallow
-    // and let url stay empty so we drop the probe below.
-  }
-  if (!url) return null;
-  return { url, method, summary, ok, round };
-}
-
-function inferWriteOperation(
-  toolName: string,
-  payload: string,
-): "create" | "overwrite" | "edit" {
-  if (toolName === "edit_file") return "edit";
-  if (toolName !== "write_file") return "edit";
-  try {
-    const parsed = JSON.parse(payload) as { created?: unknown };
-    return parsed.created === true ? "create" : "overwrite";
-  } catch {
-    return "overwrite";
-  }
-}

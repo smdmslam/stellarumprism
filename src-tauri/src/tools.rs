@@ -1581,6 +1581,23 @@ struct WriteFileArgs {
     content: String,
 }
 
+#[derive(Serialize)]
+struct WriteArtifact {
+    kind: String,
+    operation: String,
+    diff: String,
+}
+
+#[derive(Serialize)]
+struct WriteFilePayload {
+    path: String,
+    created: bool,
+    bytes_written: u64,
+    previous_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    artifact: Option<WriteArtifact>,
+}
+
 fn tool_write_file(args_json: &str, cwd: &str) -> Result<(String, String), String> {
     let args: WriteFileArgs = serde_json::from_str(args_json)
         .map_err(|e| format!("invalid arguments: {}", e))?;
@@ -1595,10 +1612,17 @@ fn tool_write_file(args_json: &str, cwd: &str) -> Result<(String, String), Strin
     validate_write_path(cwd, &args.path, &resolved)?;
 
     let existed = resolved.exists();
-    let old_size = if existed {
-        fs::metadata(&resolved).map(|m| m.len()).unwrap_or(0)
+    let old_bytes = if existed {
+        fs::read(&resolved)
+            .map_err(|e| format!("cannot read {}: {}", resolved.display(), e))?
     } else {
-        0
+        Vec::new()
+    };
+    let old_size = old_bytes.len() as u64;
+    let artifact = if existed {
+        build_write_overwrite_artifact(&old_bytes, args.content.as_str())
+    } else {
+        None
     };
 
     atomic_write(&resolved, args.content.as_bytes())?;
@@ -1618,14 +1642,53 @@ fn tool_write_file(args_json: &str, cwd: &str) -> Result<(String, String), Strin
             format_bytes(new_size)
         )
     };
-    let payload = json!({
-        "path": resolved.to_string_lossy(),
-        "created": !existed,
-        "bytes_written": new_size,
-        "previous_bytes": old_size,
+    let payload = serde_json::to_string(&WriteFilePayload {
+        path: resolved.to_string_lossy().to_string(),
+        created: !existed,
+        bytes_written: new_size,
+        previous_bytes: old_size,
+        artifact,
     })
-    .to_string();
+    .map_err(|e| format!("cannot serialize write_file payload: {}", e))?;
     Ok((summary, payload))
+}
+
+fn build_write_overwrite_artifact(old_bytes: &[u8], new_text: &str) -> Option<WriteArtifact> {
+    if old_bytes.is_empty() {
+        return None;
+    }
+    let sniff_len = old_bytes.len().min(8 * 1024);
+    if old_bytes[..sniff_len].contains(&0) {
+        return None;
+    }
+    let old_text = std::str::from_utf8(old_bytes).ok()?;
+    let diff = render_unified_text_diff(old_text, new_text);
+    Some(WriteArtifact {
+        kind: "write".into(),
+        operation: "overwrite".into(),
+        diff,
+    })
+}
+
+fn render_unified_text_diff(old_text: &str, new_text: &str) -> String {
+    let old_lines: Vec<&str> = old_text.split('\n').collect();
+    let new_lines: Vec<&str> = new_text.split('\n').collect();
+    let mut out = String::from("--- old\n+++ new\n@@ -1,");
+    out.push_str(&old_lines.len().to_string());
+    out.push_str(" +1,");
+    out.push_str(&new_lines.len().to_string());
+    out.push_str(" @@\n");
+    for line in &old_lines {
+        out.push('-');
+        out.push_str(line);
+        out.push('\n');
+    }
+    for line in &new_lines {
+        out.push('+');
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -2905,6 +2968,56 @@ mod tests {
         );
         assert!(inv.ok, "failed: {}", inv.summary);
         assert_eq!(fs::read_to_string(dir.join("f.txt")).unwrap(), "new");
+    }
+
+    #[test]
+    fn write_file_overwrite_payload_includes_text_artifact() {
+        let dir = fresh_tmp();
+        fs::write(dir.join("f.txt"), "old\nvalue\n").unwrap();
+        let inv = execute(
+            "write_file",
+            &json!({ "path": "f.txt", "content": "new\nvalue\n" }).to_string(),
+            &cwd_of(&dir),
+        );
+        assert!(inv.ok, "failed: {}", inv.summary);
+        let payload: Value = serde_json::from_str(&inv.payload).unwrap();
+        assert_eq!(payload["created"], json!(false));
+        assert_eq!(payload["artifact"]["kind"], json!("write"));
+        assert_eq!(payload["artifact"]["operation"], json!("overwrite"));
+        let diff = payload["artifact"]["diff"].as_str().unwrap();
+        assert!(diff.contains("--- old"), "missing old header: {}", diff);
+        assert!(diff.contains("+++ new"), "missing new header: {}", diff);
+        assert!(diff.contains("-old"), "missing removed line: {}", diff);
+        assert!(diff.contains("+new"), "missing added line: {}", diff);
+    }
+
+    #[test]
+    fn write_file_create_payload_has_no_artifact() {
+        let dir = fresh_tmp();
+        let inv = execute(
+            "write_file",
+            &json!({ "path": "fresh.txt", "content": "hello\n" }).to_string(),
+            &cwd_of(&dir),
+        );
+        assert!(inv.ok, "failed: {}", inv.summary);
+        let payload: Value = serde_json::from_str(&inv.payload).unwrap();
+        assert_eq!(payload["created"], json!(true));
+        assert!(payload.get("artifact" ).is_none() || payload["artifact"].is_null());
+    }
+
+    #[test]
+    fn write_file_overwrite_binary_payload_has_no_artifact() {
+        let dir = fresh_tmp();
+        fs::write(dir.join("bin.dat"), [0u8, 1, 2, 3, 4]).unwrap();
+        let inv = execute(
+            "write_file",
+            &json!({ "path": "bin.dat", "content": "text replacement" }).to_string(),
+            &cwd_of(&dir),
+        );
+        assert!(inv.ok, "failed: {}", inv.summary);
+        let payload: Value = serde_json::from_str(&inv.payload).unwrap();
+        assert_eq!(payload["created"], json!(false));
+        assert!(payload.get("artifact").is_none() || payload["artifact"].is_null());
     }
 
     #[test]

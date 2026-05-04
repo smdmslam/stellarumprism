@@ -8,6 +8,7 @@ import {
   formatFilesModifiedFooter,
   formatTurnFooter,
   WRITE_TOOL_NAMES,
+  calculateWriteStats,
 } from "../src/turn-summary.ts";
 
 // ---------------------------------------------------------------------------
@@ -252,4 +253,34 @@ test("formatFilesModifiedFooter: paths are aligned for readability", () => {
   const idxA = lines[1].indexOf("edit_file");
   const idxB = lines[2].indexOf("edit_file");
   assert.equal(idxA, idxB);
+});
+
+test("calculateWriteStats: edit_file reports added and removed lines", () => {
+  const stats = calculateWriteStats(
+    "edit_file",
+    JSON.stringify({
+      path: "src/a.ts",
+      old_string: "old\nvalue",
+      new_string: "new\nvalue\nextra",
+    }),
+  );
+  assert.deepEqual(stats, { added: 3, removed: 2 });
+});
+
+test("calculateWriteStats: write_file create reports additive-only stats", () => {
+  const stats = calculateWriteStats(
+    "write_file",
+    JSON.stringify({ path: "fresh.txt", content: "a\nb\n" }),
+    JSON.stringify({ created: true }),
+  );
+  assert.deepEqual(stats, { added: 3 });
+});
+
+test("calculateWriteStats: write_file overwrite suppresses fake line stats", () => {
+  const stats = calculateWriteStats(
+    "write_file",
+    JSON.stringify({ path: "existing.txt", content: "replacement\ntext" }),
+    JSON.stringify({ created: false }),
+  );
+  assert.equal(stats, undefined);
 });
