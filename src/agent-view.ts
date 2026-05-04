@@ -355,7 +355,7 @@ export class AgentView implements AgentViewApi {
     if (!this.currentTurn) this.beginTurn("");
 
     const container = document.createElement("div");
-    container.className = "agent-diff-card";
+    container.className = "agent-diff-card agent-diff-card-collapsed";
 
     // Extract basename and stats
     const parts = path.split(/[\/\\]/);
@@ -371,9 +371,17 @@ export class AgentView implements AgentViewApi {
     // Header
     const header = document.createElement("div");
     header.className = "agent-diff-header";
-    if (this.cb) {
-      header.onclick = () => this.cb!.onFileClick(path);
-    }
+    header.onclick = (e) => {
+      // Toggle accordion if we didn't click the reveal icon specifically
+      if (!(e.target as HTMLElement).closest(".agent-diff-reveal")) {
+        container.classList.toggle("agent-diff-card-collapsed");
+      }
+    };
+
+    const chevronEl = document.createElement("span");
+    chevronEl.className = "agent-diff-chevron";
+    chevronEl.innerHTML = "▾"; // Down triangle
+    header.appendChild(chevronEl);
 
     const iconEl = document.createElement("span");
     iconEl.className = "agent-diff-icon";
@@ -384,6 +392,18 @@ export class AgentView implements AgentViewApi {
     nameEl.className = "agent-diff-name";
     nameEl.textContent = name;
     header.appendChild(nameEl);
+
+    const revealBtn = document.createElement("span");
+    revealBtn.className = "agent-diff-reveal";
+    revealBtn.title = "Reveal in explorer";
+    revealBtn.innerHTML = "↗"; // External link arrow
+    if (this.cb) {
+      revealBtn.onclick = (e) => {
+        e.stopPropagation();
+        this.cb!.onFileClick(path);
+      };
+    }
+    header.appendChild(revealBtn);
 
     const statsEl = document.createElement("div");
     statsEl.className = "agent-diff-stats";

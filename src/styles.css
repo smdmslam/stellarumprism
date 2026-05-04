@@ -1552,29 +1552,65 @@ input:checked + .toggle-slider:before {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 6px 12px;
   background: rgba(31, 41, 55, 0.4);
   border-bottom: 1px solid #1f2937;
   font-size: 11px;
   color: #94a3b8;
   cursor: pointer;
   user-select: none;
+  transition: background 120ms ease;
 }
 
 .agent-diff-header:hover {
   background: rgba(31, 41, 55, 0.6);
+  color: #e2e8f0;
+}
+
+.agent-diff-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  transition: transform 150ms ease;
+}
+
+.agent-diff-card-collapsed .agent-diff-chevron {
+  transform: rotate(-90deg);
+}
+
+.agent-diff-card-collapsed .agent-diff-body {
+  display: none;
+}
+
+.agent-diff-card-collapsed {
+  border-bottom: none;
 }
 
 .agent-diff-icon {
   display: flex;
   align-items: center;
   justify-content: center;
+  opacity: 0.7;
 }
 
 .agent-diff-name {
   flex: 1;
   font-weight: 600;
-  color: #e2e8f0;
+  color: #94a3b8;
+}
+
+.agent-diff-reveal {
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 120ms ease, color 120ms ease;
+  color: #64748b;
+}
+
+.agent-diff-reveal:hover {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
 }
 
 .agent-diff-stats {
