@@ -720,10 +720,11 @@ export class AgentController {
         this.onReviewDone();
       }),
       await listen<{
-        total_chars: number;
-        model: string;
+        cancelled?: boolean;
+        total_chars?: number;
+        model?: string;
         message_count: number;
-        assistant_text_len: number;
+        assistant_text_len?: number;
         total_tokens?: number;
         estimated_cost_usd?: number;
       }>(`agent-done-${requestId}`, (e) => {
@@ -1126,6 +1127,7 @@ export class AgentController {
   }
 
   private onDone(payload?: {
+    cancelled?: boolean;
     total_tokens?: number;
     estimated_cost_usd?: number;
   }): void {

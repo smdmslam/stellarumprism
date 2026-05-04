@@ -1944,22 +1944,49 @@ pub async fn agent_query(
                     }
                     // Loop: next iteration sends the updated messages back.
                 }
-                Ok(StreamOutcome::Cancelled { assistant_text }) => {
-                    emit_usage_event(
-                        &app_handle,
-                        None,
-                        chat_id_for_task.clone(),
-                        cwd_str.clone(),
-                        mode_for_task.clone().unwrap_or_else(|| "chat".into()),
-                        chosen_model.clone(),
-                        "openrouter".into(),
-                        0,
-                        0,
-                        duration_ms,
-                        false,
-                        true,
-                    );
-                    session_for_task.append_assistant(assistant_text);
+                Ok(StreamOutcome::Cancelled {
+                    assistant_text,
+                    usage,
+                }) => {
+                    if let Some(u) = usage {
+                        let pricing = crate::pricing::get_pricing_basis(&chosen_model);
+                        let cost = (u.prompt_tokens as f64 * pricing.input_per_m / 1_000_000.0)
+                            + (u.completion_tokens as f64 * pricing.output_per_m / 1_000_000.0);
+                        total_prompt_tokens += u.prompt_tokens;
+                        total_completion_tokens += u.completion_tokens;
+                        total_cost_usd += cost;
+                        emit_usage_event(
+                            &app_handle,
+                            None,
+                            chat_id_for_task.clone(),
+                            cwd_str.clone(),
+                            mode_for_task.clone().unwrap_or_else(|| "chat".into()),
+                            chosen_model.clone(),
+                            "openrouter".into(),
+                            u.prompt_tokens,
+                            u.completion_tokens,
+                            duration_ms,
+                            true,
+                            true,
+                        );
+                    } else {
+                        emit_usage_event(
+                            &app_handle,
+                            None,
+                            chat_id_for_task.clone(),
+                            cwd_str.clone(),
+                            mode_for_task.clone().unwrap_or_else(|| "chat".into()),
+                            chosen_model.clone(),
+                            "openrouter".into(),
+                            0,
+                            0,
+                            duration_ms,
+                            false,
+                            true,
+                        );
+                    }
+                    session_for_task.append_assistant(assistant_text.clone());
+                    final_assistant_text = assistant_text;
                     final_cancelled = true;
                     break;
                 }
@@ -2024,25 +2051,22 @@ pub async fn agent_query(
             final_assistant_text = synthetic;
         }
 
-        let payload = if final_cancelled {
-            serde_json::json!({
-                "cancelled": true,
-                "message_count": session_for_task.non_system_count(),
-            })
-        } else {
-            serde_json::json!({
-                "total_chars": total_chars_all,
-                "model": chosen_model,
-                "message_count": session_for_task.non_system_count(),
-                "assistant_text_len": final_assistant_text.len(),
-                "prompt_tokens": total_prompt_tokens,
-                "completion_tokens": total_completion_tokens,
-                "total_tokens": total_prompt_tokens + total_completion_tokens,
-                "estimated_cost_usd": total_cost_usd,
-            })
-        };
-        // Deduct from credit balance (20x paradigm)
-        if !final_cancelled && total_cost_usd > 0.0 {
+        let total_tok = total_prompt_tokens + total_completion_tokens;
+        let payload = serde_json::json!({
+            "cancelled": final_cancelled,
+            "message_count": session_for_task.non_system_count(),
+            "total_chars": total_chars_all,
+            "model": chosen_model,
+            "assistant_text_len": final_assistant_text.len(),
+            "prompt_tokens": total_prompt_tokens,
+            "completion_tokens": total_completion_tokens,
+            "total_tokens": total_tok,
+            "estimated_cost_usd": total_cost_usd,
+        });
+        // Deduct from credit balance whenever this turn incurred non-zero
+        // cost (including cancelled turns that already completed tool rounds
+        // or received a usage-bearing chunk from the provider).
+        if total_cost_usd > 0.0 {
             if let Err(e) = crate::billing::deduct_usage_cost(total_cost_usd) {
                 let _ = app_handle.emit("billing-alert", &e.to_string());
                 eprintln!("Failed to deduct usage cost: {}", e);
@@ -2213,6 +2237,10 @@ enum StreamOutcome {
     },
     Cancelled {
         assistant_text: String,
+        /// Usage from the last parsed SSE chunk, if the provider sent it
+        /// before the user cancelled (OpenRouter often streams usage on
+        /// the final chunk only, so this may still be None).
+        usage: Option<OrUsage>,
     },
 }
 
@@ -2335,7 +2363,10 @@ async fn run_stream(
     loop {
         tokio::select! {
             _ = cancel.notified() => {
-                return Ok(StreamOutcome::Cancelled { assistant_text });
+                return Ok(StreamOutcome::Cancelled {
+                    assistant_text,
+                    usage,
+                });
             }
             chunk = stream.next() => {
                 let Some(chunk) = chunk else { break; };

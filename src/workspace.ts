@@ -183,6 +183,9 @@ export class Workspace {
   /** True if we have already auto-titled this tab based on user input. */
   private autoTitleDone = false;
   private taskTokens = 0;
+  /** Wall-clock span for the in-flight agent request (see `setBusyState`). */
+  private taskElapsedTimer: ReturnType<typeof setInterval> | null = null;
+  private taskBusyStartMs: number | null = null;
   private cwd = ""; // populated by OSC 7 from the shell integration
 
   public setTitle(title: string): void {
@@ -457,8 +460,11 @@ export class Workspace {
           <div class="attachments"></div>
           <div class="input-bar">
             <div class="input-info-row">
-              <span class="info-item cost-metric" title="Current Task Estimated Token Usage">
+              <span class="info-item cost-metric" title="Cumulative tokens this tab (updates when each turn completes; cancelled turns include usage only if the provider reported it)">
                 <span class="info-value" id="task-cost-display">0.0k tokens</span>
+              </span>
+              <span class="info-item elapsed-metric" title="Elapsed time for the in-flight agent request">
+                <span class="info-value" id="task-elapsed-display">0:00</span>
               </span>
             </div>
             <div class="input-row">
@@ -612,6 +618,7 @@ export class Workspace {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.stopTaskElapsedTicker();
     for (const off of this.disposers) off();
     try {
       await invoke("kill_shell", { sessionId: this.id });
@@ -1829,6 +1836,11 @@ export class Workspace {
    * draining a suspended PTY buffer; that buffer is gone now that
    * agent and shell render to separate surfaces. */
   private setBusyState(busy: boolean): void {
+    if (busy) {
+      this.startTaskElapsedTicker();
+    } else {
+      this.stopTaskElapsedTicker();
+    }
     const pill = this.root.querySelector<HTMLButtonElement>(".busy-pill");
     if (pill) {
       if (busy) {
@@ -1839,6 +1851,32 @@ export class Workspace {
         pill.classList.remove("stalled");
       }
     }
+  }
+
+  private startTaskElapsedTicker(): void {
+    this.stopTaskElapsedTicker();
+    this.taskBusyStartMs = Date.now();
+    this.updateTaskElapsedDisplay(0);
+    this.taskElapsedTimer = window.setInterval(() => {
+      const start = this.taskBusyStartMs;
+      if (start == null) return;
+      this.updateTaskElapsedDisplay(Date.now() - start);
+    }, 1000);
+  }
+
+  private stopTaskElapsedTicker(): void {
+    if (this.taskElapsedTimer != null) {
+      window.clearInterval(this.taskElapsedTimer);
+      this.taskElapsedTimer = null;
+    }
+    this.taskBusyStartMs = null;
+    this.updateTaskElapsedDisplay(0);
+  }
+
+  private updateTaskElapsedDisplay(elapsedMs: number): void {
+    const display = this.root.querySelector<HTMLElement>("#task-elapsed-display");
+    if (!display) return;
+    display.textContent = formatAgentBusyElapsed(elapsedMs);
   }
 
   /** Switch the pill into its red "stalled" variant without changing
@@ -5136,6 +5174,22 @@ function buildReviewPrompt(scope: string): string {
   }
   // Single ref — treat as "this commit vs its parent."
   return `Review commit ${scope} (diff against ${scope}~1) for cohesion. Use git_diff + grep + read_file to investigate. ${checks}`;
+}
+
+/**
+ * Format elapsed wall time for the agent busy pill row (`m:ss`, or
+ * `h:mm:ss` when the request runs past one hour).
+ */
+function formatAgentBusyElapsed(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "0:00";
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) {
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 /**
