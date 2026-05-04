@@ -104,6 +104,21 @@ export function compareModelsByCostDesc(a: ModelEntry, b: ModelEntry): number {
   return a.aliases[0].localeCompare(b.aliases[0]);
 }
 
+/** Sort lowest-cost first using exact pricing basis. */
+export function compareModelsByCostAsc(a: ModelEntry, b: ModelEntry): number {
+  const aPricing = getModelPricingBasis(a.slug);
+  const bPricing = getModelPricingBasis(b.slug);
+  const aTotal = aPricing.input_per_m + aPricing.output_per_m;
+  const bTotal = bPricing.input_per_m + bPricing.output_per_m;
+  const totalDelta = aTotal - bTotal;
+  if (totalDelta !== 0) return totalDelta;
+  const outputDelta = aPricing.output_per_m - bPricing.output_per_m;
+  if (outputDelta !== 0) return outputDelta;
+  const inputDelta = aPricing.input_per_m - bPricing.input_per_m;
+  if (inputDelta !== 0) return inputDelta;
+  return a.aliases[0].localeCompare(b.aliases[0]);
+}
+
 export const MODEL_LIBRARY: ModelEntry[] = [
   // -------- Main rotation -----------------------------------------------
   //
@@ -221,20 +236,13 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     maxContext: 128000,
   },
 
-  // -------- Explore (less-common alternates) ----------------------------
-  //
-  // Single-entry tier today (qwen-235b only). Sized to grow if we
-  // identify more low-cost-high-quality alternatives during calibration
-  // sweeps. Models that fail calibration are removed from the registry
-  // entirely \u2014 see `MASTER-Plan-II.md#5.9` for the policy and
-  // `docs/MASTER-AI-model-list.md` for the audit trail of what we tried
-  // and dropped.
+  // -------- Additional main models --------------------------------------
   {
     aliases: ["qwen-235b", "qwen235"],
     slug: "qwen/qwen3-235b-a22b-2507",
     description:
       "Qwen3 235B A22B \u2014 big open-weights reasoning, very cheap",
-    tier: "explore",
+    tier: "main",
     cost: 1,
     toolUse: true,
     jsonMode: true,
@@ -290,24 +298,12 @@ export function renderModelListAnsi(current: string): string {
   // `tier === "backend"` entries are intentionally excluded — they back
   // internal tools (e.g. web_search → Sonar) and aren't user-selectable.
   // Auto presets are also no longer listed; pick a concrete model.
-  const sections: { title: string; entries: ModelEntry[] }[] = [
-    {
-      title: "Main",
-      entries: MODEL_LIBRARY.filter(
-        (m) =>
-          m.tier === "main" &&
-          settings.isModelEnabled(m.slug, m.enabled !== false),
-      ),
-    },
-    {
-      title: "Explore",
-      entries: MODEL_LIBRARY.filter(
-        (m) =>
-          m.tier === "explore" &&
-          settings.isModelEnabled(m.slug, m.enabled !== false),
-      ),
-    },
-  ];
+  const entries = MODEL_LIBRARY.filter(
+    (m) =>
+      m.tier === "main" &&
+      settings.isModelEnabled(m.slug, m.enabled !== false),
+  ).sort(compareModelsByCostDesc);
+
   const RESET = "\x1b[0m";
   const DIM = "\x1b[2m";
   const BOLD = "\x1b[1m";
@@ -327,20 +323,18 @@ export function renderModelListAnsi(current: string): string {
   out.push(
     `${BOLD}Available models${RESET} ${DIM}(use: /model <alias|slug>) \u2014 ${MAGENTA}[img]${RESET}${DIM} = vision, $=cheap $$=mid $$$=premium${RESET}`,
   );
-  for (const s of sections) {
-    out.push("");
-    out.push(`${BOLD}${s.title}${RESET}`);
-    for (const m of s.entries) {
-      const isActive = m.slug === current;
-      const marker = isActive ? `${GREEN}\u25cf${RESET}` : " ";
-      const alias = `${CYAN}${m.aliases[0]}${RESET}`;
-      const slug = `${DIM}${m.slug}${RESET}`;
-      const visionTag = m.vision ? ` ${MAGENTA}[img]${RESET}` : "";
-      const cost = costGlyph(m.cost);
-      const costPart = cost ? ` ${cost}` : "";
-      out.push(`  ${marker} ${alias.padEnd(24)} ${slug}${visionTag}${costPart}`);
-      out.push(`      ${DIM}${m.description}${RESET}`);
-    }
+  out.push("");
+  out.push(`${BOLD}Main${RESET}`);
+  for (const m of entries) {
+    const isActive = m.slug === current;
+    const marker = isActive ? `${GREEN}\u25cf${RESET}` : " ";
+    const alias = `${CYAN}${m.aliases[0]}${RESET}`;
+    const slug = `${DIM}${m.slug}${RESET}`;
+    const visionTag = m.vision ? ` ${MAGENTA}[img]${RESET}` : "";
+    const cost = costGlyph(m.cost);
+    const costPart = cost ? ` ${cost}` : "";
+    out.push(`  ${marker} ${alias.padEnd(24)} ${slug}${visionTag}${costPart}`);
+    out.push(`      ${DIM}${m.description}${RESET}`);
   }
   return out.join("\r\n") + "\r\n";
 }
