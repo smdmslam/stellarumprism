@@ -4806,6 +4806,19 @@ input:checked + .toggle-slider:before {
   background: #0d0f14;
 }
 
+.reader-pane-empty {
+  padding: 24px;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 36rem;
+}
+
+.reader-pane-empty strong {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
 .reader-grid {
   display: grid;
   grid-template-columns: 1fr;

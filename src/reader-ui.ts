@@ -13,11 +13,15 @@ interface PaneState {
   hostId: string;
 }
 
+const READER_EMPTY_HINT =
+  '<div class="reader-pane-empty">No file open. Right-click a file in the tree → <strong>Open in Reader</strong>, or use <strong>Clear</strong> after a moved or deleted file.</div>';
+
 export class ReaderUI {
   private readonly overlay: HTMLElement;
   private readonly content: HTMLElement;
   private readonly saveBtn: HTMLButtonElement;
   private readonly splitBtn: HTMLButtonElement;
+  private readonly clearBtn: HTMLButtonElement;
   
   private left: PaneState = { path: null, cwd: null, editor: null, hostId: "reader-left" };
   private right: PaneState = { path: null, cwd: null, editor: null, hostId: "reader-right" };
@@ -30,6 +34,7 @@ export class ReaderUI {
     this.content = document.getElementById("reader-content")!;
     this.saveBtn = document.getElementById("reader-save") as HTMLButtonElement;
     this.splitBtn = document.getElementById("reader-split") as HTMLButtonElement;
+    this.clearBtn = document.getElementById("reader-clear-panes") as HTMLButtonElement;
     this.wireEvents();
   }
 
@@ -106,6 +111,7 @@ export class ReaderUI {
     if (!host) return;
 
     pane.editor?.destroy();
+    pane.editor = null;
     host.innerHTML = `<div style="padding: 24px; color: #6b7280;">Loading...</div>`;
 
     try {
@@ -136,7 +142,13 @@ export class ReaderUI {
       pane.editor.focus();
       this.onChange?.();
     } catch (err) {
+      // Drop stale path so pin()/reopen don't treat this pane as still occupied
+      // (e.g. file was moved; next open should load on the left, not the right).
+      pane.path = null;
+      pane.cwd = null;
+      pane.editor = null;
       host.innerHTML = `<div style="padding: 24px; color: #ef4444;">Error: ${String(err)}</div>`;
+      this.onChange?.();
     }
   }
 
@@ -165,7 +177,23 @@ export class ReaderUI {
   private async toggleSplit(): Promise<void> {
     this.isSplit = !this.isSplit;
     this.renderGrid();
-    
+
+    // Single-pane layout only shows the left column. If the left pane lost its
+    // path (load error) but the right pane is valid, promote right → left.
+    if (!this.isSplit && !this.left.path && this.right.path && this.right.cwd) {
+      const np = this.right.path;
+      const nc = this.right.cwd;
+      this.left.editor?.destroy();
+      this.right.editor?.destroy();
+      this.left.editor = null;
+      this.right.editor = null;
+      this.left.path = np;
+      this.left.cwd = nc;
+      this.right.path = null;
+      this.right.cwd = null;
+      this.activeSide = "left";
+    }
+
     if (this.left.path && this.left.cwd) await this.loadPane("left", this.left.cwd, this.left.path);
     if (this.isSplit && this.right.path && this.right.cwd) {
       await this.loadPane("right", this.right.cwd, this.right.path);
@@ -178,11 +206,28 @@ export class ReaderUI {
     this.saveBtn.style.display = isDirty ? "block" : "none";
   }
 
+  /** Drop all pane paths/editors so the next open starts fresh (fixes stale paths after moves). */
+  public clearPanes(): void {
+    this.left.editor?.destroy();
+    this.right.editor?.destroy();
+    this.left = { path: null, cwd: null, editor: null, hostId: "reader-left" };
+    this.right = { path: null, cwd: null, editor: null, hostId: "reader-right" };
+    this.isSplit = false;
+    this.activeSide = "left";
+    this.renderGrid();
+    const leftHost = document.getElementById("reader-left");
+    if (leftHost) leftHost.innerHTML = READER_EMPTY_HINT;
+    this.updateSaveButton();
+    this.onChange?.();
+  }
+
   public close(): void {
     this.left.editor?.destroy();
     this.right.editor?.destroy();
-    this.left.editor = null;
-    this.right.editor = null;
+    this.left = { path: null, cwd: null, editor: null, hostId: "reader-left" };
+    this.right = { path: null, cwd: null, editor: null, hostId: "reader-right" };
+    this.isSplit = false;
+    this.activeSide = "left";
     this.overlay.setAttribute("aria-hidden", "true");
     this.onChange?.();
   }
@@ -215,7 +260,8 @@ export class ReaderUI {
   private wireEvents(): void {
     document.getElementById("reader-close")?.addEventListener("click", () => this.close());
     this.saveBtn.addEventListener("click", () => this.save());
-    this.splitBtn.addEventListener("click", () => this.toggleSplit());
+    this.splitBtn.addEventListener("click", () => void this.toggleSplit());
+    this.clearBtn?.addEventListener("click", () => this.clearPanes());
 
     window.addEventListener("keydown", (e) => {
       if (this.isVisible()) {
