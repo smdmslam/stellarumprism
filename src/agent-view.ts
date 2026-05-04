@@ -694,7 +694,9 @@ function parseUnifiedDiff(diff: string): DiffHunk[] {
   }
 
   if (hunks.length > 0) return hunks;
-  return parsePrismEditPreview(normalized);
+  const editPreview = parsePrismEditPreview(normalized);
+  if (editPreview.length > 0) return editPreview;
+  return parsePrismWritePreview(normalized);
 }
 
 /**
@@ -747,6 +749,42 @@ function parsePrismEditPreview(s: string): DiffHunk[] {
   return [
     {
       header: "@@ edit preview (old → new) @@",
+      oldStart: 1,
+      newStart: 1,
+      lines,
+    },
+  ];
+}
+
+/**
+ * Parse Rust `preview_write` output for `write_file`:
+ *   write_file: <path>  (<size>)
+ *
+ *   <new content preview...>
+ *
+ * There is no old/new split in this shape, so we render a synthetic
+ * "added-only" hunk instead of leaving the diff card empty.
+ */
+function parsePrismWritePreview(s: string): DiffHunk[] {
+  if (!s.startsWith("write_file:")) return [];
+  const sep = s.indexOf("\n\n");
+  if (sep < 0) return [];
+  const body = s.slice(sep + 2);
+  if (body.trim().length === 0) return [];
+  const newLines = body.split("\n");
+  const lines: DiffLine[] = [];
+  let n = 1;
+  for (const content of newLines) {
+    lines.push({
+      type: "added",
+      content,
+      oldLine: null,
+      newLine: n++,
+    });
+  }
+  return [
+    {
+      header: "@@ write preview (new content) @@",
       oldStart: 1,
       newStart: 1,
       lines,
