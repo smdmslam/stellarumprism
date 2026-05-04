@@ -1,30 +1,68 @@
 /**
- * Prism — manual test fixture for the agent chat inline diff card.
+ * Prism — manual test fixture for the agent chat inline diff card
+ * (preview clip vs full accordion / scroll).
  *
- * How to use:
- * 1. Set shell cwd to the repo root (or use @docs/agent-diff-ui-test.ts in the prompt).
- * 2. In ASK mode, run the prompt below; approve the edit when asked.
- * 3. After the tool succeeds, expand the diff card in the agent panel to inspect
- *    line numbers, +/- lines, and hunk headers.
+ * **Preview vs full:** The collapsed card shows ~6 rows (+ hunk header); click the
+ * **header** to expand. Full diff stays **inside the agent panel** — same card,
+ * body grows with scroll (`max-height: min(70vh, 28rem)`), not a separate window.
+ *
+ * How to test:
+ * 1. Shell cwd = repo root (or attach `@docs/agent-diff-ui-test.ts`).
+ * 2. ASK mode — run the PROMPT block at the bottom of this comment.
+ * 3. Approve `edit_file`; confirm preview shows “preview · more below” + fade.
+ * 4. Click the diff **header** (not filename) → full hunk scrolls inside the card.
  *
  * Not imported by the app; safe to delete after testing.
  */
 
-export const DEMO_VERSION = 1;
+export const DEMO_VERSION = 2;
 
-/** Single line we intentionally tweak during diff UI tests. */
+/** Single-line toggle for quick small-diff experiments. */
 export function getDemoStatus(): string {
-  return "ready";
+  return "diff-ui-ok";
 }
 
 /**
- * EDIT ZONE — replace this block’s inner string in one edit_file call
- * to see a multi-line hunk in the diff card.
+ * Multi-line block (~12 lines) so one replacement overflows the **preview**
+ * height (~10rem) and forces “more below” + expand to see the rest in-place.
  */
-export function describeDemo(): string {
+export function previewFixtureBody(): string {
   return [
-    "Line one: unchanged anchor.",
-    "Line two: CHANGE_ME_TO_SEE_DIFF",
-    "Line three: trailing context.",
+    "  // PREVIEW_BLOCK_V1 — agent replaces this whole return array in one edit",
+    "  const row01 = 'north';",
+    "  const row02 = 'east';",
+    "  const row03 = 'south';",
+    "  const row04 = 'west';",
+    "  const row05 = 'alpha';",
+    "  const row06 = 'bravo';",
+    "  const row07 = 'charlie';",
+    "  const row08 = 'delta';",
+    "  const row09 = 'echo';",
+    "  const row10 = 'foxtrot';",
+    "  const row11 = 'golf';",
+    "  const row12 = 'hotel';",
   ].join("\n");
 }
+
+/**
+ * EDIT ZONE — thin wrapper so the fixture stays valid TS after edits.
+ */
+export function describeDemo(): string {
+  return ["fixture:", previewFixtureBody()].join("\n");
+}
+
+/*
+ * --- PROMPT (paste into agent, ASK mode) ---
+ *
+ * Use edit_file on docs/agent-diff-ui-test.ts. Replace the entire body of
+ * previewFixtureBody() so the `return [` array lists the same 12 const rows
+ * but change every string value from the compass+NATO set to a new theme,
+ * e.g. planets 'mercury' … 'neptune' for row01–row12, or Greek 'alpha' …
+ * 'omega' (twelve names). Keep the same structure and
+ * PREVIEW_BLOCK comment but bump the comment to PREVIEW_BLOCK_V2.
+ *
+ * One edit_file call is enough — you should see a long diff: preview clipped,
+ * then click the diff card header (not the filename) for full scroll inside
+ * the agent chat.
+ * --- end PROMPT ---
+ */

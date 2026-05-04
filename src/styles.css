@@ -4932,12 +4932,22 @@ input:checked + .toggle-slider:before {
   background: rgba(15, 23, 42, 0.3);
 }
 
+/* Tokens stay left; elapsed time sits on the right edge of the bar */
+.input-info-row .elapsed-metric {
+  margin-left: auto;
+}
+
 .info-item {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 10px;
   font-family: var(--font-mono);
+}
+
+.info-label {
+  color: rgba(148, 163, 184, 0.92);
+  font-weight: 500;
 }
 
 .info-value {
