@@ -596,9 +596,12 @@ interface DiffHunk {
 
 /**
  * Robust unified diff parser. Handles multiple hunks and preserves context.
+ * Falls back to Prism's edit approval preview (`--- old` / `+++ new` from
+ * `tools::preview_write`), which has no `@@` headers — see `parsePrismEditPreview`.
  */
 function parseUnifiedDiff(diff: string): DiffHunk[] {
-  const lines = diff.split("\n");
+  const normalized = diff.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
   const hunks: DiffHunk[] = [];
   let currentHunk: DiffHunk | null = null;
   let oldLine = 0;
@@ -649,7 +652,65 @@ function parseUnifiedDiff(diff: string): DiffHunk[] {
     }
   }
 
-  return hunks;
+  if (hunks.length > 0) return hunks;
+  return parsePrismEditPreview(normalized);
+}
+
+/**
+ * Parse Rust `preview_write` output for `edit_file`:
+ *   ... --- old\n<old_string>\n+++ new\n<new_string>
+ * There are no `@@` hunk lines; the unified-diff branch yields zero hunks without this.
+ */
+function parsePrismEditPreview(s: string): DiffHunk[] {
+  const oldMarker = "--- old\n";
+  const i = s.indexOf(oldMarker);
+  if (i < 0) return [];
+
+  const from = i + oldMarker.length;
+  let j = s.indexOf("\n+++ new\n", from);
+  let sepLen = "\n+++ new\n".length;
+  if (j < 0) {
+    j = s.indexOf("+++ new\n", from);
+    if (j < 0) return [];
+    sepLen = "+++ new\n".length;
+  }
+
+  const oldText = s.slice(from, j);
+  const newText = s.slice(j + sepLen);
+
+  const oldLines = oldText.split("\n");
+  const newLines = newText.split("\n");
+
+  const lines: DiffLine[] = [];
+  let o = 1;
+  let n = 1;
+  for (const content of oldLines) {
+    lines.push({
+      type: "removed",
+      content,
+      oldLine: o++,
+      newLine: null,
+    });
+  }
+  for (const content of newLines) {
+    lines.push({
+      type: "added",
+      content,
+      oldLine: null,
+      newLine: n++,
+    });
+  }
+
+  if (lines.length === 0) return [];
+
+  return [
+    {
+      header: "@@ edit preview (old → new) @@",
+      oldStart: 1,
+      newStart: 1,
+      lines,
+    },
+  ];
 }
 
 /**
