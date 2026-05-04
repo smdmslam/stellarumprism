@@ -1554,6 +1554,67 @@ input:checked + .toggle-slider:before {
   opacity: 0.7;
 }
 
+.file-chip-overwrite {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--prism-amber);
+  text-transform: uppercase;
+  margin-left: 4px;
+  padding: 1px 4px;
+  background: rgba(var(--prism-amber-rgb), 0.1);
+  border-radius: 4px;
+}
+
+/* ---------- write timeline ---------- */
+
+.agent-notice-write-timeline {
+  margin: 12px 0;
+  padding: 12px;
+  background: rgba(31, 41, 55, 0.2);
+  border: 1px solid rgba(31, 41, 55, 0.4);
+  border-radius: 8px;
+}
+
+.write-timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.write-timeline-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #94a3b8;
+}
+
+.write-timeline-row-failed {
+  color: #fca5a5;
+}
+
+.write-timeline-status {
+  flex: 0 0 16px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.write-timeline-row:not(.write-timeline-row-failed) .write-timeline-status {
+  color: var(--prism-emerald);
+}
+
+.write-timeline-row-failed .write-timeline-status {
+  color: var(--prism-rose);
+}
+
+.write-timeline-text {
+  flex: 1 1 auto;
+  word-break: break-all;
+}
+
 /* Inline Diff Card in Agent View (Cyber-Noir V2) */
 .agent-diff-card {
   margin: 16px 0;
