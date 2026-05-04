@@ -1570,6 +1570,16 @@ input:checked + .toggle-slider:before {
   border-color: rgba(75, 85, 99, 0.8);
 }
 
+.agent-diff-card.agent-diff-card-preview-warning {
+  border-color: rgba(var(--prism-amber-rgb), 0.3);
+  background: rgba(var(--prism-amber-rgb), 0.05);
+}
+
+.agent-diff-card.agent-diff-card-preview-warning .agent-diff-expand-hint {
+  color: var(--prism-amber);
+  font-weight: 600;
+}
+
 .agent-diff-header {
   display: flex;
   align-items: center;

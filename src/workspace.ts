@@ -3005,9 +3005,11 @@ export class Workspace {
    * result and can adjust; we don't need to surface anything more.
    */
   private async handleToolExecuted(info: {
+    call_id: string;
     name: string;
     args: string;
     ok: boolean;
+    payload: string;
   }): Promise<void> {
     if (info.name !== "read_skill" || !info.ok) return;
     let slug: string | null = null;
