@@ -480,7 +480,7 @@ export class Workspace {
                 class="info-item elapsed-metric"
                 title="Elapsed time for this in-flight agent request (per request; resets when the turn completes or is cancelled)"
               >
-                <span class="info-label">(et)</span>
+                <span class="info-label">Elapsed</span>
                 <span class="info-value" id="task-elapsed-display">0:00</span>
               </span>
             </div>
@@ -2902,8 +2902,7 @@ export class Workspace {
     }
     const actualEl = this.root.querySelector<HTMLElement>("#task-actual-cost-display");
     if (actualEl) {
-      const c = this.taskActualCostUsd;
-      actualEl.textContent = Number.isFinite(c) && c > 0 ? formatTabActualUsd(c) : "$0.000";
+      actualEl.textContent = formatTabActualUsd(this.taskActualCostUsd);
     }
   }
 
@@ -3254,10 +3253,18 @@ export class Workspace {
       el.style.display = "none";
       return;
     }
+    const pretty = prettyPath(this.cwd);
+    const suffix = cwdBadgeTextAfterHomeChip(pretty);
+    if (suffix == null || suffix.length === 0) {
+      el.textContent = "";
+      el.style.display = "none";
+      el.title = this.cwd;
+      return;
+    }
     el.style.display = "";
-    // Manually truncate from the LEFT so the deepest folder stays visible,
-    // e.g. "~/Development/StellarumAtlas/src-tauri" → "…prism/src-tauri".
-    el.textContent = truncateLeft(prettyPath(this.cwd), 34);
+    // Truncate from the LEFT so the deepest folder stays visible,
+    // e.g. "Development/StellarumAtlas/src-tauri" → "…prism/src-tauri".
+    el.textContent = truncateLeft(suffix, 34);
     el.title = this.cwd;
   }
 
@@ -5722,6 +5729,16 @@ function prettyPath(p: string): string {
   const m = /^(\/Users\/[^/]+)(?=\/|$)/.exec(p);
   if (m) return "~" + p.slice(m[1].length);
   return p;
+}
+
+/**
+ * Second cwd chip (next to the `~` home button): show only the segment after
+ * home so we do not render `~` twice when cwd is exactly `$HOME`.
+ */
+function cwdBadgeTextAfterHomeChip(pretty: string): string | null {
+  if (pretty === "~" || pretty === "~/") return null;
+  if (pretty.startsWith("~/")) return pretty.slice(2);
+  return pretty;
 }
 
 /** Truncate a string from the LEFT with a leading "…" when over `max`. */

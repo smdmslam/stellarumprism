@@ -799,6 +799,7 @@ const KEYWORD_LIST = [
   "null", "return", "super", "switch", "this", "throw", "true", "try",
   "typeof", "var", "void", "while", "with", "yield", "let", "static",
   "pub", "fn", "use", "mod", "type", "impl", "trait", "where", "async", "struct",
+  "match", "mut", "self", "Self", "crate", "ref",
 ];
 
 /**
