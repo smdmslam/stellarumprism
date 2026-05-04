@@ -67,6 +67,10 @@ export function extractWritePath(argsJson: string): string | null {
   return null;
 }
 
+function countLines(text: string): number {
+  return text.length === 0 ? 0 : text.split("\n").length;
+}
+
 /**
  * Estimate line changes for a write tool.
  *
@@ -88,8 +92,8 @@ export function calculateWriteStats(
     if (tool === "edit_file") {
       const oldStr = String(parsed.old_string || "");
       const newStr = String(parsed.new_string || "");
-      const removed = oldStr.split("\n").length;
-      const added = newStr.split("\n").length;
+      const removed = countLines(oldStr);
+      const added = countLines(newStr);
       return { added, removed };
     }
     if (tool === "write_file") {
@@ -104,7 +108,7 @@ export function calculateWriteStats(
       }
       if (!created) return undefined;
       const content = String(parsed.content || "");
-      const added = content.split("\n").length;
+      const added = countLines(content);
       return { added };
     }
   } catch {

@@ -284,3 +284,24 @@ test("calculateWriteStats: write_file overwrite suppresses fake line stats", () 
   );
   assert.equal(stats, undefined);
 });
+
+test("calculateWriteStats: write_file create with empty content reports zero added lines", () => {
+  const stats = calculateWriteStats(
+    "write_file",
+    JSON.stringify({ path: "empty.txt", content: "" }),
+    JSON.stringify({ created: true }),
+  );
+  assert.deepEqual(stats, { added: 0 });
+});
+
+test("calculateWriteStats: edit_file empty→empty reports zero line changes", () => {
+  const stats = calculateWriteStats(
+    "edit_file",
+    JSON.stringify({
+      path: "src/a.ts",
+      old_string: "",
+      new_string: "",
+    }),
+  );
+  assert.deepEqual(stats, { added: 0, removed: 0 });
+});
