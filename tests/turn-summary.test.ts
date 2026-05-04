@@ -214,12 +214,13 @@ test("formatFilesModifiedFooter: empty list returns no lines", () => {
 
 test("formatFilesModifiedFooter: single write produces heading + row", () => {
   const lines = formatFilesModifiedFooter([
-    { tool: "write_file", path: "src/foo.ts", ok: true },
+    { tool: "write_file", path: "src/foo.ts", ok: true, operation: "create", stats: { added: 10 } },
   ]);
   assert.equal(lines.length, 2);
   assert.equal(lines[0], "files modified (1)");
   assert.match(lines[1], /src\/foo\.ts/);
-  assert.match(lines[1], /write_file$/);
+  assert.match(lines[1], /create/);
+  assert.match(lines[1], /\+10/);
 });
 
 test("formatFilesModifiedFooter: multiple writes pluralize the count", () => {
@@ -245,13 +246,13 @@ test("formatFilesModifiedFooter: paths are aligned for readability", () => {
   // Soft alignment: short paths are padded so the tool column lines
   // up. Longer paths beyond the cap fall back to single-space.
   const lines = formatFilesModifiedFooter([
-    { tool: "edit_file", path: "a.ts", ok: true },
-    { tool: "edit_file", path: "longer-name.ts", ok: true },
+    { tool: "edit_file", path: "a.ts", ok: true, operation: "edit" },
+    { tool: "edit_file", path: "longer-name.ts", ok: true, operation: "edit" },
   ]);
-  // Both rows should end with the tool name; if alignment worked,
-  // the tool names appear at the same column.
-  const idxA = lines[1].indexOf("edit_file");
-  const idxB = lines[2].indexOf("edit_file");
+  // Both rows should end with the operation; if alignment worked,
+  // the operations appear at the same column.
+  const idxA = lines[1].indexOf("edit");
+  const idxB = lines[2].indexOf("edit");
   assert.equal(idxA, idxB);
 });
 

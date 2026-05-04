@@ -278,8 +278,14 @@ export function formatFilesModifiedFooter(writes: WriteEntry[]): string[] {
       w.path.length >= maxPath
         ? w.path
         : w.path + " ".repeat(maxPath - w.path.length);
+    const op = w.operation ? `  ${w.operation}` : "";
+    let stats = "";
+    if (w.stats) {
+      if ((w.stats.added ?? 0) > 0) stats += ` +${w.stats.added}`;
+      if ((w.stats.removed ?? 0) > 0) stats += ` -${w.stats.removed}`;
+    }
     const status = w.ok ? "" : " (failed)";
-    return `  ${padded}  ${w.tool}${status}`;
+    return `  ${padded}${op}${stats}${status}`;
   });
   return [heading, ...lines];
 }
