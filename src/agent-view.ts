@@ -655,7 +655,7 @@ function parseUnifiedDiff(diff: string): DiffHunk[] {
 /**
  * Lightweight syntax highlighter for common languages.
  */
-function highlightCode(code: string, lang: string): string {
+function highlightCode(code: string, _lang: string): string {
   if (!code) return "&nbsp;";
   
   let escaped = code
