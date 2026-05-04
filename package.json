@@ -8,7 +8,7 @@
     "build": "tsc && vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "tauri": "tauri",
+    "tauri": "node scripts/tauri-cli.mjs",
     "test": "node --experimental-strip-types --no-warnings --test 'tests/**/*.test.ts'"
   },
   "dependencies": {
