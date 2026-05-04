@@ -175,6 +175,12 @@ export interface WorkspaceRestoreOptions {
   agentVisible?: boolean;
 }
 
+/** Tab-bar cumulative provider cost (`estimated_cost_usd` sums), same precision as /usage. */
+function formatTabActualUsd(c: number): string {
+  if (!Number.isFinite(c) || c <= 0) return "$0.000";
+  return `$${c.toFixed(3)}`;
+}
+
 export class Workspace {
   readonly id: string; // same as PTY session id + agent chat id
   readonly root: HTMLElement;
@@ -183,6 +189,8 @@ export class Workspace {
   /** True if we have already auto-titled this tab based on user input. */
   private autoTitleDone = false;
   private taskTokens = 0;
+  /** Sum of `estimated_cost_usd` from completed turns — provider-side estimate (before credit markup). */
+  private taskActualCostUsd = 0;
   /** Wall-clock span for the in-flight agent request (see `setBusyState`). */
   private taskElapsedTimer: ReturnType<typeof setInterval> | null = null;
   private taskBusyStartMs: number | null = null;
@@ -461,8 +469,12 @@ export class Workspace {
           <div class="input-bar">
             <div class="input-info-row">
               <span class="info-item cost-metric" title="Cumulative tokens this tab (updates when each turn completes; cancelled turns include usage only if the provider reported it)">
-                <span class="info-label">(t)</span>
+                <span class="info-label">Tokens</span>
                 <span class="info-value" id="task-cost-display">0.0k</span>
+              </span>
+              <span class="info-item actual-cost-metric" title="Cumulative provider cost this tab (model pricing estimate; does not include credit markup charged to your balance)">
+                <span class="info-label">Actual</span>
+                <span class="info-value" id="task-actual-cost-display">$0.000</span>
               </span>
               <span
                 class="info-item elapsed-metric"
@@ -828,6 +840,10 @@ export class Workspace {
       },
       onTurnComplete: (info) => {
         this.taskTokens += info.totalTokens || 0;
+        const add = info.estimatedCostUsd;
+        if (add != null && Number.isFinite(add) && add > 0) {
+          this.taskActualCostUsd += add;
+        }
         this.updateTaskCost(this.taskTokens);
         void this.refreshBillingInfo();
       },
@@ -2816,6 +2832,7 @@ export class Workspace {
       this.topicShiftNudged = false;
       this.longThreadNudged = false;
       this.taskTokens = 0;
+      this.taskActualCostUsd = 0;
       this.updateTaskCost(0);
       this.cb.onTitleChange(this.id, this.title);
       this.notify("[agent] new session — history cleared and title reset");
@@ -2876,12 +2893,18 @@ export class Workspace {
       : "Auto Verify is on: Prism still auto-grounds inspectable factual prompts like counts, repo facts, and feature summaries, but does not force verification on every turn.";
   }
 
-  /** Update the task cost display in the prompt info row. */
+  /** Update the tokens + actual-cost displays in the prompt info row. */
   public updateTaskCost(tokens: number): void {
     const display = this.root.querySelector<HTMLElement>("#task-cost-display");
-    if (!display) return;
-    const k = (tokens / 1000).toFixed(1);
-    display.textContent = `${k}k`;
+    if (display) {
+      const k = (tokens / 1000).toFixed(1);
+      display.textContent = `${k}k`;
+    }
+    const actualEl = this.root.querySelector<HTMLElement>("#task-actual-cost-display");
+    if (actualEl) {
+      const c = this.taskActualCostUsd;
+      actualEl.textContent = Number.isFinite(c) && c > 0 ? formatTabActualUsd(c) : "$0.000";
+    }
   }
 
   /** Update the global energy gauge in the toolbar based on credits. 
