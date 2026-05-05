@@ -5,6 +5,7 @@
 
 import { Workspace, type WorkspaceRestoreOptions } from "./workspace";
 import { writeSessionState, type PersistedTab } from "./session";
+import { invoke } from "@tauri-apps/api/core";
 
 type CloseTabOptions = {
   /**
@@ -150,7 +151,7 @@ export class TabManager {
         onRequestSelectIndex: (i) => this.selectByIndex(i),
         // Cwd updates are the primary trigger for session writeback —
         // they're the field a user actually cares about restoring.
-        onCwdChange: (id, cwd) => {
+        onCwdChange: (_id, cwd) => {
           this.scheduleSessionWrite();
           if (cwd) invoke("add_recent_directory", { dir: cwd });
         },

@@ -188,7 +188,7 @@ export class Workspace {
   private title = "New Tab";
   /** True if we have already auto-titled this tab based on user input. */
   private autoTitleDone = false;
-  private taskTokens = 0;
+  private billableTokens = 0;
   /** Sum of `estimated_cost_usd` from completed turns — provider-side estimate (before credit markup). */
   private taskActualCostUsd = 0;
   /** Wall-clock span for the in-flight agent request (see `setBusyState`). */
@@ -473,8 +473,8 @@ export class Workspace {
           <div class="attachments"></div>
           <div class="input-bar">
             <div class="input-info-row">
-              <span class="info-item cost-metric" title="Cumulative tokens this tab (updates when each turn completes; cancelled turns include usage only if the provider reported it)">
-                <span class="info-label">Tokens</span>
+              <span class="info-item cost-metric" title="Cumulative billable tokens this tab (updates when each turn completes; reflects all API calls including tool loops)">
+                <span class="info-label">API Tokens</span>
                 <span class="info-value" id="task-cost-display">0.0k</span>
               </span>
               <span class="info-item actual-cost-metric" title="Cumulative provider cost this tab (model pricing estimate; does not include credit markup charged to your balance)">
@@ -870,12 +870,12 @@ export class Workspace {
         }
       },
       onTurnComplete: (info) => {
-        this.taskTokens += info.totalTokens || 0;
+        this.billableTokens += info.totalTokens || 0;
         const add = info.estimatedCostUsd;
         if (add != null && Number.isFinite(add) && add > 0) {
           this.taskActualCostUsd += add;
         }
-        this.updateTaskCost(this.taskTokens);
+        this.updateTaskCost(this.billableTokens);
         void this.refreshBillingInfo();
       },
     });
@@ -2868,7 +2868,7 @@ export class Workspace {
       this.lastChatTopicKeywords = [];
       this.topicShiftNudged = false;
       this.longThreadNudged = false;
-      this.taskTokens = 0;
+      this.billableTokens = 0;
       this.taskActualCostUsd = 0;
       this.updateTaskCost(0);
       this.cb.onTitleChange(this.id, this.title);
