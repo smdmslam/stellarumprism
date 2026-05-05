@@ -21,6 +21,21 @@ use crate::approval::{ApprovalDecision, ApprovalState};
 use crate::config::ConfigState;
 use crate::usage::emit_usage_event;
 
+fn is_signature_change(args_json: &str) -> bool {
+    let Ok(args) = serde_json::from_str::<serde_json::Value>(args_json) else { return false; };
+    if let (Some(old_str), Some(new_str)) = (args.get("old_string").and_then(|v| v.as_str()), args.get("new_string").and_then(|v| v.as_str())) {
+        let sig_patterns = ["export ", "pub ", "async ", "function ", "fn ", "class ", "interface ", "=>"];
+        
+        let old_lines_with_sig: Vec<_> = old_str.lines().filter(|l| sig_patterns.iter().any(|p| l.contains(p))).collect();
+        let new_lines_with_sig: Vec<_> = new_str.lines().filter(|l| sig_patterns.iter().any(|p| l.contains(p))).collect();
+        
+        if old_lines_with_sig != new_lines_with_sig {
+            return true;
+        }
+    }
+    false
+}
+
 /// Max number of non-system messages kept in the rolling history. Older
 /// user/assistant pairs are dropped when we exceed this, so long sessions
 /// don't blow past OpenRouter's context window.
@@ -1629,6 +1644,9 @@ pub async fn agent_query(
         // Track every tool call we executed so the reviewer can see them.
         let mut tool_summaries: Vec<(String, String, bool)> = Vec::new();
 
+        let mut has_grep = false;
+        let mut has_signature_edit = false;
+
         // Tool-use loop: stream → if tools requested, execute & continue; else break.
         let mut attach_images_this_turn = !pending_images.is_empty();
         for round in 0..max_rounds {
@@ -1665,6 +1683,46 @@ pub async fn agent_query(
                     usage,
                     request_id,
                 }) => {
+                    if has_signature_edit && !has_grep {
+                        let rejection = "SYSTEM ENFORCEMENT: You modified a function signature or exported symbol in this turn, but did not call `grep` to find its consumers. You MUST call `grep` to ensure no call-sites are broken before concluding.";
+                        if !assistant_text.trim().is_empty() {
+                            session_for_task.append_raw(Message::assistant(assistant_text.clone()));
+                        } else {
+                            session_for_task.append_raw(Message::assistant("I have completed my edits."));
+                        }
+                        session_for_task.append_raw(Message::user(rejection));
+                        let _ = app_handle.emit(
+                            &error_event,
+                            serde_json::json!({
+                                "error": "Signature change detected without grep. Forcing consumer check...",
+                                "fatal": false
+                            }),
+                        );
+                        if let Some(u) = usage {
+                            let pricing = crate::pricing::get_pricing_basis(&chosen_model);
+                            let cost = (u.prompt_tokens as f64 * pricing.input_per_m / 1_000_000.0) +
+                                       (u.completion_tokens as f64 * pricing.output_per_m / 1_000_000.0);
+                            total_prompt_tokens += u.prompt_tokens;
+                            total_completion_tokens += u.completion_tokens;
+                            total_cost_usd += cost;
+                            emit_usage_event(
+                                &app_handle,
+                                request_id.clone(),
+                                chat_id_for_task.clone(),
+                                cwd_str.clone(),
+                                mode_for_task.clone().unwrap_or_else(|| "chat".into()),
+                                chosen_model.clone(),
+                                "openrouter".into(),
+                                u.prompt_tokens,
+                                u.completion_tokens,
+                                duration_ms,
+                                true,
+                                false,
+                            );
+                        }
+                        continue;
+                    }
+
                     if let Some(u) = usage {
                         let pricing = crate::pricing::get_pricing_basis(&chosen_model);
                         let cost = (u.prompt_tokens as f64 * pricing.input_per_m / 1_000_000.0) +
@@ -1763,6 +1821,15 @@ pub async fn agent_query(
                     // (`write_file`, `edit_file`) are gated on user approval
                     // via the oneshot channel registered in `approval_pending`.
                     for call in &calls {
+                        if call.function.name == "grep" || call.function.name == "rg" || call.function.name == "find" {
+                            has_grep = true;
+                        }
+                        if call.function.name == "edit_file" {
+                            if is_signature_change(&call.function.arguments) {
+                                has_signature_edit = true;
+                            }
+                        }
+
                         let needs_approval =
                             crate::tools::requires_approval(&call.function.name);
                         let session_allowed_for_tool =
