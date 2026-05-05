@@ -25,6 +25,7 @@ export interface UsageEvent {
  * Syncs a local usage event to Firestore.
  */
 export async function syncUsageToFirestore(event: UsageEvent): Promise<void> {
+  if (!db || !auth) return;
   const user = auth.currentUser;
   const uid = user?.uid || "guest-user";
   const period = event.timestamp.slice(0, 7); // YYYY-MM

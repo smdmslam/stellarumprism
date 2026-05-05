@@ -166,7 +166,10 @@ export class TabManager {
   }
 
   selectTab(id: string): void {
-    if (this.activeId === id) return;
+    // Always sync activate/deactivate — never early-return when activeId
+    // already matches. A prior bug or DOM swap can leave `.workspace`
+    // without `.active` while activeId is correct; skipping re-activate
+    // keeps the main surface `display: none` (see styles.css).
     for (const ws of this.workspaces) {
       if (ws.id === id) {
         ws.activate();
@@ -194,6 +197,27 @@ export class TabManager {
 
   getActiveWorkspace(): Workspace | null {
     return this.workspaces.find((w) => w.id === this.activeId) || null;
+  }
+
+  /**
+   * Guarantee at least one workspace exists (e.g. after session restore
+   * cleared the bootstrap tab but failed mid-replacement).
+   */
+  ensureAtLeastOneTab(): void {
+    if (this.workspaces.length === 0) {
+      this.newTab();
+    }
+  }
+
+  /**
+   * Ensure there is a tab and its `.workspace` has the `active` class.
+   * Repairs stale activeId or missing `.active` after session restore.
+   */
+  reconcileActiveWorkspace(): void {
+    this.ensureAtLeastOneTab();
+    const target =
+      this.workspaces.find((w) => w.id === this.activeId) ?? this.workspaces[0];
+    if (target) this.selectTab(target.id);
   }
 
   /**

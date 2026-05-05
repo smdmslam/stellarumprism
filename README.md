@@ -92,6 +92,7 @@ Drop it into a workflow and CI will fail on confirmed errors. The sidecar is con
 
 ## Documentation
 
+- **[docs/BOOTSTRAP.md](docs/BOOTSTRAP.md)** — desktop shell startup invariants (avoid blank-window regressions); run `pnpm check:bootstrap` before merging UI bootstrap changes
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the substrate + consumers pattern, the confidence grader, design decisions
 - **[docs/USAGE.md](docs/USAGE.md)** — slash commands, configuration, the CLI
 - **[docs/SUBSTRATE.md](docs/SUBSTRATE.md)** — per-cell reference (what each cell does, when it runs, how to configure it)

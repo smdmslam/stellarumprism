@@ -1819,9 +1819,9 @@ pub async fn agent_query(
                                                 &app_handle,
                                                 chat_id_for_task.clone(),
                                                 cwd_str.clone(),
+                                                &call.function.arguments,
                                                 &api_key,
                                                 &base_url,
-                                                &call.function.arguments,
                                             )
                                             .await
                                         }
@@ -2966,6 +2966,31 @@ mod resolver_tests {
         let msg = build_user_message("probe it", None, Some("http://localhost:8000"));
         assert!(msg.starts_with("Dev server URL: http://localhost:8000"));
         assert!(msg.contains("probe it"));
+    }
+}
+
+#[cfg(test)]
+mod tool_wiring_tests {
+    #[test]
+    fn web_search_dispatch_passes_arguments_before_credentials() {
+        // Regression guard: the web_search async dispatch once passed
+        // (api_key, base_url, call.arguments) into execute_web_search even
+        // though the callee expects (args_json, api_key, base_url). That
+        // makes Sonar calls fail with a red tool error before hitting the
+        // network. Pin the order at the call site.
+        let src = include_str!("agent.rs");
+        let needle = r#"crate::tools::execute_web_search(
+                                                &app_handle,
+                                                chat_id_for_task.clone(),
+                                                cwd_str.clone(),
+                                                &call.function.arguments,
+                                                &api_key,
+                                                &base_url,
+                                            )"#;
+        assert!(
+            src.contains(needle),
+            "web_search dispatch must pass args_json before api_key/base_url"
+        );
     }
 }
 

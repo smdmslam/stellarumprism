@@ -64,22 +64,38 @@ function filterSkillFamilies(
 export class SettingsUI {
   private readonly overlay: HTMLElement;
   private readonly content: HTMLElement;
+  /** False when settings HTML nodes were missing at startup. */
+  private readonly overlayMounted: boolean;
   private currentTab = "general";
   private activeWorkspace: Workspace | null = null;
 
   constructor() {
-    this.overlay = document.getElementById("settings-overlay")!;
-    this.content = document.getElementById("settings-content")!;
+    const overlay = document.getElementById("settings-overlay");
+    const content = document.getElementById("settings-content");
+    if (!overlay || !content) {
+      console.error(
+        "Prism: settings-overlay or settings-content missing — settings disabled",
+      );
+      this.overlay = document.createElement("div");
+      this.content = document.createElement("div");
+      this.overlayMounted = false;
+      return;
+    }
+    this.overlay = overlay;
+    this.content = content;
+    this.overlayMounted = true;
     this.wireEvents();
   }
 
   public open(activeWs: Workspace | null = null): void {
+    if (!this.overlayMounted) return;
     this.activeWorkspace = activeWs;
     this.overlay.setAttribute("aria-hidden", "false");
     this.render();
   }
 
   public close(): void {
+    if (!this.overlayMounted) return;
     this.overlay.setAttribute("aria-hidden", "true");
   }
 

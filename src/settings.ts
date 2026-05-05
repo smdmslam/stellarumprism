@@ -77,7 +77,13 @@ export class SettingsManager {
   }
 
   private load(): AppSettings {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    let raw: string | null = null;
+    try {
+      raw = localStorage.getItem(STORAGE_KEY);
+    } catch {
+      // Private mode / blocked storage (some WebViews) — don't abort the bundle.
+      return { ...DEFAULT_SETTINGS };
+    }
     if (!raw) return { ...DEFAULT_SETTINGS };
     try {
       return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
@@ -87,7 +93,11 @@ export class SettingsManager {
   }
 
   private save(): void {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(this.current));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.current));
+    } catch {
+      /* ignore — prefs won't persist this session */
+    }
     this.applyCssVariables();
   }
 

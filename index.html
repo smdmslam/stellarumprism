@@ -123,5 +123,27 @@
         </main>
       </div>
     </div>
+    <!-- If the bundled app never mounts a workspace, explain next steps (runs without modules). -->
+    <script>
+      (function () {
+        function showStaleShellHint() {
+          if (window.__PRISM_MOUNTED) return;
+          var w = document.getElementById("workspaces");
+          if (!w || w.children.length > 0) return;
+          var strip = document.getElementById("tab-strip");
+          if (strip && strip.querySelector(".tab[data-id]")) return;
+          w.innerHTML =
+            '<div id="prism-shell-hint" style="box-sizing:border-box;padding:20px 24px;margin:16px;border:1px solid #64748b;border-radius:12px;background:#0f1419;color:#cbd5e1;font:13px/1.5 system-ui,sans-serif;max-width:42rem">' +
+            "<strong style=\"display:block;margin-bottom:8px;color:#f1f5f9\">Workspace did not load.</strong>" +
+            "The UI script may have failed before opening a tab (check <strong>View → Toggle Developer Tools</strong> or terminal logs). " +
+            "Try: quit Prism, run <code style=\"background:#111827;padding:2px 6px;border-radius:4px\">pnpm install</code> then <code style=\"background:#111827;padding:2px 6px;border-radius:4px\">pnpm tauri dev</code>, " +
+            "and clear site data for <code style=\"background:#111827;padding:2px 6px;border-radius:4px\">localhost</code> if storage is blocked." +
+            "</div>";
+        }
+        window.addEventListener("DOMContentLoaded", function () {
+          setTimeout(showStaleShellHint, 3500);
+        });
+      })();
+    </script>
   </body>
 </html>

@@ -275,4 +275,31 @@ export class ReaderUI {
   }
 }
 
-export const readerUI = new ReaderUI();
+let readerUISingleton: ReaderUI | null = null;
+
+/** Minimal stub so Workspace can still boot if reader DOM is incomplete. */
+function disabledReaderStub(): ReaderUI {
+  return {
+    setOnChange() {},
+    open() {
+      return Promise.resolve();
+    },
+  } as unknown as ReaderUI;
+}
+
+/**
+ * Lazily construct ReaderUI on first use (during Workspace.init), not at module
+ * load. Constructor failures fall back to a no-op stub so the rest of Prism
+ * still mounts.
+ */
+export function getReaderUI(): ReaderUI {
+  if (!readerUISingleton) {
+    try {
+      readerUISingleton = new ReaderUI();
+    } catch (err) {
+      console.error("[reader-ui] constructor failed — reader disabled:", err);
+      readerUISingleton = disabledReaderStub();
+    }
+  }
+  return readerUISingleton;
+}

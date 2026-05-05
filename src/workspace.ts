@@ -104,7 +104,7 @@ import {
   type TreeState,
   type VisibleRow,
 } from "./file-tree";
-import { readerUI } from "./reader-ui";
+import { getReaderUI } from "./reader-ui";
 
 const TERM_THEME = {
   background: "#0d0f14",
@@ -383,6 +383,11 @@ export class Workspace {
     if (restore.consoleVisible !== undefined) { this.consoleVisible = restore.consoleVisible; this.visibilityRestored = true; }
     if (restore.agentVisible !== undefined) { this.agentVisible = restore.agentVisible; this.visibilityRestored = true; }
 
+    // Session.json can end up with every primary region hidden (migration bug,
+    // manual edit, or toggling everything off). That paints an empty-looking
+    // workspace — restore defaults so startup always shows usable chrome.
+    this.ensureMinimumVisibleLayout();
+
     // Build DOM subtree for this workspace.
     this.root = document.createElement("div");
     this.root.className = "workspace";
@@ -561,12 +566,17 @@ export class Workspace {
 
   activate(): void {
     this.root.classList.add("active");
+    // Inline override — stylesheet `.workspace`/`.active` can otherwise lose
+    // the battle with load order or specificity; without `display:flex` the
+    // main surface stays `none` and reads as a blank window.
+    this.root.style.setProperty("display", "flex", "important");
     this.fitTerminal();
     queueMicrotask(() => this.input?.focus());
   }
 
   deactivate(): void {
     this.root.classList.remove("active");
+    this.root.style.setProperty("display", "none", "important");
   }
 
   /** Focus the input editor, optionally seeding it with text. */
@@ -656,6 +666,22 @@ export class Workspace {
     this.root.remove();
   }
 
+  /**
+   * If the center stack (preview / terminal) and agent are all hidden, the
+   * main `.content` row is empty (CSS hides center + agent) — a solid empty
+   * surface even when the sidebar stays open. Reset to defaults.
+   */
+  private ensureMinimumVisibleLayout(): void {
+    const centerVisible = this.previewVisible || this.terminalVisible;
+    const mainRowUsable = centerVisible || this.agentVisible;
+    if (mainRowUsable) return;
+    this.sidebarVisible = true;
+    this.previewVisible = true;
+    this.terminalVisible = true;
+    this.consoleVisible = true;
+    this.agentVisible = true;
+  }
+
   // -- init -----------------------------------------------------------------
 
   private async init(): Promise<void> {
@@ -691,7 +717,7 @@ export class Workspace {
     this.wireFileTree();
 
     // Sync with Reader UI (Star indicators)
-    readerUI.setOnChange(() => {
+    getReaderUI().setOnChange(() => {
       this.renderFileTree();
     });
 
@@ -3848,7 +3874,7 @@ export class Workspace {
         void this.openFileInEditor(path);
       });
       addItem(isMulti ? `Open ${count} in Reader` : "Open in Reader", "↗", () => {
-        void readerUI.open(this.cwd!, isMulti ? selectedPaths : path);
+        void getReaderUI().open(this.cwd!, isMulti ? selectedPaths : path);
       });
       addItem("Open in Browser", "⎗", () => {
         void invoke("open_in_browser", { cwd: this.cwd, path });
