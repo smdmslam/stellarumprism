@@ -6,7 +6,18 @@ This document outlines key features of the Prism project, providing a high-level
 *   **Substrate-gated AI Development:** Prism inverts the traditional AI coding tool paradigm by prioritizing deterministic checks (the "substrate") before LLM interpretation. This ensures that all findings, edits, and claims are grounded in verifiable code behavior.
 *   **Confidence Grader:** Findings are graded based on the reliability of their source (e.g., substrate cells yield higher confidence than LLM-only claims), providing a more accurate assessment of code quality and issues.
 
-## Recent Enhancements (Last 5 Commits)
+## Recent Enhancements (Last 20 Commits)
+
+### Truthful Artifacts & Agent Transparency
+*   **Truthful Write Artifacts (Phases 1-3):** A major refactor of the diff card infrastructure. Replaced speculative or inaccurate diff generation with "Truthful Overwrite Diffs." The UI now correlates agent operations with exact disk states, ensuring the user sees exactly what was written, including precise line counting without trailing newline phantoms.
+*   **Write Timeline & Semantic Labeling:** Non-edit operations like `delete`, `move`, and `mkdir` are now accurately labeled and visually distinguished in the diff cards rather than defaulting to generic "edit" labels. This is supported by an enriched footer showing truthful operation and statistic tracking.
+*   **Skill Engagement Notices:** Introduced a non-intrusive, inline "skill engaged" chip in the tool execution timeline when `read_skill` is triggered, maintaining a clean agent-view while keeping the user informed of persistent behavioral injections.
+
+### Agent Safety & UI Polish
+*   **Contract-Change Consumer Enumeration (Guardrail):** A strict system-prompt clause enforcing that whenever the agent modifies a function signature, exported interface, or public variable name, it must actively search (`grep`) for and update all corresponding call-sites, preventing broken dependency regressions.
+*   **Slash Command Markdown Tables:** Upgraded the output format of agent slash commands (`/history`, `/models`, `/last`) from flat ANSI text into structured, highly readable Markdown tables.
+*   **AI Model Filtering:** Added a real-time search filter bar to the Settings UI to streamline curation of active AI models without requiring full UI re-renders.
+*   **Enhanced Code-Block Contrast:** Refined the "Cyber-Noir" aesthetics for code blocks within the chat interface, using pure black backgrounds and high-visibility borders to pop against standard chat prose.
 
 ### Dual-Tier Verification Strategy
 *   **Always Verify (Second-Pass Supervision):** Engages a separate, independent supervisor model to fact-check every response. This "Double-Check" ensures maximum grounding for complex tasks but may lead to shorter, more cautious answers if evidence is not explicitly found in the tool logs.
