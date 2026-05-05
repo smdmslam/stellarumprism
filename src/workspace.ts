@@ -513,17 +513,7 @@ export class Workspace {
               <button class="busy-pill" type="button" title="Cancel agent request" aria-label="Cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
 
               <div class="pill-group">
-                <span class="intent-badge" data-intent="command" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="Input mode">CMD</span>
-                <div class="intent-selector-menu" role="menu" hidden>
-                  <div class="intent-selector-item" data-intent="command">
-                    <span class="intent-item-label">CMD</span>
-                    <span class="intent-item-detail">Run shell commands</span>
-                  </div>
-                  <div class="intent-selector-item" data-intent="agent">
-                    <span class="intent-item-label">ASK</span>
-                    <span class="intent-item-detail">Talk to the AI agent</span>
-                  </div>
-                </div>
+                <span class="intent-badge" data-intent="command" role="button" aria-label="Toggle input mode">CMD</span>
               </div>
             </div>
             <div class="skill-chips-row" aria-label="Engaged skills" hidden></div>
@@ -1031,7 +1021,7 @@ export class Workspace {
     intentBadge.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      this.toggleIntentMenu();
+      this.input.toggleAgentMode();
     });
 
     modelBadge.addEventListener("click", (e) => {
@@ -1073,17 +1063,6 @@ export class Workspace {
           this.handleSubmit(cmd, { intent: "command", explicit: true, payload: cmd });
           this.hidePillMenus();
         }
-        return;
-      }
-
-      const intentItem = target?.closest<HTMLElement>(".intent-selector-item");
-      if (intentItem) {
-        const intent = intentItem.dataset.intent as "command" | "agent";
-        const isAgent = intent === "agent";
-        if (this.input.isAgentMode() !== isAgent) {
-          this.input.toggleAgentMode();
-        }
-        this.hidePillMenus();
         return;
       }
 
@@ -3439,7 +3418,7 @@ export class Workspace {
         '.sidebar-tab-action[data-action="toggle-file-view-options"]',
       );
       const onPill = !!target.closest(".model-badge, .intent-badge");
-      const insidePillMenu = !!target.closest(".model-selector-menu, .intent-selector-menu");
+      const insidePillMenu = !!target.closest(".model-selector-menu");
       
       if (!insideMenu && !onButton) this.hideFileViewOptionsMenu();
       if (!onPill && !insidePillMenu) this.hidePillMenus();
@@ -3539,20 +3518,6 @@ export class Workspace {
     }
   }
 
-  private toggleIntentMenu(): void {
-    const menu = this.root.querySelector<HTMLElement>(".intent-selector-menu");
-    const badge = this.root.querySelector<HTMLElement>(".intent-badge");
-    if (!menu || !badge) return;
-
-    const isOpen = badge.getAttribute("aria-expanded") === "true";
-    this.hidePillMenus(); // Close others
-
-    if (!isOpen) {
-      badge.setAttribute("aria-expanded", "true");
-      menu.removeAttribute("hidden");
-    }
-  }
-
   private toggleCwdMenu(): void {
     const menu = this.root.querySelector<HTMLElement>(".cwd-selector-menu")!;
     const hidden = menu.hasAttribute("hidden");
@@ -3585,10 +3550,10 @@ export class Workspace {
   }
 
   private hidePillMenus(): void {
-    this.root.querySelectorAll(".model-selector-menu, .intent-selector-menu, .cwd-selector-menu").forEach((m) => {
+    this.root.querySelectorAll(".model-selector-menu, .cwd-selector-menu").forEach((m) => {
       m.setAttribute("hidden", "");
     });
-    this.root.querySelectorAll(".model-badge, .intent-badge, .cwd-badge").forEach((b) => {
+    this.root.querySelectorAll(".model-badge, .cwd-badge").forEach((b) => {
       b.setAttribute("aria-expanded", "false");
     });
   }
