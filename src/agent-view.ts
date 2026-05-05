@@ -106,7 +106,7 @@ export interface AgentDiffInfo {
   path: string;
   diff: string;
   source: "approval-preview" | "tool-artifact";
-  operation?: "create" | "overwrite" | "edit";
+  operation?: "create" | "overwrite" | "edit" | "delete" | "move" | "mkdir";
 }
 
 export interface AgentViewApi {
@@ -492,6 +492,8 @@ export class AgentView implements AgentViewApi {
       expandHint.textContent = "created · preview";
     } else if (isPreviewOnly && operation === "edit") {
       expandHint.textContent = "edited · preview";
+    } else if (isPreviewOnly && operation) {
+      expandHint.textContent = `${operation === "mkdir" ? "mkdir" : operation + "d"} · preview`;
     } else if (source === "tool-artifact") {
       expandHint.textContent = "actual diff";
     } else {

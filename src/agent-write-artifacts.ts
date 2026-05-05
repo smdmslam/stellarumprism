@@ -45,8 +45,11 @@ export function extractWriteArtifactDiff(payload: string): string | null {
 export function inferWriteOperation(
   toolName: string,
   payload: string,
-): "create" | "overwrite" | "edit" {
+): "create" | "overwrite" | "edit" | "delete" | "move" | "mkdir" {
   if (toolName === "edit_file") return "edit";
+  if (toolName === "delete_file" || toolName === "delete_directory") return "delete";
+  if (toolName === "move_path") return "move";
+  if (toolName === "create_directory") return "mkdir";
   if (toolName !== "write_file") return "edit";
   try {
     const parsed = JSON.parse(payload) as { created?: unknown };

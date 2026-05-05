@@ -32,7 +32,7 @@ export interface WriteEntry {
    *  silently-dropped attempt. */
   ok: boolean;
   /** High-level operation semantics for truthful UI labeling. */
-  operation?: "create" | "overwrite" | "edit";
+  operation?: "create" | "overwrite" | "edit" | "delete" | "move" | "mkdir";
   /** Estimated line changes when they are actually knowable. */
   stats?: { added?: number; removed?: number };
   /** Short human-readable result summary from the tool event. */
