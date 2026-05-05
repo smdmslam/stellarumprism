@@ -88,6 +88,11 @@ const DESTRUCTIVE_PATTERNS: &[&str] = &[
     "| bash",
     "|sh",
     "|bash",
+    // -----------------------------------------------------------------------
+    // PATH GUARD: Shield proprietary IP and internal binaries from agent gaze.
+    // -----------------------------------------------------------------------
+    ".stellarumdev",
+    "/Applications/Prism.app",
 ];
 
 /// Caller-supplied spec for a single run_shell invocation.

@@ -2500,7 +2500,21 @@ fn resolve_path(cwd: &str, raw: &str) -> Result<PathBuf, String> {
         }
         PathBuf::from(cwd).join(raw)
     };
-    Ok(buf.canonicalize().unwrap_or(buf))
+    let resolved = buf.canonicalize().unwrap_or(buf);
+
+    // -----------------------------------------------------------------------
+    // PATH GUARD: Shield proprietary IP and internal binaries from agent gaze.
+    // Rejects access to forbidden "blackbox" paths.
+    // -----------------------------------------------------------------------
+    let path_str = resolved.to_string_lossy();
+    if path_str.contains(".stellarumdev") {
+        return Err("Access Denied: Path is shielded (Personal IP)".into());
+    }
+    if path_str.contains("/Applications/Prism.app") {
+        return Err("Access Denied: Self-inspection of Prism binary is forbidden".into());
+    }
+
+    Ok(resolved)
 }
 
 fn format_bytes(n: u64) -> String {
