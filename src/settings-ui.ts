@@ -270,6 +270,9 @@ export class SettingsUI {
       <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 16px;">
         Toggle models to enable/disable them in the global command bar. Disabling poor-performing models streamlines your workflow.
       </p>
+      <div class="models-search-container" style="margin-bottom: 16px;">
+        <input type="text" id="models-search" placeholder="Search models (e.g. 'flash', '4o')..." class="prism-search-input" style="width: 100%;">
+      </div>
       <div class="model-setting-card model-setting-card-master">
         <div class="model-setting-info">
           <div class="model-setting-name">All models</div>
@@ -310,6 +313,23 @@ export class SettingsUI {
     html += `</div>`;
     this.content.innerHTML = html;
 
+    // Filter logic
+    const searchInput = this.content.querySelector<HTMLInputElement>("#models-search");
+    if (searchInput) {
+      searchInput.addEventListener("input", () => {
+        const query = searchInput.value.toLowerCase().trim();
+        this.content.querySelectorAll<HTMLElement>(".model-setting-card:not(.model-setting-card-master)").forEach(card => {
+          const name = card.querySelector(".model-setting-name")?.textContent?.toLowerCase() || "";
+          const desc = card.querySelector(".model-setting-desc")?.textContent?.toLowerCase() || "";
+          if (name.includes(query) || desc.includes(query)) {
+            card.style.display = "flex";
+          } else {
+            card.style.display = "none";
+          }
+        });
+      });
+    }
+
     // Wire the master toggle. On flip, bulk-update all per-slug
     // overrides via the dedicated helper (one localStorage write,
     // one settings-changed event), then re-render so the individual
@@ -318,7 +338,12 @@ export class SettingsUI {
     masterToggle?.addEventListener("change", () => {
       const slugs = models.map(m => m.slug);
       settings.setAllModelsEnabled(slugs, masterToggle.checked);
-      this.renderModels();
+      
+      // We don't want to re-render the whole tab and lose focus on the search input,
+      // so we just update the checkboxes manually.
+      this.content.querySelectorAll<HTMLInputElement>("input[data-slug]").forEach(input => {
+        input.checked = masterToggle.checked;
+      });
     });
 
     // Wire per-model toggles. Each individual change might invalidate
@@ -328,7 +353,11 @@ export class SettingsUI {
     this.content.querySelectorAll<HTMLInputElement>("input[data-slug]").forEach(input => {
       input.addEventListener("change", () => {
         settings.setModelEnabled(input.dataset.slug!, input.checked);
-        this.renderModels();
+        // Update master toggle manually without re-rendering to preserve search state
+        if (masterToggle) {
+          const allInputs = Array.from(this.content.querySelectorAll<HTMLInputElement>("input[data-slug]"));
+          masterToggle.checked = allInputs.every(input => input.checked);
+        }
       });
     });
   }

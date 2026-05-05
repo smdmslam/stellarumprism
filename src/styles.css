@@ -1319,8 +1319,8 @@ input:checked + .toggle-slider:before {
 .markdown-body pre {
   margin: 14px 0;
   padding: 16px;
-  background: #050608;
-  border: 1px solid #1f2937;
+  background: #000000;
+  border: 1px solid #374151;
   border-radius: 12px;
   overflow-x: auto;
   font-family: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;

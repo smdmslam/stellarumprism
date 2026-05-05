@@ -5684,10 +5684,13 @@ function renderHistoryMarkdown(msgs: { role: string; content: string }[]): strin
     return "_No conversation yet._";
   }
   const out: string[] = ["### Conversation History\n\n"];
+  out.push("| Role | Message |\n");
+  out.push("| :--- | :--- |\n");
   for (const m of msgs) {
     const roleName =
       m.role === "user" ? "**you**" : m.role === "assistant" ? "**agent**" : `_${m.role}_`;
-    out.push(`#### ${roleName}\n${m.content}\n\n`);
+    const safeContent = m.content.replace(/\|/g, "&#124;").replace(/\n/g, "<br>");
+    out.push(`| ${roleName} | ${safeContent} |\n`);
   }
   return out.join("");
 }

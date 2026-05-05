@@ -240,6 +240,42 @@ export class AgentView implements AgentViewApi {
       this.currentToolLog = log;
     }
 
+    // Task 2.5: Render a slim, non-intrusive inline chip for read_skill
+    if (info.name === "read_skill") {
+      const chip = document.createElement("div");
+      chip.className = "file-chip" + (info.status === "ok" ? "" : " file-chip-failed");
+      chip.style.margin = "2px 0";
+      chip.style.width = "fit-content";
+      
+      const icon = document.createElement("span");
+      icon.className = "file-chip-icon";
+      icon.style.color = "#c084fc"; // purple for skills
+      icon.textContent = "✦";
+      chip.appendChild(icon);
+      
+      const nameEl = document.createElement("span");
+      nameEl.className = "file-chip-name";
+      nameEl.style.color = "#d8b4fe";
+      
+      let skillName = info.argsPretty || "unknown";
+      try {
+        const parsed = JSON.parse(skillName);
+        if (parsed.slug) skillName = parsed.slug;
+      } catch {
+        // Fall back to raw args
+      }
+      nameEl.textContent = `skill engaged: ${stripAnsi(skillName)}`;
+      chip.appendChild(nameEl);
+      
+      this.currentToolLog.appendChild(chip);
+      
+      // Reset prose pointer so next text chunk drops below
+      this.currentProseSection = null;
+      this.currentProseMarkdown = "";
+      this.scrollToBottomIfFollowing();
+      return;
+    }
+
     const card = document.createElement("div");
     card.className = `agent-tool-card status-${info.status}`;
 
