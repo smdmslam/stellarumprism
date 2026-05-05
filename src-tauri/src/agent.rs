@@ -1739,7 +1739,7 @@ pub async fn agent_query(
 
                         emit_usage_event(
                             &app_handle,
-                            request_id,
+                            request_id.clone(),
                             chat_id_for_task.clone(),
                             cwd_str.clone(),
                             mode_for_task.clone().unwrap_or_else(|| "chat".into()),
@@ -1814,7 +1814,7 @@ pub async fn agent_query(
                             crate::audit::log_approval(
                                 &cwd_str,
                                 chat_id_for_task.clone(),
-                                Some(request_id.clone()),
+                                request_id.clone(),
                                 call.function.name.clone(),
                                 call.function.arguments.clone(),
                                 decision_str,

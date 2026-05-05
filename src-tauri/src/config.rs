@@ -427,6 +427,7 @@ impl ConfigState {
     }
     pub fn set_verifier_model(&self, model: String) {
         self.inner.write().agent.verifier.model = model;
+    }
     pub fn add_recent_directory(&self, dir: String) {
         let mut inner = self.inner.write();
         inner.recent_directories.retain(|d| d != &dir);

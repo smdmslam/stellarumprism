@@ -581,9 +581,7 @@ pub fn list_directory_tree(
         });
     }
 
-    }
- 
-     // Dirs first, then files/symlinks, alphabetically (case-insensitive)
+    // Dirs first, then files/symlinks, alphabetically (case-insensitive)
     // within each group.
     entries.sort_by(|a, b| {
         let a_dir = a.kind == "dir";
