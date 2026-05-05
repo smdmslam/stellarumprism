@@ -14,6 +14,7 @@ This document outlines key features of the Prism project, providing a high-level
 *   **Skill Engagement Notices:** Introduced a non-intrusive, inline "skill engaged" chip in the tool execution timeline when `read_skill` is triggered, maintaining a clean agent-view while keeping the user informed of persistent behavioral injections.
 
 ### Agent Safety & UI Polish
+*   **Agent Path Guard (IP Shielding):** Implemented a hardcoded "Blackbox" in the Rust backend to physically restrict the agent's gaze. The agent is now blind to proprietary intel directories (`.stellarumdev`) and its own application binary (`/Applications/Prism.app`). This ensures that even if a user prompts for sensitive internal files, the substrate returns a hard "Access Denied" error before the model can even see the metadata.
 *   **Contract-Change Consumer Enumeration (Guardrail):** A strict system-prompt clause enforcing that whenever the agent modifies a function signature, exported interface, or public variable name, it must actively search (`grep`) for and update all corresponding call-sites, preventing broken dependency regressions.
 *   **Slash Command Markdown Tables:** Upgraded the output format of agent slash commands (`/history`, `/models`, `/last`) from flat ANSI text into structured, highly readable Markdown tables.
 *   **AI Model Filtering:** Added a real-time search filter bar to the Settings UI to streamline curation of active AI models without requiring full UI re-renders.

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "tool": "prism-second-pass",
+  "generated_at": "2026-04-25T03:08:49.027Z",
+  "scope": "HEAD~10..HEAD",
+  "model": "x-ai/grok-4-fast",
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "info": 0,
+    "total": 0
+  },
+  "findings": [],
+  "runtime_probes": [],
+  "raw_transcript": "FINDINGS (0)\nThe typecheck passed with no diagnostics, LSP diagnostics unavailable (no server on PATH), and git diff analysis across the HEAD~10..HEAD range shows additive changes (new refactor mode, e2e_run/lsp_diagnostics tools, dev_server_url resolution, prism-audit CLI) with no unresolved symbols, stale references, or half-applied renames confirmed via grep and AST resolution checks."
+}

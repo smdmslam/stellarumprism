@@ -500,7 +500,10 @@ export class Workspace {
                 title="Go to home directory (same as: cd ~)"
                 aria-label="Go to home directory"
               >~</button>
-              <span class="cwd-badge" title="Current working directory"></span>
+              <div class="pill-group">
+                <span class="cwd-badge" title="Current working directory" role="button" aria-haspopup="menu" aria-expanded="false"></span>
+                <div class="cwd-selector-menu" role="menu" hidden></div>
+              </div>
               <span class="input-meta-spacer"></span>
               <div class="pill-group">
                 <span class="model-badge" title="Agent model" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="Active model">...</span>
@@ -1036,6 +1039,13 @@ export class Workspace {
       e.stopPropagation();
       this.toggleModelMenu();
     });
+
+    const cwdBadge = this.root.querySelector<HTMLElement>(".cwd-badge")!;
+    cwdBadge.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.toggleCwdMenu();
+    });
     skillsToggle?.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -1074,6 +1084,17 @@ export class Workspace {
           this.input.toggleAgentMode();
         }
         this.hidePillMenus();
+        return;
+      }
+
+      const cwdItem = target?.closest<HTMLElement>(".cwd-selector-item");
+      if (cwdItem) {
+        const path = cwdItem.dataset.path;
+        if (path) {
+          const cmd = `cd ${path}`;
+          this.handleSubmit(cmd, { intent: "command", explicit: true, payload: cmd });
+          this.hidePillMenus();
+        }
         return;
       }
     });
@@ -3532,11 +3553,44 @@ export class Workspace {
     }
   }
 
+  private toggleCwdMenu(): void {
+    const menu = this.root.querySelector<HTMLElement>(".cwd-selector-menu")!;
+    const hidden = menu.hasAttribute("hidden");
+    this.hidePillMenus();
+    if (hidden) {
+      void this.renderCwdMenu();
+      menu.removeAttribute("hidden");
+      this.root.querySelector(".cwd-badge")?.setAttribute("aria-expanded", "true");
+    }
+  }
+
+  private async renderCwdMenu(): Promise<void> {
+    const menu = this.root.querySelector<HTMLElement>(".cwd-selector-menu")!;
+    const recent = await invoke<string[]>("get_recent_directories");
+    if (recent.length === 0) {
+      menu.innerHTML = `<div class="menu-empty-hint">No recent directories</div>`;
+      return;
+    }
+    menu.innerHTML = recent
+      .map((path) => {
+        const name = path.split("/").filter(Boolean).pop() || path;
+        return (
+          `<div class="cwd-selector-item" data-path="${escapeAttr(path)}">` +
+          `<span class="cwd-item-name">${escapeHtml(name)}</span>` +
+          `<span class="cwd-item-path">${escapeHtml(prettyPath(path))}</span>` +
+          `</div>`
+        );
+      })
+      .join("");
+  }
+
   private hidePillMenus(): void {
-    const menus = this.root.querySelectorAll(".model-selector-menu, .intent-selector-menu");
-    menus.forEach(m => m.setAttribute("hidden", ""));
-    const badges = this.root.querySelectorAll(".model-badge, .intent-badge");
-    badges.forEach(b => b.setAttribute("aria-expanded", "false"));
+    this.root.querySelectorAll(".model-selector-menu, .intent-selector-menu, .cwd-selector-menu").forEach((m) => {
+      m.setAttribute("hidden", "");
+    });
+    this.root.querySelectorAll(".model-badge, .intent-badge, .cwd-badge").forEach((b) => {
+      b.setAttribute("aria-expanded", "false");
+    });
   }
 
   private renderModelMenu(): void {

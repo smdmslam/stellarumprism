@@ -1802,6 +1802,26 @@ pub async fn agent_query(
                             }
                         };
 
+                        // -----------------------------------------------------------------------
+                        // AUDIT TRAIL: Record the user's decision to disk.
+                        // -----------------------------------------------------------------------
+                        if needs_approval {
+                            let decision_str = match decision {
+                                ApprovalDecision::Approve => "approve",
+                                ApprovalDecision::ApproveSession => "approve-session",
+                                ApprovalDecision::Reject => "reject",
+                            };
+                            crate::audit::log_approval(
+                                &cwd_str,
+                                chat_id_for_task.clone(),
+                                Some(request_id.clone()),
+                                call.function.name.clone(),
+                                call.function.arguments.clone(),
+                                decision_str,
+                                round,
+                            );
+                        }
+
                         if decision == ApprovalDecision::ApproveSession && session_allowed_for_tool {
                             approval_session.insert(chat_id_for_task.clone(), true);
                         }

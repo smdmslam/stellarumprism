@@ -180,6 +180,8 @@ pub struct Config {
     pub openrouter: OpenRouterConfig,
     #[serde(default)]
     pub agent: AgentConfig,
+    #[serde(default)]
+    pub recent_directories: Vec<String>,
 }
 
 fn default_model() -> String {
@@ -425,10 +427,44 @@ impl ConfigState {
     }
     pub fn set_verifier_model(&self, model: String) {
         self.inner.write().agent.verifier.model = model;
+    pub fn add_recent_directory(&self, dir: String) {
+        let mut inner = self.inner.write();
+        inner.recent_directories.retain(|d| d != &dir);
+        inner.recent_directories.insert(0, dir);
+        if inner.recent_directories.len() > 20 {
+            inner.recent_directories.truncate(20);
+        }
+        let _ = save_config(&inner);
     }
 }
 
+pub fn save_config(cfg: &Config) -> std::io::Result<()> {
+    let Some(path) = config_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no home dir",
+        ));
+    };
+    let serialized = toml::to_string_pretty(&cfg)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fs::write(path, serialized)
+}
+
 // ---- Tauri commands -------------------------------------------------------
+
+#[tauri::command]
+pub fn get_recent_directories(state: tauri::State<'_, ConfigState>) -> Vec<String> {
+    state.snapshot().recent_directories
+}
+
+#[tauri::command]
+pub fn add_recent_directory(
+    dir: String,
+    state: tauri::State<'_, ConfigState>,
+) -> Result<(), String> {
+    state.add_recent_directory(dir);
+    Ok(())
+}
 
 #[tauri::command]
 pub fn get_agent_config(state: tauri::State<'_, ConfigState>) -> serde_json::Value {

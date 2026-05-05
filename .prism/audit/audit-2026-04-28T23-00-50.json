@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "tool": "prism-second-pass",
+  "generated_at": "2026-04-28T23:00:50.026Z",
+  "scope": "HEAD~5..HEAD",
+  "model": "x-ai/grok-4-fast",
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "info": 0,
+    "total": 0
+  },
+  "findings": [],
+  "runtime_probes": [],
+  "substrate_runs": [
+    {
+      "tool": "typecheck",
+      "summary": "typecheck → pnpm — 0 diags (0 error, 0 warning) [exit 0]",
+      "ok": true,
+      "round": 0
+    }
+  ],
+  "raw_transcript": "FINDINGS (0)\nAudited git range HEAD~5..HEAD for refactor incompleteness: additions to recipe pre-flight (script applicability checks) and Phase C report card (ProtocolReportCard UI + runner integration) are self-contained; no stale references, unused exports, or incomplete renames found via grep cross-references on touched symbols (e.g., requires, onMissing, appendCard) across the repo."
+}

@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "tool": "prism-second-pass",
+  "generated_at": "2026-04-28T12:02:28.565Z",
+  "scope": null,
+  "model": "x-ai/grok-4-fast",
+  "summary": {
+    "errors": 0,
+    "warnings": 0,
+    "info": 0,
+    "total": 0
+  },
+  "findings": [],
+  "runtime_probes": [],
+  "substrate_runs": [
+    {
+      "tool": "typecheck",
+      "summary": "typecheck → pnpm — 0 diags (0 error, 0 warning) [exit 0]",
+      "ok": true,
+      "round": 0
+    }
+  ],
+  "raw_transcript": "FINDINGS (0)\nTypecheck passed with no diagnostics; working tree diff is limited to UI layout state in .prism/state.json and minor documentation edits in docs/futurework/ideas-for-features-and-notes.md, with no evidence of refactor incompleteness or wiring gaps."
+}

@@ -30,6 +30,7 @@ mod shell_integration;
 mod skills;
 mod tools;
 mod workspace_state;
+pub mod audit;
 
 use agent::{
     agent_cancel, agent_drop_session, agent_get_history, agent_get_history_full,
@@ -120,6 +121,8 @@ pub fn run() {
             billing::get_subscription_info,
             billing::upgrade_to_pro,
             pricing::get_all_pricing,
+            config::get_recent_directories,
+            config::add_recent_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

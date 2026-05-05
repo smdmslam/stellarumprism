@@ -150,7 +150,10 @@ export class TabManager {
         onRequestSelectIndex: (i) => this.selectByIndex(i),
         // Cwd updates are the primary trigger for session writeback —
         // they're the field a user actually cares about restoring.
-        onCwdChange: () => this.scheduleSessionWrite(),
+        onCwdChange: (id, cwd) => {
+          this.scheduleSessionWrite();
+          if (cwd) invoke("add_recent_directory", { dir: cwd });
+        },
       },
       restore,
     );

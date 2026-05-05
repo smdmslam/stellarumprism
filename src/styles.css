@@ -3879,14 +3879,11 @@ input:checked + .toggle-slider:before {
 }
 
 .model-selector-menu,
-.intent-selector-menu {
+.intent-selector-menu,
+.cwd-selector-menu {
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 6px);
   right: 0;
-  z-index: 100;
-  min-width: 200px;
-  /* Grow tall enough to fit the model library on most viewports;
-     fall back to 70vh on short screens so the menu never escapes
      the window. The list stays scrollable for very small heights. */
   max-height: min(70vh, 520px);
   overflow-y: auto;
@@ -3906,20 +3903,58 @@ input:checked + .toggle-slider:before {
    rows look cut off with no scroll affordance. Render a thin, always-
    visible track inside the menu so users can see there's more. */
 .model-selector-menu::-webkit-scrollbar,
-.intent-selector-menu::-webkit-scrollbar { width: 8px; }
+.intent-selector-menu::-webkit-scrollbar,
+.cwd-selector-menu::-webkit-scrollbar { width: 8px; }
 .model-selector-menu::-webkit-scrollbar-track,
-.intent-selector-menu::-webkit-scrollbar-track { background: transparent; }
+.intent-selector-menu::-webkit-scrollbar-track,
+.cwd-selector-menu::-webkit-scrollbar-track { background: transparent; }
 .model-selector-menu::-webkit-scrollbar-thumb,
-.intent-selector-menu::-webkit-scrollbar-thumb {
+.intent-selector-menu::-webkit-scrollbar-thumb,
+.cwd-selector-menu::-webkit-scrollbar-thumb {
   background: #1f2937;
   border-radius: 4px;
 }
 .model-selector-menu::-webkit-scrollbar-thumb:hover,
-.intent-selector-menu::-webkit-scrollbar-thumb:hover { background: #374151; }
+.intent-selector-menu::-webkit-scrollbar-thumb:hover,
+.cwd-selector-menu::-webkit-scrollbar-thumb:hover { background: #374151; }
 
 .model-selector-menu[hidden],
-.intent-selector-menu[hidden] {
+.intent-selector-menu[hidden],
+.cwd-selector-menu[hidden] {
   display: none;
+}
+
+.cwd-selector-menu {
+  right: auto;
+  left: 0;
+  width: 340px;
+}
+
+.cwd-selector-item {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 100ms ease;
+}
+.cwd-selector-item:hover {
+  background: rgba(125, 211, 252, 0.08);
+}
+.cwd-item-name {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 2px;
+}
+.cwd-item-path {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: #e2e8f0;
+  word-break: break-all;
+  line-height: 1.4;
 }
 
 .model-selector-item,
