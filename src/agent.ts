@@ -1468,9 +1468,32 @@ export class AgentController {
 // ---------------------------------------------------------------------------
 
 /**
+ * Pseudo-commands that look like shell commands but are actually tool-call
+ * syntax the agent invented. These should never appear in the "Run" action
+ * bar because they'll fail when executed in a real shell.
+ */
+const FAKE_COMMANDS = new Set([
+  "edit",
+  "create",
+  "modify",
+  "update",
+  "change",
+  "write",
+  "add",
+  "delete",
+  "remove",
+  "prism-edit",
+  "prism-create",
+  "prism-modify",
+]);
+
+/**
  * Pull runnable commands out of fenced code blocks. Keeps the *first line* of
  * shell-ish blocks; multi-line scripts can still be copied in full with the
  * Copy button.
+ *
+ * Filters out pseudo-commands (fake tool-call syntax) that would fail if
+ * executed in a real shell.
  */
 function extractCodeBlocks(markdown: string): string[] {
   const out: string[] = [];
@@ -1486,7 +1509,14 @@ function extractCodeBlocks(markdown: string): string[] {
       .split("\n")
       .map((l) => l.trim())
       .find((l) => l.length > 0 && !l.startsWith("#"));
-    if (firstLine) out.push(stripLeadingPrompt(firstLine));
+    if (!firstLine) continue;
+
+    // Skip pseudo-commands that aren't real shell executables.
+    const strippedCmd = stripLeadingPrompt(firstLine);
+    const cmd = strippedCmd.split(/\s+/)[0];
+    if (FAKE_COMMANDS.has(cmd)) continue;
+
+    out.push(strippedCmd);
   }
   return dedupe(out).slice(0, 6); // cap to keep the UI tidy
 }
