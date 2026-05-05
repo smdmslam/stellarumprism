@@ -43,6 +43,3 @@ src-tauri/gen/
 .prism/second-pass/
 .prism/skills/auto/
 .prism/state.json
-
-# Personal IP Shield
-.stellarumdev/

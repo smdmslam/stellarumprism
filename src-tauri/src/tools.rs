@@ -2500,18 +2500,7 @@ fn resolve_path(cwd: &str, raw: &str) -> Result<PathBuf, String> {
         }
         PathBuf::from(cwd).join(raw)
     };
-    let resolved = buf.canonicalize().unwrap_or(buf);
-
-    // -----------------------------------------------------------------------
-    // PATH GUARD: Shield internal binaries from agent gaze.
-    // Rejects access to forbidden "blackbox" paths.
-    // -----------------------------------------------------------------------
-    let path_str = resolved.to_string_lossy();
-    if path_str.contains("/Applications/Prism.app") {
-        return Err("Access Denied: Self-inspection of Prism binary is forbidden".into());
-    }
-
-    Ok(resolved)
+    Ok(buf.canonicalize().unwrap_or(buf))
 }
 
 fn format_bytes(n: u64) -> String {

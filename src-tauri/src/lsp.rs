@@ -257,19 +257,6 @@ pub fn run_lsp_diagnostics(
     }
     let cwd_path = Path::new(cwd);
 
-    // -----------------------------------------------------------------------
-    // PATH GUARD: Shield internal binaries from agent gaze.
-    // -----------------------------------------------------------------------
-    let path_str = cwd_path.to_string_lossy();
-    if path_str.contains("/Applications/Prism.app") {
-        return Err("Access Denied: Self-inspection of Prism binary is forbidden".into());
-    }
-    for f in files {
-        if f.contains("/Applications/Prism.app") {
-            return Err("Access Denied: Path is forbidden".into());
-        }
-    }
-
     let spec = match override_argv {
         Some(argv) => {
             crate::diagnostics::validate_argv_public(argv)?;

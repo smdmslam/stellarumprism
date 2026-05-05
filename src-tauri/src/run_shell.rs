@@ -83,13 +83,9 @@ const DESTRUCTIVE_PATTERNS: &[&str] = &[
     // Pipe-to-shell from the network (the curl|sh / wget|sh pattern).
     // We block the pipe itself rather than curl/wget calls in general
     // because legitimate curl usage with `-s`, `-S`, etc. is common; the
-    // dangerous shape is the pipe into a shell, which has no benign use.
-    "| sh",
     "| bash",
-    // -----------------------------------------------------------------------
-    // PATH GUARD: Shield internal binaries from agent gaze.
-    // -----------------------------------------------------------------------
-    "/Applications/Prism.app",
+    "|sh",
+    "|bash",
 ];
 
 /// Caller-supplied spec for a single run_shell invocation.
