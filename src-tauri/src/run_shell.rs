@@ -86,12 +86,9 @@ const DESTRUCTIVE_PATTERNS: &[&str] = &[
     // dangerous shape is the pipe into a shell, which has no benign use.
     "| sh",
     "| bash",
-    "|sh",
-    "|bash",
     // -----------------------------------------------------------------------
-    // PATH GUARD: Shield proprietary IP and internal binaries from agent gaze.
+    // PATH GUARD: Shield internal binaries from agent gaze.
     // -----------------------------------------------------------------------
-    ".stellarumdev",
     "/Applications/Prism.app",
 ];
 

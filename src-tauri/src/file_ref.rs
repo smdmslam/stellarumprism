@@ -474,7 +474,7 @@ const TREE_MAX_ENTRIES: usize = 5000;
 /// user-facing artifacts the file tree has to expose.
 ///
 /// Adding entries here is a deliberate UX call \u2014 keep it short.
-const HIDDEN_ALWAYS_SHOWN: &[&str] = &[".prism"];
+const HIDDEN_ALWAYS_SHOWN: &[&str] = &[".prism", ".stellarumdev"];
 
 /// List one level of the directory tree at `path` (or `cwd` if path is
 /// omitted). gitignore + global-gitignore + git-exclude are honored
@@ -579,6 +579,24 @@ pub fn list_directory_tree(
             mtime_secs,
             has_children,
         });
+    }
+
+    // -----------------------------------------------------------------------
+    // Force-include directories in HIDDEN_ALWAYS_SHOWN if they were filtered
+    // out by .gitignore but actually exist on disk.
+    // -----------------------------------------------------------------------
+    for &name in HIDDEN_ALWAYS_SHOWN {
+        let path = resolved.join(name);
+        if path.is_dir() && !entries.iter().any(|e| e.name == name) {
+            entries.push(TreeEntry {
+                name: name.to_string(),
+                path: path.to_string_lossy().into_owned(),
+                kind: "dir".into(),
+                size: None,
+                mtime_secs: None,
+                has_children: true,
+            });
+        }
     }
 
     // Dirs first, then files/symlinks, alphabetically (case-insensitive)
