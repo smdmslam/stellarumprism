@@ -362,7 +362,7 @@ export class SettingsUI {
                 ${escapeHtml(m.aliases[0])} 
                 <span class="model-setting-tier ${m.tier}">${tierLabel}</span>
               </div>
-              <div class="model-setting-desc">${escapeHtml(m.description)}</div>
+              <div class="model-setting-desc">${escapeHtml(m.description).replace(/\(img\)/g, "<strong>(img)</strong>")}</div>
             </div>
             <label class="prism-toggle">
               <input type="checkbox" data-slug="${escapeHtml(m.slug)}" ${isEnabled ? "checked" : ""}>
