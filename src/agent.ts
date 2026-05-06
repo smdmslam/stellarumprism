@@ -26,7 +26,7 @@ import {
  * tool calling. Gemini 2.5 Flash is the project default chat model,
  * supports tools, and is cheap, so it's a safe last-resort swap.
  */
-const UNIVERSAL_TOOL_FALLBACK = "google/gemini-2.5-flash";
+const UNIVERSAL_TOOL_FALLBACK = "anthropic/claude-haiku-4.5";
 
 // ---------------------------------------------------------------------------
 // Types shared with the Rust side

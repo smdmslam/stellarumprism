@@ -185,13 +185,7 @@ pub struct Config {
 }
 
 fn default_model() -> String {
-    // Gemini 2.5 Flash is the new baseline default: $0.30/$2.50, 1M
-    // context, vision, thinking mode. Cheap enough for casual chat where
-    // Haiku's premium pricing was wasted, plus the verifier (which fires
-    // on every long turn) doubles every primary call so the default
-    // model's per-token cost matters a lot. Users can still point at any
-    // slug via `/model <slug>` or by editing config.toml.
-    "google/gemini-2.5-flash".into()
+    "anthropic/claude-haiku-4.5".into()
 }
 fn default_base_url() -> String {
     "https://openrouter.ai/api/v1".into()
@@ -353,7 +347,7 @@ pub fn load_or_init() -> Config {
 
 [openrouter]
 api_key = ""
-default_model = "google/gemini-2.5-flash"
+default_model = "anthropic/claude-haiku-4.5"
 # base_url = "https://openrouter.ai/api/v1"
 
 [agent]

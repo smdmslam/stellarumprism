@@ -125,58 +125,16 @@ export const MODEL_LIBRARY: ModelEntry[] = [
   // Curated lineup after the calibration sweep documented in
   // `MASTER-Plan-II.md#5.9`. Every entry below has been validated as
   // low-hallucination under Prism's tool loop. Adding a model here is
-  // a deliberate endorsement \u2014 if calibration later finds it failing,
+  // a deliberate endorsement — if calibration later finds it failing,
   // remove it entirely (the audit trail lives in `docs/MASTER-AI-model-list.md`,
   // not as commented-out or `enabled: false` rot in this file).
   //
-  // -------- Google Gemini family ----------------------------------------
-  //
-  // Re-added to the lineup during the calibration sweep that pruned
-  // 13 underperformers. If a Gemini variant later starts producing
-  // unbacked claims under our tool loop, remove it entirely \u2014 we no
-  // longer carry `enabled: false` parking-lot entries.
-  {
-    aliases: ["gemini-pro", "gemini-2.5-pro"],
-    slug: "google/gemini-2.5-pro",
-    description:
-      "Google Gemini 2.5 Pro \u2014 frontier reasoning, 1M context, multimodal",
-    tier: "main",
-    vision: true,
-    cost: 3,
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 1048576,
-  },
-  {
-    aliases: ["gemini-flash-lite", "gemini-2.5-flash-lite", "flash-lite"],
-    slug: "google/gemini-2.5-flash-lite",
-    description:
-      "Google Gemini 2.5 Flash-Lite \u2014 ultra-low-latency, low-cost workhorse, 1M context",
-    tier: "main",
-    vision: true,
-    cost: 1,
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 1048576,
-  },
-  {
-    aliases: ["gemini-flash", "gemini-2.5-flash", "flash"],
-    slug: "google/gemini-2.5-flash",
-    description:
-      "Google Gemini 2.5 Flash \u2014 workhorse with thinking mode, 1M context, cheap",
-    tier: "main",
-    vision: true,
-    cost: 2,
-    toolUse: true,
-    jsonMode: true,
-    maxContext: 1050000,
-  },
 
   {
     aliases: ["gpt-5.4", "gpt5.4", "gpt-5"],
     slug: "openai/gpt-5.4",
     description:
-      "OpenAI GPT-5.4 \u2014 frontier, 1M context, text+image, unified codex+gpt",
+      "OpenAI GPT-5.4 — frontier, 1M context, text+image, unified codex+gpt",
     tier: "main",
     vision: true,
     cost: 3,
