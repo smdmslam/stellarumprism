@@ -63,14 +63,9 @@ export class TabManager {
       }
     }, { passive: false });
 
-    // Wire the single "+" new-tab button in the strip.
     opts.tabStripEl.addEventListener("click", (e) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
-      if (target.matches(".new-tab-btn")) {
-        this.newTab();
-        return;
-      }
       const closeBtn = target.closest<HTMLElement>(".tab-close");
       if (closeBtn) {
         e.stopPropagation();
@@ -383,7 +378,7 @@ export class TabManager {
             `</div>`
           );
         })
-        .join("") + `<button class="new-tab-btn" title="New tab (\u2318T)">+</button>`;
+        .join("");
 
     // Wire up context menus natively after render since innerHTML strips them
     strip.querySelectorAll(".tab").forEach((tabEl) => {
@@ -421,7 +416,7 @@ export class TabManager {
       menu.appendChild(item);
     };
 
-    addTarget("Duplicate Path / New Chat", "\u21b3", () => {
+    addTarget("Duplicate Path", "\u21b3", () => {
       this.newTab({ cwd: ws.getCwd() });
     });
 
@@ -430,6 +425,14 @@ export class TabManager {
         if (newRestoreOpts) {
           this.newTab(newRestoreOpts);
         }
+      });
+    });
+
+    addTarget("Clear Chat", "\u232b", () => {
+      ws.handleSubmit("/clear", {
+        intent: "command",
+        explicit: true,
+        payload: "/clear",
       });
     });
 

@@ -28,7 +28,7 @@ export const PROTOCOLS_MENU: ProtocolDefinition[] = [
     label: "Security Audit",
     description: "Scan for common vulnerabilities, injection risks, and unsafe patterns",
     requirements: ["LSP diagnostics enabled", "AST analysis available"],
-    icon: "🔒",
+    icon: "shield-alert",
     category: "Security",
   },
   {
@@ -36,7 +36,7 @@ export const PROTOCOLS_MENU: ProtocolDefinition[] = [
     label: "Harden Loop",
     description: "Iterative type safety pass; fix errors, narrow types, strengthen contracts",
     requirements: ["TypeScript or Rust project", "Typecheck passing"],
-    icon: "⚔️",
+    icon: "swords",
     category: "Quality",
   },
   {
@@ -44,7 +44,7 @@ export const PROTOCOLS_MENU: ProtocolDefinition[] = [
     label: "Clean Refactor",
     description: "Structural refactoring: consolidate duplication, extract utilities, rename for clarity",
     requirements: ["Test suite present", "Git repo"],
-    icon: "✨",
+    icon: "sparkles",
     category: "Maintenance",
   },
   {
@@ -52,7 +52,7 @@ export const PROTOCOLS_MENU: ProtocolDefinition[] = [
     label: "Performance Profile",
     description: "Identify bottlenecks, hot paths, and optimization opportunities",
     requirements: ["Build system available", "Profiler tools installed"],
-    icon: "⚡",
+    icon: "zap",
     category: "Performance",
   },
   {
@@ -60,7 +60,7 @@ export const PROTOCOLS_MENU: ProtocolDefinition[] = [
     label: "Test Coverage",
     description: "Analyze coverage, identify gaps, generate missing test cases",
     requirements: ["Test framework available", "Coverage reporter installed"],
-    icon: "📊",
+    icon: "chart-column",
     category: "Testing",
   },
   {
@@ -68,7 +68,7 @@ export const PROTOCOLS_MENU: ProtocolDefinition[] = [
     label: "Documentation Audit",
     description: "Review docs for accuracy, completeness, and alignment with code",
     requirements: ["README or documentation files present"],
-    icon: "📖",
+    icon: "book-open-text",
     category: "Documentation",
   },
   {
@@ -76,7 +76,7 @@ export const PROTOCOLS_MENU: ProtocolDefinition[] = [
     label: "Dependency Review",
     description: "Audit dependencies for updates, security patches, and redundancy",
     requirements: ["Package manager (npm/pnpm/cargo) configured"],
-    icon: "📦",
+    icon: "package",
     category: "Dependencies",
   },
   {
@@ -84,7 +84,7 @@ export const PROTOCOLS_MENU: ProtocolDefinition[] = [
     label: "API Design Check",
     description: "Evaluate public interface consistency, naming conventions, and ergonomics",
     requirements: ["Public exports / modules defined"],
-    icon: "🔌",
+    icon: "plug-zap",
     category: "Design",
   },
 ];
@@ -159,13 +159,6 @@ export class ProtocolsMenuManager {
     this.menuElement.className = "protocols-menu";
     document.body.appendChild(this.menuElement);
 
-    const button = document.getElementById("tb-protocols");
-    if (button) {
-      const rect = button.getBoundingClientRect();
-      this.menuElement.style.top = `${rect.bottom + 8}px`;
-      this.menuElement.style.right = `12px`;
-    }
-
     const grouped = this.groupByCategory();
 
     for (const [category, protocols] of Object.entries(grouped)) {
@@ -218,7 +211,7 @@ export class ProtocolsMenuManager {
 
     const iconSpan = document.createElement("span");
     iconSpan.className = "protocols-menu-icon";
-    iconSpan.textContent = protocol.icon || "▸";
+    iconSpan.innerHTML = this.renderIcon(protocol.icon || "sparkles");
 
     const nameSpan = document.createElement("span");
     nameSpan.className = "protocols-menu-item-name";
@@ -259,6 +252,21 @@ export class ProtocolsMenuManager {
     if (this.onProtocolSelect) {
       this.onProtocolSelect(protocolId);
     }
+  }
+
+  private renderIcon(iconName: string): string {
+    const paths: Record<string, string> = {
+      "shield-alert": `<path d="M12 2 4 5v6c0 5 3.5 9.74 8 11 4.5-1.26 8-6 8-11V5z"/><path d="M12 8v4"/><path d="M12 16h.01"/>`,
+      swords: `<path d="m14.5 17.5 5-5"/><path d="m3 21 6.5-6.5"/><path d="m12.5 8.5 3 3"/><path d="m15 5 4 4"/><path d="m9 11-4 4"/><path d="m5 15 4 4"/>`,
+      sparkles: `<path d="M12 3v4"/><path d="M12 17v4"/><path d="M5 10h4"/><path d="M15 10h4"/><path d="m7 5 2 2"/><path d="m15 13 2 2"/><path d="m17 5-2 2"/><path d="m9 13-2 2"/>`,
+      zap: `<path d="M13 2 3 14h7l-1 8 10-12h-7z"/>`,
+      "chart-column": `<path d="M3 3v18h18"/><path d="M8 15v3"/><path d="M12 10v8"/><path d="M16 6v12"/>`,
+      "book-open-text": `<path d="M12 7v14"/><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3H12v16H5.5A2.5 2.5 0 0 0 3 21.5z"/><path d="M21 5.5A2.5 2.5 0 0 0 18.5 3H12v16h6.5a2.5 2.5 0 0 1 2.5 2.5z"/><path d="M7 8h2"/><path d="M7 12h2"/>`,
+      package: `<path d="m21 8-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>`,
+      "plug-zap": `<path d="M12 22v-4"/><path d="M10 6V3"/><path d="M14 6V3"/><path d="M18 8v3a6 6 0 0 1-12 0V8"/><path d="m12 11-2 3h3l-1 3 3-4h-3z"/>`,
+    };
+    const path = paths[iconName] ?? paths.sparkles;
+    return `<svg class="lucide protocols-menu-icon-svg" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${path}</svg>`;
   }
 
   private destroyMenu(): void {
