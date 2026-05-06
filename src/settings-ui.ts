@@ -194,11 +194,11 @@ export class SettingsUI {
       </div>
 
       <div class="settings-group">
-        <label class="settings-group-title">Default Input Mode</label>
+        <label class="settings-group-title">Workspace Preferences</label>
         <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
-          Select the default input mode when starting a fresh workspace session or tab.
+          Tailor default actions and start states when launching a workspace.
         </p>
-        <div class="model-setting-card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;">
+        <div class="model-setting-card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; margin-bottom: 12px;">
           <div class="model-setting-info">
             <div class="model-setting-name">Default Mode</div>
             <div class="model-setting-desc">
@@ -209,6 +209,24 @@ export class SettingsUI {
             <option value="agent" ${settings.getDefaultPromptMode() === "agent" ? "selected" : ""}>AGENT (Ask)</option>
             <option value="command" ${settings.getDefaultPromptMode() === "command" ? "selected" : ""}>CMD (Terminal)</option>
           </select>
+        </div>
+
+        <div class="model-setting-card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;">
+          <div class="model-setting-info">
+            <div class="model-setting-name">Auto-Bookmark Workspaces</div>
+            <div class="model-setting-desc">
+              Automatically bookmark project directories when they are opened as workspace roots.
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="auto-bookmark-status" style="font-size: 10px; font-weight: 800; color: ${settings.getAutoBookmarkOnOpen() ? "var(--prism-emerald)" : "var(--prism-cyan)"}; text-transform: uppercase; width: 48px; text-align: right;">
+              ${settings.getAutoBookmarkOnOpen() ? "ACTIVE" : "OFF"}
+            </span>
+            <label class="prism-toggle">
+              <input type="checkbox" id="setting-auto-bookmark" ${settings.getAutoBookmarkOnOpen() ? "checked" : ""}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
         </div>
       </div>
 
@@ -275,6 +293,17 @@ export class SettingsUI {
     promptModeSelect?.addEventListener("change", () => {
       const mode = promptModeSelect.value as "agent" | "command";
       settings.setDefaultPromptMode(mode);
+    });
+
+    const autoBookmarkInput = document.getElementById("setting-auto-bookmark") as HTMLInputElement;
+    autoBookmarkInput?.addEventListener("change", () => {
+      const isChecked = autoBookmarkInput.checked;
+      settings.setAutoBookmarkOnOpen(isChecked);
+      const statusEl = document.getElementById("auto-bookmark-status");
+      if (statusEl) {
+        statusEl.textContent = isChecked ? "ACTIVE" : "OFF";
+        statusEl.style.color = isChecked ? "var(--prism-emerald)" : "var(--prism-cyan)";
+      }
     });
   }
 

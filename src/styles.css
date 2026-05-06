@@ -4175,8 +4175,9 @@ input:checked + .toggle-slider:before {
 .bookmark-item {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
-  padding: 4px 12px;
+  padding: 3px 6px 3px 12px;
   cursor: pointer;
   color: #d1d5db;
   font-size: 12px;
@@ -4187,6 +4188,13 @@ input:checked + .toggle-slider:before {
   background: rgba(125, 211, 252, 0.08);
   outline: none;
 }
+.bookmark-item-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .bookmark-icon {
   color: #7dd3fc;
   opacity: 0.8;
@@ -4196,6 +4204,28 @@ input:checked + .toggle-slider:before {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.bookmark-item-remove {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  color: #64748b;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 120ms ease;
+  flex: 0 0 auto;
+}
+.bookmark-item-remove:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+.bookmark-item:hover .bookmark-item-remove,
+.bookmark-item:focus-within .bookmark-item-remove {
+  opacity: 1;
 }
 
 

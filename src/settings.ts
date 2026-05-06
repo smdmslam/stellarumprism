@@ -57,6 +57,8 @@ export interface AppSettings {
   hasCompletedOnboarding: boolean;
   /** Default prompt mode on startup: 'agent' or 'command' */
   defaultPromptMode: "agent" | "command";
+  /** Whether opened directories are automatically bookmarked */
+  autoBookmarkOnOpen: boolean;
 }
 
 const STORAGE_KEY = "prism-settings-v1";
@@ -75,6 +77,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   cloudSyncPath: undefined,
   hasCompletedOnboarding: false,
   defaultPromptMode: "agent",
+  autoBookmarkOnOpen: true,
 };
 
 export class SettingsManager {
@@ -336,6 +339,17 @@ export class SettingsManager {
 
   setDefaultPromptMode(mode: "agent" | "command"): void {
     this.current.defaultPromptMode = mode;
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  getAutoBookmarkOnOpen(): boolean {
+    return this.current.autoBookmarkOnOpen ?? true;
+  }
+
+  setAutoBookmarkOnOpen(val: boolean): void {
+    if (this.current.autoBookmarkOnOpen === val) return;
+    this.current.autoBookmarkOnOpen = val;
     this.save();
     window.dispatchEvent(new CustomEvent("prism-settings-changed"));
   }

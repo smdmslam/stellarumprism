@@ -3729,7 +3729,7 @@ export class Workspace {
 
   // -- file tree -----------------------------------------------------------
 
-  private async renderBookmarksList(): Promise<void> {
+  public async renderBookmarksList(): Promise<void> {
     const container = this.root.querySelector<HTMLElement>(".bookmarks-container");
     const list = this.root.querySelector<HTMLElement>(".bookmarks-list");
     if (!container || !list) return;
@@ -3746,8 +3746,13 @@ export class Workspace {
           const name = path.split("/").filter(Boolean).pop() || path;
           return (
             `<div class="bookmark-item" data-path="${escapeAttr(path)}" tabindex="0" role="button">` +
-            `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="bookmark-icon"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>` +
-            `<span class="bookmark-name">${escapeHtml(name)}</span>` +
+              `<div class="bookmark-item-left">` +
+                `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="bookmark-icon"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>` +
+                `<span class="bookmark-name">${escapeHtml(name)}</span>` +
+              `</div>` +
+              `<button class="bookmark-item-remove" aria-label="Remove bookmark" title="Remove Bookmark">` +
+                `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>` +
+              `</button>` +
             `</div>`
           );
         })
@@ -3761,10 +3766,21 @@ export class Workspace {
     const listEl = this.root.querySelector<HTMLElement>(".bookmarks-list");
     if (!listEl) return;
     listEl.addEventListener("click", (e) => {
-      const row = (e.target as HTMLElement | null)?.closest<HTMLElement>(".bookmark-item");
+      const target = e.target as HTMLElement;
+      const removeBtn = target.closest<HTMLElement>(".bookmark-item-remove");
+      const row = target.closest<HTMLElement>(".bookmark-item");
       if (!row) return;
       const path = row.dataset.path;
       if (!path) return;
+
+      if (removeBtn) {
+        e.stopPropagation();
+        e.preventDefault();
+        void invoke("remove_bookmarked_directory", { dir: path });
+        this.notify(`[workspace] removed ${path} from bookmarks`);
+        void this.renderBookmarksList();
+        return;
+      }
       
       const quoted = `'${path.replace(/'/g, "'\\''")}'`;
       void invoke("write_to_shell", {

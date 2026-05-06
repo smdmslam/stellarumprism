@@ -6,6 +6,7 @@
 import { Workspace, type WorkspaceRestoreOptions } from "./workspace";
 import { writeSessionState, type PersistedTab } from "./session";
 import { invoke } from "@tauri-apps/api/core";
+import { settings } from "./settings";
 
 type CloseTabOptions = {
   /**
@@ -159,9 +160,24 @@ export class TabManager {
         onRequestSelectIndex: (i) => this.selectByIndex(i),
         // Cwd updates are the primary trigger for session writeback —
         // they're the field a user actually cares about restoring.
-        onCwdChange: (_id, cwd) => {
+        onCwdChange: (id, cwd) => {
           this.scheduleSessionWrite();
-          if (cwd) invoke("add_recent_directory", { dir: cwd });
+          if (cwd) {
+            void invoke("add_recent_directory", { dir: cwd });
+            if (settings.getAutoBookmarkOnOpen()) {
+              void (async () => {
+                try {
+                  await invoke("add_bookmarked_directory", { dir: cwd });
+                  const activeWs = this.getActiveWorkspace();
+                  if (activeWs && activeWs.id === id) {
+                    void activeWs.renderBookmarksList();
+                  }
+                } catch (err) {
+                  console.error("Auto-bookmark failed:", err);
+                }
+              })();
+            }
+          }
         },
       },
       restore,
