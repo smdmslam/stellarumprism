@@ -51,6 +51,8 @@ export interface AppSettings {
   chatFontSize: number;
   /** Verification mode: true = Always Verify, false = Auto Verify. */
   strictMode: boolean;
+  /** Optional mapped cloud folder path (e.g. iCloud/Dropbox) for chat history syncing */
+  cloudSyncPath?: string;
 }
 
 const STORAGE_KEY = "prism-settings-v1";
@@ -66,6 +68,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   editorFontSize: 12,
   chatFontSize: 13,
   strictMode: true,
+  cloudSyncPath: undefined,
 };
 
 export class SettingsManager {
@@ -297,6 +300,16 @@ export class SettingsManager {
   setStrictMode(enabled: boolean): void {
     if (this.current.strictMode === enabled) return;
     this.current.strictMode = enabled;
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  getCloudSyncPath(): string | undefined {
+    return this.current.cloudSyncPath;
+  }
+
+  setCloudSyncPath(path: string | undefined): void {
+    this.current.cloudSyncPath = path;
     this.save();
     window.dispatchEvent(new CustomEvent("prism-settings-changed"));
   }

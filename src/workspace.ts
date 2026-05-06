@@ -882,6 +882,7 @@ export class Workspace {
         }
         this.updateTaskCost(this.billableTokens);
         void this.refreshBillingInfo();
+        void this.autoSaveChat();
       },
     });
     this.setupEditor();
@@ -2881,6 +2882,7 @@ export class Workspace {
     this.title = truncated;
     this.autoTitleDone = true;
     this.cb.onTitleChange(this.id, this.title);
+    void this.autoSaveChat();
   }
 
   /** Shared reset path used by /new and the New button. */
@@ -5041,7 +5043,7 @@ export class Workspace {
         // fallback for users mid-tab who haven't established a cwd yet
         // and for legacy chats saved before this change.
         defaultPath: this.cwd
-          ? `${this.cwd}/.prism/chats/`
+          ? `${this.cwd}/.prism/history/`
           : await expandTilde("~/Documents/Prism/Chats/"),
         multiple: false,
         directory: false,
@@ -5282,7 +5284,7 @@ export class Workspace {
     // dialog itself runs `mkdir -p` on the chosen directory at write
     // time, so neither path needs to pre-exist.
     const defaultPath = this.cwd
-      ? `${this.cwd}/.prism/chats/${slug}.${ext}`
+      ? `${this.cwd}/.prism/history/${slug}.${ext}`
       : await expandTilde(`~/Documents/Prism/Chats/${slug}.${ext}`);
     let target: string | null = null;
     try {
@@ -5342,6 +5344,44 @@ export class Workspace {
       );
     } catch (e) {
       this.notifyError(`[save] failed: ${String(e)}`);
+    }
+  }
+
+  /**
+   * Automatically persists the current chat session to `.prism/history/` inside the
+   * workspace directory, and double-writes to any configured cloud sync folder.
+   */
+  async autoSaveChat(): Promise<void> {
+    if (!this.cwd) return;
+    try {
+      const history = await this.agent.getHistory();
+      if (history.length === 0) return;
+
+      const targetDir = `${this.cwd}/.prism/history`;
+      const targetPath = `${targetDir}/${this.id}.full.md`;
+
+      await invoke("save_chat_markdown", {
+        chatId: this.id,
+        path: targetPath,
+        model: this.agent.getModel(),
+        title: this.title,
+        full: true,
+      });
+
+      const syncDir = settings.getCloudSyncPath();
+      if (syncDir) {
+        const workspaceName = this.cwd.split("/").pop() || "workspace";
+        const syncPath = `${syncDir}/${workspaceName}_${this.id}.full.md`;
+        await invoke("save_chat_markdown", {
+          chatId: this.id,
+          path: syncPath,
+          model: this.agent.getModel(),
+          title: this.title,
+          full: true,
+        });
+      }
+    } catch (e) {
+      console.error("[autosave] background save failed:", e);
     }
   }
 

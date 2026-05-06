@@ -5,6 +5,7 @@
 import { settings } from "./settings";
 import { MODEL_LIBRARY, compareModelsByCostDesc } from "./models";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Workspace } from "./workspace";
 
 /**
@@ -714,64 +715,260 @@ export class SettingsUI {
       return;
     }
 
+    const cloudPath = settings.getCloudSyncPath();
     const cwd = this.activeWorkspace.getCwd();
-    if (!cwd) {
-      this.content.innerHTML = `
-        <h2 class="settings-section-title">History</h2>
-        <div class="empty-state">
-          <p>Workspace unknown. Start a shell to browse history.</p>
-        </div>
-      `;
-      return;
-    }
 
     this.content.innerHTML = `
       <h2 class="settings-section-title">History</h2>
       <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 24px;">
-        Saved conversation artifacts found in <code>.prism/</code>.
+        Saved conversation artifacts found in <code>.prism/history/</code>.
       </p>
+
+      <!-- Cloud Sync Configuration -->
+      <div class="settings-group sync-group">
+        <label class="settings-group-title">Cloud Synchronization</label>
+        <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
+          Synchronize your conversation histories automatically across devices using iCloud, Dropbox, or any custom directory.
+        </p>
+        <div class="sync-config-row">
+          ${cloudPath ? `
+            <div class="sync-status active">
+              <span class="sync-icon">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </span>
+              <div class="sync-info">
+                <div class="sync-title">Cloud Sync Active</div>
+                <div class="sync-path">${escapeHtml(cloudPath)}</div>
+              </div>
+              <button id="unmap-sync-btn" class="history-load-btn" style="background: #ef4444; font-size: 11px;">Unmap</button>
+            </div>
+          ` : `
+            <div class="sync-status inactive">
+              <span class="sync-icon">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.5 19a3.5 3.5 0 1 1 0-7c.28 0 .55.03.81.08c1-3.6 4.3-6.08 8.19-6.08c5.25 0 9.5 4.25 9.5 9.5c0 .35-.02.7-.06 1.04C41 19.5 37 22 32 22h-13a6 6 0 0 1-1.5-11.8"></path>
+                </svg>
+              </span>
+              <div class="sync-info">
+                <div class="sync-title">Cloud Sync Disabled</div>
+                <div class="sync-desc">Auto-saves will live only in this project's local <code>.prism/history/</code>.</div>
+              </div>
+              <button id="map-sync-btn" class="history-load-btn" style="background: #10b981; font-size: 11px;">Map Cloud Folder</button>
+            </div>
+          `}
+        </div>
+      </div>
+
+      <label class="settings-group-title">Saved Chats</label>
       <div id="history-list" class="history-list">
-        <div class="loading-state">Scanning .prism/ directory...</div>
+        <div class="loading-state">Scanning directories...</div>
       </div>
     `;
+
+    // Hook cloud sync button listeners
+    const mapBtn = document.getElementById("map-sync-btn");
+    if (mapBtn) {
+      mapBtn.addEventListener("click", async () => {
+        try {
+          const picked = await openDialog({
+            title: "Select cloud sync folder (e.g. inside Dropbox or iCloud Drive)",
+            multiple: false,
+            directory: true,
+          });
+          const target = Array.isArray(picked) ? (picked[0] ?? null) : picked;
+          if (target) {
+            settings.setCloudSyncPath(target);
+            // Re-render
+            void this.renderHistory();
+          }
+        } catch (e) {
+          alert(`Failed to pick sync folder: ${e}`);
+        }
+      });
+    }
+
+    const unmapBtn = document.getElementById("unmap-sync-btn");
+    if (unmapBtn) {
+      unmapBtn.addEventListener("click", () => {
+        settings.setCloudSyncPath(undefined);
+        void this.renderHistory();
+      });
+    }
 
     const historyEl = document.getElementById("history-list")!;
 
     try {
-      // List entries in .prism/ directory
-      const prismPath = `${cwd}/.prism`;
-      const result = await invoke<any>("list_dir_entries", { cwd: prismPath, partial: "" });
-      
-      const chats = (result.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
+      // 1. Create .prism/history on demand so it's always ready
+      await invoke("create_dir", { cwd, path: ".prism/history" });
+
+      // 2. List entries in .prism/history directory
+      const localPath = `${cwd}/.prism/history`;
+      const result = await invoke<any>("list_dir_entries", { cwd: localPath, partial: "" });
+      const localFiles = (result.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
+
+      interface ChatMetadata {
+        path: string;
+        name: string;
+        title: string;
+        model: string;
+        chatId?: string;
+        created?: string;
+        messagesCount?: number;
+        format?: string;
+        source: "local" | "cloud" | "both";
+      }
+
+      const chatsMap = new Map<string, ChatMetadata>();
+
+      const parseFrontmatter = (content: string): Record<string, string> => {
+        const meta: Record<string, string> = {};
+        const lines = content.split("\n");
+        if (lines[0]?.trim() !== "---") return meta;
+        
+        let i = 1;
+        while (i < lines.length && lines[i].trim() !== "---") {
+          const line = lines[i].trim();
+          const colonIdx = line.indexOf(":");
+          if (colonIdx !== -1) {
+            const key = line.slice(0, colonIdx).trim();
+            let val = line.slice(colonIdx + 1).trim();
+            if (val.startsWith('"') && val.endsWith('"')) {
+              val = val.slice(1, -1);
+            } else if (val.startsWith("'") && val.endsWith("'")) {
+              val = val.slice(1, -1);
+            }
+            meta[key] = val;
+          }
+          i++;
+        }
+        return meta;
+      };
+
+      // Read local files frontmatter
+      for (const entry of localFiles) {
+        try {
+          const fileData = await invoke<any>("read_file_text", { cwd: localPath, path: entry.name });
+          const frontmatter = parseFrontmatter(fileData.content);
+          const chatId = frontmatter.chat_id || entry.name;
+          const created = frontmatter.created || "";
+          
+          chatsMap.set(chatId, {
+            path: fileData.path,
+            name: entry.name,
+            title: frontmatter.title || entry.name.replace(/\.full\.md$/, "").replace(/\.md$/, ""),
+            model: frontmatter.model || "unknown",
+            chatId,
+            created,
+            messagesCount: frontmatter.messages ? parseInt(frontmatter.messages, 10) : undefined,
+            format: frontmatter.format,
+            source: "local"
+          });
+        } catch (e) {
+          console.error("Failed to read local chat frontmatter:", e);
+        }
+      }
+
+      // Read cloud sync files if configured
+      if (cloudPath) {
+        try {
+          const cloudResult = await invoke<any>("list_dir_entries", { cwd: cloudPath, partial: "" });
+          const cloudFiles = (cloudResult.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
+          
+          for (const entry of cloudFiles) {
+            try {
+              // Ensure we only read cloud sync files related to this workspace
+              const workspaceName = cwd.split("/").pop() || "workspace";
+              if (!entry.name.startsWith(`${workspaceName}_`)) continue;
+
+              const fileData = await invoke<any>("read_file_text", { cwd: cloudPath, path: entry.name });
+              const frontmatter = parseFrontmatter(fileData.content);
+              const chatId = frontmatter.chat_id || entry.name;
+              const created = frontmatter.created || "";
+              
+              const existing = chatsMap.get(chatId);
+              if (!existing) {
+                chatsMap.set(chatId, {
+                  path: fileData.path,
+                  name: entry.name,
+                  title: frontmatter.title || entry.name.replace(/\.full\.md$/, "").replace(/\.md$/, ""),
+                  model: frontmatter.model || "unknown",
+                  chatId,
+                  created,
+                  messagesCount: frontmatter.messages ? parseInt(frontmatter.messages, 10) : undefined,
+                  format: frontmatter.format,
+                  source: "cloud"
+                });
+              } else {
+                existing.source = "both";
+              }
+            } catch (e) {
+              console.error("Failed to read cloud chat frontmatter:", e);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to list cloud sync files:", e);
+        }
+      }
+
+      const chats = Array.from(chatsMap.values());
       
       if (chats.length === 0) {
-        historyEl.innerHTML = `<div class="empty-state">No saved chats found in .prism/</div>`;
+        historyEl.innerHTML = `<div class="empty-state">No saved chats found in .prism/history/</div>`;
         return;
       }
 
-      // Sort by name (which usually includes timestamp) descending
-      chats.sort((a, b) => b.name.localeCompare(a.name));
+      // Sort by created timestamp descending, or sort by name descending as a fallback
+      chats.sort((a, b) => {
+        if (a.created && b.created) {
+          return b.created.localeCompare(a.created);
+        }
+        return b.name.localeCompare(a.name);
+      });
 
       historyEl.innerHTML = chats.map(c => {
-        const fullPath = `${prismPath}/${c.name}`;
+        const fullPath = c.path;
+        
+        let badgeHtml = "";
+        if (c.source === "both") {
+          badgeHtml += `<span class="history-badge history-badge-cloud">
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 2px;">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg> Synced</span>`;
+        } else if (c.source === "cloud") {
+          badgeHtml += `<span class="history-badge history-badge-cloud">Cloud</span>`;
+        } else {
+          badgeHtml += `<span class="history-badge history-badge-local">Local</span>`;
+        }
+
+        if (c.model && c.model !== "unknown") {
+          badgeHtml += `<span class="history-badge history-badge-model">${escapeHtml(c.model)}</span>`;
+        }
+
+        if (c.messagesCount !== undefined) {
+          badgeHtml += `<span class="history-badge history-badge-messages">${c.messagesCount} turns</span>`;
+        }
+
+        const formattedDate = c.created ? new Date(c.created).toLocaleString() : "";
+
         return `
-          <div class="history-item">
+          <div class="history-item" style="padding: 14px 18px;">
             <div class="history-info">
-              <div class="history-name">${escapeHtml(c.name)}</div>
-              <div class="history-meta">${escapeHtml(fullPath)}</div>
+              <div class="history-name" style="font-size: 14px; font-weight: 600;">${escapeHtml(c.title)}</div>
+              <div class="history-item-badge-row">
+                ${badgeHtml}
+                ${formattedDate ? `<span style="font-size: 11px; color: #4b5563; margin-left: 6px;">${escapeHtml(formattedDate)}</span>` : ""}
+              </div>
+              <div class="history-meta" style="margin-top: 6px; opacity: 0.5;">${escapeHtml(fullPath)}</div>
             </div>
             <button class="history-load-btn" data-path="${escapeHtml(fullPath)}">Load</button>
           </div>
         `;
       }).join("");
 
-      // Wire load buttons. Routes through Workspace.loadSavedChat()
-      // (the same code path /load uses) so the active tab refreshes its
-      // model badge, adopts the saved title, prints the [load]
-      // confirmation in xterm, and offers transcript replay. Without
-      // this, a Load click would seed the backend session but leave
-      // the user staring at an unchanged terminal \u2014 the \"did anything
-      // happen?\" gap the original code's TODO comment named.
       historyEl.querySelectorAll(".history-load-btn").forEach(btn => {
         btn.addEventListener("click", async () => {
           const path = (btn as HTMLElement).dataset.path!;
@@ -782,14 +979,8 @@ export class SettingsUI {
             (btn as HTMLButtonElement).disabled = true;
             (btn as HTMLButtonElement).textContent = "Loading...";
             this.close();
-            // loadSavedChat handles invoke + agent.refreshSession +
-            // title adoption + xterm feedback + transcript-replay
-            // prompt. Same surface as /load.
             await ws.loadSavedChat(path);
           } catch (err) {
-            // Fallback only \u2014 loadSavedChat catches its own errors and
-            // writes them to xterm, so this branch is essentially
-            // unreachable. Kept defensively.
             alert(`Failed to load chat: ${err}`);
             (btn as HTMLButtonElement).disabled = false;
             (btn as HTMLButtonElement).textContent = "Load";
@@ -798,7 +989,7 @@ export class SettingsUI {
       });
 
     } catch (err) {
-      historyEl.innerHTML = `<div class="error-state">No .prism directory found in this workspace.</div>`;
+      historyEl.innerHTML = `<div class="error-state">No .prism/history directory found or failed to scan.</div>`;
     }
   }
 
