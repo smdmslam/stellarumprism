@@ -85,10 +85,12 @@ export class OnboardingWizard {
     slide.className = "onboarding-slide active";
     slide.innerHTML = `
       <div class="onboarding-welcome-icon">
-        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--prism-cyan)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-          <circle cx="12" cy="13" r="3"></circle>
-          <path d="M12 10v1"></path>
+        <svg class="lucide lucide-folder-open-dot" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--prism-cyan)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 14a3 3 0 1 0 0-6"></path>
+          <path d="M10 4h4l2 2h4a2 2 0 0 1 2 2v2"></path>
+          <path d="M16 17H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h12"></path>
+          <path d="M16 19h6"></path>
+          <path d="M19 16v6"></path>
         </svg>
       </div>
       <h2 class="onboarding-title">Welcome to Prism</h2>
@@ -99,7 +101,7 @@ export class OnboardingWizard {
         <p class="onboarding-picker-desc">Select a project directory or folder to initialize your active workspace tab.</p>
         
         <button id="btn-pick-dir" class="onboarding-btn-primary">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+          <svg class="lucide lucide-folder-open" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
           </svg>
           Select Project Directory
@@ -114,7 +116,7 @@ export class OnboardingWizard {
       <div class="onboarding-footer">
         <button id="btn-step-next-1" class="onboarding-btn-action" disabled>
           Continue
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 6px;">
+          <svg class="lucide lucide-chevron-right" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 6px;">
             <polyline points="9 18 15 12 9 6"></polyline>
           </svg>
         </button>
@@ -174,7 +176,7 @@ export class OnboardingWizard {
         <div class="onboarding-layout-card ${this.layoutToggles.sidebar ? "active" : ""}" data-pane="sidebar">
           <div class="card-glow"></div>
           <div class="card-icon">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="lucide lucide-folder-open" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
           </div>
@@ -187,7 +189,7 @@ export class OnboardingWizard {
         <div class="onboarding-layout-card ${this.layoutToggles.agent ? "active" : ""}" data-pane="agent">
           <div class="card-glow"></div>
           <div class="card-icon">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="lucide lucide-message-square" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
             </svg>
           </div>
@@ -200,7 +202,7 @@ export class OnboardingWizard {
         <div class="onboarding-layout-card ${this.layoutToggles.terminal ? "active" : ""}" data-pane="terminal">
           <div class="card-glow"></div>
           <div class="card-icon">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="lucide lucide-terminal" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="4 17 10 11 4 5"></polyline>
               <line x1="12" y1="19" x2="20" y2="19"></line>
             </svg>
@@ -214,7 +216,7 @@ export class OnboardingWizard {
         <div class="onboarding-layout-card ${this.layoutToggles.preview ? "active" : ""}" data-pane="preview">
           <div class="card-glow"></div>
           <div class="card-icon">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="lucide lucide-book-open" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
               <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
             </svg>
@@ -228,7 +230,7 @@ export class OnboardingWizard {
         <div class="onboarding-layout-card ${this.layoutToggles.console ? "active" : ""}" data-pane="console">
           <div class="card-glow"></div>
           <div class="card-icon">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="lucide lucide-cpu" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="4" y="4" width="16" height="16" rx="2"></rect>
               <rect x="9" y="9" width="6" height="6"></rect>
               <path d="M9 1v3"></path>
@@ -250,7 +252,7 @@ export class OnboardingWizard {
         <div class="onboarding-layout-card ${this.layoutToggles.problems ? "active" : ""}" data-pane="problems">
           <div class="card-glow"></div>
           <div class="card-icon">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="lucide lucide-triangle-alert" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
               <line x1="12" y1="9" x2="12" y2="13"></line>
               <line x1="12" y1="17" x2="12.01" y2="17"></line>
@@ -270,14 +272,14 @@ export class OnboardingWizard {
 
       <div class="onboarding-footer">
         <button id="btn-step-prev-2" class="onboarding-btn-action secondary">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+          <svg class="lucide lucide-chevron-left" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
             <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
           Back
         </button>
         <button id="btn-step-next-2" class="onboarding-btn-action">
           Continue
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 6px;">
+          <svg class="lucide lucide-chevron-right" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 6px;">
             <polyline points="9 18 15 12 9 6"></polyline>
           </svg>
         </button>
@@ -374,16 +376,16 @@ export class OnboardingWizard {
 
       <div class="onboarding-footer">
         <button id="btn-step-prev-3" class="onboarding-btn-action secondary">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
+          <svg class="lucide lucide-chevron-left" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;">
             <polyline points="15 18 9 12 15 6"></polyline>
           </svg>
           Back
         </button>
         <button id="btn-step-finish" class="onboarding-btn-primary" style="padding: 10px 24px; font-weight: 700; width: auto;">
           Activate Workspace
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 6px;">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-            <polyline points="22 4 12 14.01 9 11.01"></polyline>
+          <svg class="lucide lucide-circle-check-big" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 6px;">
+            <path d="M21.801 10A10 10 0 1 1 17 3.335"></path>
+            <path d="m9 11 3 3L22 4"></path>
           </svg>
         </button>
       </div>

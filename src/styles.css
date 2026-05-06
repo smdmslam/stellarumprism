@@ -5790,7 +5790,7 @@ input:checked + .toggle-slider:before {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, var(--prism-cyan) 0%, #0369a1 100%);
+  background: rgba(14, 165, 233, 0.14);
   border: 1px solid rgba(125, 211, 252, 0.25);
   border-radius: 8px;
   color: #ffffff;
@@ -5805,8 +5805,9 @@ input:checked + .toggle-slider:before {
 
 .onboarding-btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(14, 165, 233, 0.35);
+  box-shadow: 0 6px 16px rgba(14, 165, 233, 0.24);
   border-color: rgba(125, 211, 252, 0.4);
+  background: rgba(14, 165, 233, 0.2);
 }
 
 .onboarding-btn-primary:active {
