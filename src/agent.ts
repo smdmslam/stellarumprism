@@ -325,6 +325,8 @@ export class AgentController {
    * the agent touched. Reset on every query().
    */
   private currentTurnWrites: WriteEntry[] = [];
+  /** Shell commands verified by successful run_shell tool calls this turn. */
+  private currentTurnVerifiedShellCommands: string[] = [];
   /**
    * Approval previews keyed by tool call id. Used to pair the exact
    * approval artifact with its eventual completion event, rather than
@@ -613,6 +615,7 @@ export class AgentController {
     // a clean slate.
     this.currentTurnStartedAt = Date.now();
     this.currentTurnWrites = [];
+    this.currentTurnVerifiedShellCommands = [];
 
     // Enter busy state now. Anything that short-circuits below must call
     // setBusy(false) before returning.
@@ -1134,6 +1137,12 @@ export class AgentController {
         round: info.round,
       });
     }
+    // Only surface shell suggestions that were actually executed by the
+    // backend tool loop and reported success.
+    if (info.name === "run_shell" && info.ok) {
+      const verified = extractRunShellCommand(info.args);
+      if (verified) this.currentTurnVerifiedShellCommands.push(verified);
+    }
     // Mark the next onToken to emit the `\u2500\u2500\u2500 answer \u2500\u2500\u2500` phase
     // rule. The flag lives across multiple tool calls in the same turn
     // and is consumed by whichever token arrives first after the loop
@@ -1219,7 +1228,7 @@ export class AgentController {
       estimatedCostUsd: payload?.estimated_cost_usd,
     });
 
-    this.renderActionBar(extractCodeBlocks(this.responseBuffer));
+    this.renderActionBar(dedupe(this.currentTurnVerifiedShellCommands).slice(0, 6));
     this.opts.view.endTurn();
     this.clearListeners();
 
@@ -1267,6 +1276,7 @@ export class AgentController {
     this.currentGroundedActive = false;
     this.currentTurnToolCount = 0;
     this.currentTurnWrites = [];
+    this.currentTurnVerifiedShellCommands = [];
     this.currentRuntimeProbes = [];
     this.currentSubstrateRuns = [];
     this.currentTurnInventoryShaped = false;
@@ -1301,6 +1311,7 @@ export class AgentController {
     this.currentTurnToolCount = 0;
     this.currentTurnStartedAt = null;
     this.currentTurnWrites = [];
+    this.currentTurnVerifiedShellCommands = [];
     this.currentTurnInventoryShaped = false;
     this.pendingApprovals.clear();
   }
@@ -1767,6 +1778,24 @@ function prettyToolArgs(toolName: string, json: string): string {
       return "";
     default:
       return shortenArgs(json);
+  }
+}
+
+/**
+ * Parse the argv payload from a successful run_shell tool call into a
+ * single command string suitable for the action bar.
+ */
+function extractRunShellCommand(json: string): string | null {
+  try {
+    const parsed = JSON.parse(json) as { command?: unknown };
+    if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.command)) {
+      return null;
+    }
+    const argv = parsed.command.filter((v): v is string => typeof v === "string");
+    if (argv.length === 0) return null;
+    return argv.join(" ");
+  } catch {
+    return null;
   }
 }
 
