@@ -9,6 +9,7 @@
 export class AgentFind {
   private readonly stage: HTMLElement;
   private readonly scrollHost: HTMLElement;
+  private readonly workspaceEl: HTMLElement | null;
   private barEl: HTMLElement | null = null;
   private inputEl: HTMLInputElement | null = null;
   private countEl: HTMLElement | null = null;
@@ -20,6 +21,7 @@ export class AgentFind {
   constructor(stage: HTMLElement, scrollHost: HTMLElement) {
     this.stage = stage;
     this.scrollHost = scrollHost;
+    this.workspaceEl = this.stage.closest<HTMLElement>(".workspace");
 
     this.initUI();
     this.bindEvents();
@@ -87,6 +89,8 @@ export class AgentFind {
     // Global Cmd+F listener
     window.addEventListener("keydown", (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && (e.key === "f" || e.key === "F")) {
+        // Only claim the shortcut for the currently active workspace.
+        if (!this.isActiveWorkspace()) return;
         // Fall back to standard editor search if focused in CodeMirror
         if (document.activeElement?.closest(".cm-editor")) {
           return;
@@ -94,6 +98,7 @@ export class AgentFind {
         e.preventDefault();
         this.show();
       } else if (e.key === "Escape" && !bar.hasAttribute("hidden")) {
+        if (!this.isActiveWorkspace()) return;
         // Global Escape closes search if it's visible
         e.preventDefault();
         this.hide();
@@ -253,5 +258,10 @@ export class AgentFind {
 
   private escapeRegExp(str: string): string {
     return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  private isActiveWorkspace(): boolean {
+    if (!this.workspaceEl) return false;
+    return this.workspaceEl.classList.contains("active");
   }
 }
