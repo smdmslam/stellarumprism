@@ -78,6 +78,14 @@ window.addEventListener("DOMContentLoaded", () => {
 
     toolbar?.updateLayoutButtons();
 
+    // Dev/testing affordance: allow explicit reopening of onboarding even
+    // after first-run completion via the `/onboarding` slash command.
+    window.addEventListener("prism-open-onboarding", () => {
+      settings.setCompletedOnboarding(false);
+      const wizard = new OnboardingWizard(tabs, toolbar!);
+      wizard.start();
+    });
+
     void (async () => {
       try {
         const session = await readSessionState();

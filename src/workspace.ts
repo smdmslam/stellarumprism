@@ -1207,6 +1207,11 @@ export class Workspace {
       }
       return;
     }
+    if (/^\s*\/onboarding\s*$/i.test(text)) {
+      window.dispatchEvent(new Event("prism-open-onboarding"));
+      this.notify("[onboarding] opening first-run wizard");
+      return;
+    }
     // /files — switch sidebar to the Files tab and focus the tree.
     if (/^\s*\/files\s*$/i.test(text)) {
       this.setSidebarTab("files");

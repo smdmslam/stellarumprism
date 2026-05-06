@@ -91,6 +91,11 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     detail: "Show this list",
   },
   {
+    label: "/onboarding",
+    detail: "Reopen first-run wizard",
+    info: "Opens the onboarding flow so you can review or test the initial setup experience.",
+  },
+  {
     label: "/problems",
     detail: "Toggle the Problems panel",
     info: "Open / close / clear the right-side Problems panel that lists the latest audit's findings grouped by file. Auto-opens after /audit completes. Args: show, hide, toggle (default), clear.",
