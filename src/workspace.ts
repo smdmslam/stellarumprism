@@ -319,6 +319,10 @@ export class Workspace {
    * surprised by silent re-rendering after a long gap.
    */
   private renderLoadedChatPref: "always" | "never" | null = null;
+  /** Whether we've attempted to load the communication style rules. */
+  private communicationStyleLoaded = false;
+  /** Cached always-on communication style preflight prefix for this tab. */
+  private communicationStylePrefix = "";
   /** True when `/model auto` is active for this tab. */
   private autoRouterEnabled = true;
   /** True after explicit `/model <slug>` pin in this tab. */
@@ -1811,17 +1815,27 @@ export class Workspace {
     // path sends the scaffold to the model on the wire only and never
     // writes it to history.
     let systemPrefix: string | undefined;
+    const communicationStyle = await this.getCommunicationStylePrefix();
+    if (communicationStyle.length > 0) {
+      systemPrefix = communicationStyle;
+    }
     const strictMode = settings.getStrictMode();
     const trigger = detectVerifiedTrigger(prompt);
     if (strictMode) {
       const strictTrigger =
         trigger ?? ({ kind: "repo-fact", matched: "always verify" } as const);
-      systemPrefix = buildVerifiedSystemPrefix(strictTrigger);
+      const verifiedPrefix = buildVerifiedSystemPrefix(strictTrigger);
+      systemPrefix = systemPrefix
+        ? `${systemPrefix}\n\n${verifiedPrefix}`
+        : verifiedPrefix;
       this.notify(
         `→ [always verify] ${verifiedKindLabel(strictTrigger.kind)} protocol active (matched “${stripAnsi(strictTrigger.matched)}”)`,
       );
     } else if (!options.mode && trigger) {
-      systemPrefix = buildVerifiedSystemPrefix(trigger);
+      const verifiedPrefix = buildVerifiedSystemPrefix(trigger);
+      systemPrefix = systemPrefix
+        ? `${systemPrefix}\n\n${verifiedPrefix}`
+        : verifiedPrefix;
       this.notify(
         `→ [grounded-chat] ${verifiedKindLabel(trigger.kind)} protocol active (matched “${stripAnsi(trigger.matched)}”)`,
       );
@@ -1833,7 +1847,7 @@ export class Workspace {
     const skillsBlock = this.composeEngagedSkillsBlock();
     if (skillsBlock.length > 0) {
       systemPrefix = systemPrefix
-        ? `${skillsBlock}\n\n${systemPrefix}`
+        ? `${systemPrefix}\n\n${skillsBlock}`
         : skillsBlock;
     }
     // Track B awareness manifest. Append AFTER any other prefix so the
@@ -1952,6 +1966,29 @@ export class Workspace {
         `→ [auto-router] control-plane unavailable; using ${stripAnsi(this.agent.getModel())}`,
       );
       return null;
+    }
+  }
+
+  private async getCommunicationStylePrefix(): Promise<string> {
+    if (this.communicationStyleLoaded) return this.communicationStylePrefix;
+    this.communicationStyleLoaded = true;
+    if (!this.cwd) return "";
+    try {
+      const ref = await invoke<{ content: string }>("read_file_scoped", {
+        cwd: this.cwd,
+        path: ".agent/rules/Communication_style.md",
+      });
+      const raw = (ref?.content ?? "").trim();
+      if (!raw) return "";
+      // Keep the always-on block bounded so it doesn't silently dominate prompt budget.
+      const clipped =
+        raw.length > 12_000 ? `${raw.slice(0, 12_000).trimEnd()}\n\n[truncated]` : raw;
+      this.communicationStylePrefix =
+        "COMMUNICATION STYLE RULES (always apply)\n\n" + clipped;
+      return this.communicationStylePrefix;
+    } catch {
+      this.communicationStylePrefix = "";
+      return "";
     }
   }
 
