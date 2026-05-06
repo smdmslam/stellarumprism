@@ -31,6 +31,7 @@ mod skills;
 mod tools;
 mod workspace_state;
 pub mod audit;
+mod snapshot;
 
 use agent::{
     agent_cancel, agent_drop_session, agent_get_history, agent_get_history_full,
@@ -128,6 +129,7 @@ pub fn run() {
             config::get_bookmarked_directories,
             config::add_bookmarked_directory,
             config::remove_bookmarked_directory,
+            snapshot::restore_latest_snapshot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

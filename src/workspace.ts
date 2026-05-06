@@ -1310,6 +1310,27 @@ export class Workspace {
       void this.handleUsageCommand();
       return;
     }
+    // /snapshot restore — restore latest Prism auto-snapshot (git stash pop).
+    const snapshotMatch = /^\s*\/snapshot(?:\s+(.*))?\s*$/i.exec(text);
+    if (snapshotMatch) {
+      const arg = (snapshotMatch[1] ?? "").trim().toLowerCase();
+      if (arg === "restore") {
+        if (!this.cwd) {
+          this.notifyError(`[snapshot] cwd unknown — wait for shell prompt`);
+          return;
+        }
+        void invoke<string>("restore_latest_snapshot", { cwd: this.cwd })
+          .then((msg) => {
+            this.notify(`[snapshot] ${stripAnsi(msg)}`);
+          })
+          .catch((err) => {
+            this.notifyError(`[snapshot] ${stripAnsi(String(err))}`);
+          });
+        return;
+      }
+      this.notifyError(`[snapshot] use /snapshot restore`);
+      return;
+    }
     // /cd <path> — issue a real `cd` to the shell with shell-safe quoting.
     const cdSlash = /^\s*\/cd\s+(.+)$/i.exec(text);
     if (cdSlash) {

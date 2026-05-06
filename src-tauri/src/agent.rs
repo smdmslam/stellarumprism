@@ -120,6 +120,17 @@ fn scan_mentions_required_symbol(args_json: &str, required_symbols: &HashSet<Str
     false
 }
 
+fn is_mutating_tool_name(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "write_file" | "edit_file" | "create_dir" | "move_file" | "remove_file" | "remove_dir_all"
+    )
+}
+
+fn mode_is_snapshot_risky(mode_name: Option<&str>) -> bool {
+    matches!(mode_name.unwrap_or(""), "refactor" | "build" | "new" | "test-gen")
+}
+
 fn extract_all_string_values(args_json: &str) -> Vec<String> {
     let mut out = vec![args_json.to_string()];
     let Ok(v) = serde_json::from_str::<serde_json::Value>(args_json) else { return out; };
@@ -1784,6 +1795,9 @@ pub async fn agent_query(
         let mut signature_edit_first_round: Option<usize> = None;
         let mut has_consumer_scan_after_signature_edit = false;
         let mut required_consumer_symbols: HashSet<String> = HashSet::new();
+        let risky_snapshot_mode = mode_is_snapshot_risky(mode_for_task.as_deref());
+        let mut auto_snapshot_attempted = false;
+        let mut approved_mutating_calls = 0usize;
 
         // Tool-use loop: stream → if tools requested, execute & continue; else break.
         let mut attach_images_this_turn = !pending_images.is_empty();
@@ -2071,6 +2085,65 @@ pub async fn agent_query(
 
                         if decision == ApprovalDecision::ApproveSession && session_allowed_for_tool {
                             approval_session.insert(chat_id_for_task.clone(), true);
+                        }
+
+                        let tool_name = call.function.name.as_str();
+                        if matches!(
+                            decision,
+                            ApprovalDecision::Approve | ApprovalDecision::ApproveSession
+                        ) && is_mutating_tool_name(tool_name)
+                        {
+                            approved_mutating_calls += 1;
+                            let should_snapshot_now = !auto_snapshot_attempted
+                                && (risky_snapshot_mode || approved_mutating_calls >= 3);
+                            if should_snapshot_now {
+                                auto_snapshot_attempted = true;
+                                match crate::snapshot::create_auto_snapshot(
+                                    &cwd_str,
+                                    &chat_id_for_task,
+                                ) {
+                                    Ok(snapshot_label) => {
+                                        let _ = app_handle.emit(
+                                            &token_event,
+                                            format!(
+                                                "\r\n\x1b[1;36m[snapshot]\x1b[0m auto-snapshot created before mutating edits: {}\r\n",
+                                                snapshot_label
+                                            ),
+                                        );
+                                        crate::audit::log_event(
+                                            &cwd_str,
+                                            chat_id_for_task.clone(),
+                                            request_id.clone(),
+                                            "auto_snapshot_created",
+                                            serde_json::json!({
+                                                "snapshot": snapshot_label,
+                                                "mode": mode_for_task.clone().unwrap_or_else(|| "chat".to_string()),
+                                                "approved_mutating_calls": approved_mutating_calls,
+                                            }),
+                                        );
+                                    }
+                                    Err(err) => {
+                                        let _ = app_handle.emit(
+                                            &token_event,
+                                            format!(
+                                                "\r\n\x1b[1;33m[snapshot]\x1b[0m auto-snapshot unavailable: {}\r\n",
+                                                err
+                                            ),
+                                        );
+                                        crate::audit::log_event(
+                                            &cwd_str,
+                                            chat_id_for_task.clone(),
+                                            request_id.clone(),
+                                            "auto_snapshot_failed",
+                                            serde_json::json!({
+                                                "error": err,
+                                                "mode": mode_for_task.clone().unwrap_or_else(|| "chat".to_string()),
+                                                "approved_mutating_calls": approved_mutating_calls,
+                                            }),
+                                        );
+                                    }
+                                }
+                            }
                         }
 
                         let inv = match decision {
