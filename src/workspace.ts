@@ -889,6 +889,13 @@ export class Workspace {
         void this.refreshBillingInfo();
         void this.autoSaveChat();
       },
+      onRunSuggestedSlash: (command) => {
+        this.handleSubmit(command, {
+          intent: "command",
+          explicit: true,
+          payload: command,
+        });
+      },
     });
     this.setupEditor();
     this.setupAttachments();

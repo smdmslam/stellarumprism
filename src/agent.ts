@@ -221,6 +221,11 @@ export interface AgentControllerOptions {
     totalTokens?: number;
     estimatedCostUsd?: number;
   }) => void;
+  /**
+   * Executes a slash-command suggestion through the workspace dispatcher
+   * (intent parser + slash handlers) rather than writing into the shell.
+   */
+  onRunSuggestedSlash?: (command: string) => void;
 }
 
 /**
@@ -1228,7 +1233,9 @@ export class AgentController {
       estimatedCostUsd: payload?.estimated_cost_usd,
     });
 
-    this.renderActionBar(dedupe(this.currentTurnVerifiedShellCommands).slice(0, 6));
+    const shell = dedupe(this.currentTurnVerifiedShellCommands).slice(0, 6);
+    const slash = extractSuggestedSlashCommands(this.responseBuffer);
+    this.renderActionBar(dedupe([...shell, ...slash]).slice(0, 6));
     this.opts.view.endTurn();
     this.clearListeners();
 
@@ -1447,10 +1454,14 @@ export class AgentController {
       if (action === "copy") {
         void navigator.clipboard.writeText(cmd).catch(() => {});
       } else if (action === "run") {
-        void invoke("write_to_shell", {
-          sessionId: this.opts.sessionId,
-          data: cmd + "\n",
-        }).catch(() => {});
+        if (cmd.startsWith("/")) {
+          this.opts.onRunSuggestedSlash?.(cmd);
+        } else {
+          void invoke("write_to_shell", {
+            sessionId: this.opts.sessionId,
+            data: cmd + "\n",
+          }).catch(() => {});
+        }
         // Dismiss after run.
         this.clearActionBar();
       }
@@ -1797,5 +1808,25 @@ function extractRunShellCommand(json: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Pull deep-work slash suggestions from the assistant response. This is
+ * intentionally allowlisted so the action bar only proposes high-value
+ * Prism workflows instead of arbitrary slash tokens.
+ */
+function extractSuggestedSlashCommands(markdown: string): string[] {
+  const out: string[] = [];
+  const text = markdown.toLowerCase();
+  const maybePush = (cmd: string, cond: boolean) => {
+    if (cond) out.push(cmd);
+  };
+  maybePush("/audit", /\/audit|\baudit\b|\breview\b|\bsecurity\b/.test(text));
+  maybePush("/refactor", /\/refactor|\brefactor\b|\bclean up\b|\brestructure\b/.test(text));
+  maybePush("/fix", /\/fix|\bfix\b|\bbug\b|\bbroken\b|\berror\b/.test(text));
+  maybePush("/test-gen", /\/test-gen|\btest\b|\bcoverage\b/.test(text));
+  maybePush("/protocol harden", /\/protocol\s+harden|\bharden\b|\bprotocol\b/.test(text));
+  maybePush("/verify on", /\/verify\b|\bstrict\b|\bverify\b/.test(text));
+  return dedupe(out);
 }
 
