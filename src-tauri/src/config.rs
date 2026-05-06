@@ -166,9 +166,9 @@ fn default_verifier_enabled() -> bool {
     true
 }
 fn default_verifier_model() -> String {
-    // Qwen3 235B at ~$0.30/$0.90 — 5–10x cheaper than Haiku for the
-    // verifier doubler that fires on every chat turn ≥ min_chars.
-    "qwen/qwen3-235b-a22b-2507".into()
+    // Gemini 2.5 Flash Lite is the speed-first default verifier:
+    // low-latency, low-cost, and sufficient for routine second-pass checks.
+    "google/gemini-2.5-flash-lite".into()
 }
 fn default_verifier_min_chars() -> usize {
     200

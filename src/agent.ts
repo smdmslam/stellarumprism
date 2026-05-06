@@ -246,7 +246,7 @@ export class AgentController {
   private responseBuffer = "";
   private messageCount = 0;
   private verifierEnabled = true;
-  private verifierModel = "anthropic/claude-haiku-4.5";
+  private verifierModel = "google/gemini-2.5-flash-lite";
   /** Current busy-state broadcast value, so we don't double-fire callbacks. */
   private busy = false;
   /** Stall-detection timer id (window.setTimeout return value). */
