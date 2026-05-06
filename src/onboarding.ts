@@ -173,7 +173,11 @@ export class OnboardingWizard {
       <div class="onboarding-layout-grid">
         <div class="onboarding-layout-card ${this.layoutToggles.sidebar ? "active" : ""}" data-pane="sidebar">
           <div class="card-glow"></div>
-          <div class="card-icon">📁</div>
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </div>
           <div class="card-details">
             <span class="card-name">Sidebar Explorer</span>
             <span class="card-desc">File tree, skills library, and bookmarks.</span>
@@ -182,7 +186,11 @@ export class OnboardingWizard {
 
         <div class="onboarding-layout-card ${this.layoutToggles.agent ? "active" : ""}" data-pane="agent">
           <div class="card-glow"></div>
-          <div class="card-icon">⚡</div>
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+            </svg>
+          </div>
           <div class="card-details">
             <span class="card-name">Agent Chat</span>
             <span class="card-desc">Direct interface to your autonomous coder.</span>
@@ -191,7 +199,12 @@ export class OnboardingWizard {
 
         <div class="onboarding-layout-card ${this.layoutToggles.terminal ? "active" : ""}" data-pane="terminal">
           <div class="card-glow"></div>
-          <div class="card-icon">🐚</div>
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 17 10 11 4 5"></polyline>
+              <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+          </div>
           <div class="card-details">
             <span class="card-name">Integrated Shell</span>
             <span class="card-desc">Active background PTY terminal stream.</span>
@@ -200,7 +213,12 @@ export class OnboardingWizard {
 
         <div class="onboarding-layout-card ${this.layoutToggles.preview ? "active" : ""}" data-pane="preview">
           <div class="card-glow"></div>
-          <div class="card-icon">📖</div>
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+          </div>
           <div class="card-details">
             <span class="card-name">Reader Mode</span>
             <span class="card-desc">Spacious view-and-edit side-split.</span>
@@ -209,7 +227,20 @@ export class OnboardingWizard {
 
         <div class="onboarding-layout-card ${this.layoutToggles.console ? "active" : ""}" data-pane="console">
           <div class="card-glow"></div>
-          <div class="card-icon">🛠️</div>
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+              <rect x="9" y="9" width="6" height="6"></rect>
+              <path d="M9 1v3"></path>
+              <path d="M15 1v3"></path>
+              <path d="M9 20v3"></path>
+              <path d="M15 20v3"></path>
+              <path d="M20 9h3"></path>
+              <path d="M20 15h3"></path>
+              <path d="M1 9h3"></path>
+              <path d="M1 15h3"></path>
+            </svg>
+          </div>
           <div class="card-details">
             <span class="card-name">System Console</span>
             <span class="card-desc">Prism core execution and platform logs.</span>
@@ -218,7 +249,13 @@ export class OnboardingWizard {
 
         <div class="onboarding-layout-card ${this.layoutToggles.problems ? "active" : ""}" data-pane="problems">
           <div class="card-glow"></div>
-          <div class="card-icon">⚠️</div>
+          <div class="card-icon">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"></path>
+              <line x1="12" y1="9" x2="12" y2="13"></line>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+          </div>
           <div class="card-details">
             <span class="card-name">Diagnostics</span>
             <span class="card-desc">Compile errors, lints, and diagnostic checks.</span>

@@ -81,6 +81,16 @@ window.addEventListener("DOMContentLoaded", () => {
     void (async () => {
       try {
         const session = await readSessionState();
+        let bookmarks: string[] = [];
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          bookmarks = await invoke<string[]>("get_bookmarked_directories");
+        } catch {}
+
+        if (session.tabs.length > 0 || bookmarks.length > 0) {
+          settings.setCompletedOnboarding(true);
+        }
+
         if (session.tabs.length > 0) {
           await tabs.replaceWithPersistedTabs(session.tabs);
         }

@@ -5737,8 +5737,8 @@ input:checked + .toggle-slider:before {
 
 .onboarding-pro-tip {
   width: 100%;
-  background: rgba(245, 158, 11, 0.04);
-  border: 1px solid rgba(245, 158, 11, 0.15);
+  background: rgba(139, 92, 246, 0.04);
+  border: 1px solid rgba(139, 92, 246, 0.2);
   padding: 10px 14px;
   border-radius: 8px;
   display: flex;
@@ -5751,8 +5751,8 @@ input:checked + .toggle-slider:before {
 
 .tip-badge {
   flex-shrink: 0;
-  background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
+  background: rgba(139, 92, 246, 0.15);
+  color: #c084fc;
   font-size: 8px;
   font-weight: 800;
   padding: 2px 5px;
@@ -5762,7 +5762,7 @@ input:checked + .toggle-slider:before {
 
 .tip-content {
   font-size: 10.5px;
-  color: #d97706;
+  color: #a78bfa;
   line-height: 1.4;
 }
 
