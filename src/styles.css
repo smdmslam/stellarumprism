@@ -5240,6 +5240,167 @@ input:checked + .toggle-slider:before {
   pointer-events: auto !important;
 }
 
+/* ---------- protocols menu dropdown ----------
+ *
+ * Master Plan 4.1 & 4.2: Toolbar Protocols Dropdown Menu
+ * Polished dropdown listing pre-packaged developer sequences with
+ * requirements, disabled states, and one-click triggering.
+ */
+
+.protocols-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: transparent;
+}
+
+.protocols-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 340px;
+  max-width: 480px;
+  max-height: 65vh;
+  overflow-y: auto;
+  background: #0f1520;
+  border: 1px solid rgba(125, 211, 252, 0.25);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 20px rgba(125, 211, 252, 0.08);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: protocols-menu-pop 120ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes protocols-menu-pop {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.protocols-menu::-webkit-scrollbar {
+  width: 8px;
+}
+
+.protocols-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.protocols-menu::-webkit-scrollbar-thumb {
+  background: #1f2937;
+  border-radius: 4px;
+}
+
+.protocols-menu::-webkit-scrollbar-thumb:hover {
+  background: #374151;
+}
+
+.protocols-menu-section-label {
+  padding: 8px 12px 4px 12px;
+  font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-top: 4px;
+}
+
+.protocols-menu-section-label:first-child {
+  margin-top: 0;
+}
+
+.protocols-menu-divider {
+  height: 1px;
+  background: #1f2937;
+  margin: 4px 0;
+}
+
+.protocols-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.protocols-menu-item:hover {
+  background: rgba(125, 211, 252, 0.08);
+  border-color: rgba(125, 211, 252, 0.2);
+}
+
+.protocols-menu-item.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.protocols-menu-item.disabled:hover {
+  background: transparent;
+  border-color: transparent;
+}
+
+.protocols-menu-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.protocols-menu-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.protocols-menu-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f3f4f6;
+  line-height: 1.2;
+}
+
+.protocols-menu-item-desc {
+  font-size: 11px;
+  color: #9ca3af;
+  line-height: 1.4;
+  margin-left: 26px;
+}
+
+.protocols-menu-item-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: 26px;
+}
+
+.protocols-menu-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(125, 211, 252, 0.12);
+  color: #7dd3fc;
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  white-space: nowrap;
+}
+
+.protocols-menu-badge.disabled-badge {
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+#tb-protocols.active {
+  background: rgba(125, 211, 252, 0.12);
+  border-color: rgba(125, 211, 252, 0.35);
+  color: #7dd3fc;
+}
+
 /* ---------- toolbar substrate status & energy gauge ---------- */
 
 .tb-indicator {

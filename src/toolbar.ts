@@ -1,5 +1,6 @@
 import { TabManager } from "./tabs";
 import { SettingsUI } from "./settings-ui";
+import ProtocolsMenuManager from "./protocols-menu";
 
 export interface ToolbarOptions {
   tabManager: TabManager;
@@ -8,16 +9,18 @@ export interface ToolbarOptions {
 export class ToolbarManager {
   private readonly tabs: TabManager;
   private readonly settingsUI: SettingsUI;
+  private readonly protocolsMenu: ProtocolsMenuManager;
 
   constructor(opts: ToolbarOptions) {
     this.tabs = opts.tabManager;
     this.settingsUI = new SettingsUI();
+    this.protocolsMenu = new ProtocolsMenuManager();
     this.wireButtons();
   }
 
   private wireButtons(): void {
     // Search + Files toolbar buttons were redundant with the input-bar
-    // \"/\" autocomplete and the sidebar's Files tab respectively;
+    // "/" autocomplete and the sidebar's Files tab respectively;
     // removed from index.html. Layout-toggle buttons remain.
     const settingsBtn = document.getElementById("tb-settings");
 
@@ -86,6 +89,19 @@ export class ToolbarManager {
       if (activeWs) {
         // Trigger the internal /clear logic by simulating an input submission
         activeWs.handleSubmit("/clear", { intent: "command", explicit: true, payload: "/clear" });
+      }
+    });
+
+    // Wire up protocols menu
+    this.protocolsMenu.onProtocolSelected((protocolId) => {
+      const activeWs = this.tabs.getActiveWorkspace();
+      if (activeWs) {
+        // Trigger the /protocol command with the selected protocol ID
+        activeWs.handleSubmit(`/protocol ${protocolId}`, { 
+          intent: "command", 
+          explicit: true, 
+          payload: `protocol:${protocolId}` 
+        });
       }
     });
   }
