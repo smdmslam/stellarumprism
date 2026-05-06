@@ -3,7 +3,7 @@
  */
 
 import { settings } from "./settings";
-import { MODEL_LIBRARY, compareModelsByCostDesc } from "./models";
+import { MODEL_LIBRARY, compareModelsByComplexity } from "./models";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { Workspace } from "./workspace";
@@ -282,7 +282,7 @@ export class SettingsUI {
     const models = MODEL_LIBRARY
       .filter(m => m.tier !== "backend")
       .slice()
-      .sort(compareModelsByCostDesc);
+      .sort(compareModelsByComplexity);
     // Aggregate state for the master toggle: ON only when every model
     // is currently enabled. A mixed state (some on, some off) reads as
     // OFF \u2014 clicking flips everything to ON. Clicking again from a

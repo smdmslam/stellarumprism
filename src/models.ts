@@ -121,6 +121,19 @@ export function compareModelsByCostAsc(a: ModelEntry, b: ModelEntry): number {
   return a.aliases[0].localeCompare(b.aliases[0]);
 }
 
+/** Sort by complexity descending: complex -> standard -> simple, and fallback to cost descending. */
+export function compareModelsByComplexity(a: ModelEntry, b: ModelEntry): number {
+  const complexityWeight = {
+    complex: 1,
+    standard: 2,
+    simple: 3,
+  };
+  const aW = complexityWeight[a.complexity || "standard"];
+  const bW = complexityWeight[b.complexity || "standard"];
+  if (aW !== bW) return aW - bW;
+  return compareModelsByCostDesc(a, b);
+}
+
 export const MODEL_LIBRARY: ModelEntry[] = [
   // -------- Main rotation -----------------------------------------------
   //
@@ -291,7 +304,7 @@ export function renderModelListAnsi(current: string): string {
     (m) =>
       m.tier === "main" &&
       settings.isModelEnabled(m.slug, m.enabled !== false),
-  ).sort(compareModelsByCostDesc);
+  ).sort(compareModelsByComplexity);
 
   const RESET = "\x1b[0m";
   const DIM = "\x1b[2m";
