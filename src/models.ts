@@ -63,6 +63,8 @@ export interface ModelEntry {
   jsonMode?: boolean;
   /** Max context window in tokens (ballpark; used as a soft lower bound). */
   maxContext?: number;
+  /** Recommended task complexity category */
+  complexity?: "simple" | "standard" | "complex";
 }
 
 export interface PricingBasis {
@@ -134,68 +136,74 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     aliases: ["gpt-5.4", "gpt5.4", "gpt-5"],
     slug: "openai/gpt-5.4",
     description:
-      "OpenAI GPT-5.4 — frontier, 1M context, text+image, unified codex+gpt",
+      "OpenAI GPT-5.4 — frontier, 1M context, text+image, unified codex+gpt (img)",
     tier: "main",
     vision: true,
     cost: 3,
     toolUse: true,
     jsonMode: true,
     maxContext: 1050000,
+    complexity: "complex",
   },
   {
     aliases: ["grok-4.1-fast", "grok-4-fast", "grok4"],
     slug: "x-ai/grok-4.1-fast",
     description:
-      "xAI Grok 4.1 Fast \u2014 2M context, excels at whole-repo reading",
+      "xAI Grok 4.1 Fast — 2M context, excels at whole-repo reading",
     tier: "main",
     cost: 2,
     toolUse: true,
     jsonMode: true,
     maxContext: 2000000,
+    complexity: "standard",
   },
   {
     aliases: ["glm-5", "glm"],
     slug: "z-ai/glm-5",
     description:
-      "Z.ai GLM 5 \u2014 long-horizon coding, iterative self-correction",
+      "Z.ai GLM 5 — long-horizon coding, iterative self-correction",
     tier: "main",
     cost: 2,
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
+    complexity: "complex",
   },
   {
     aliases: ["haiku", "claude-haiku"],
     slug: "anthropic/claude-haiku-4.5",
-    description: "Claude Haiku 4.5 — careful reasoning, great tool-use",
+    description: "Claude Haiku 4.5 — careful reasoning, great tool-use (img)",
     tier: "main",
     vision: true,
     cost: 3,
     toolUse: true,
     jsonMode: true,
     maxContext: 200000,
+    complexity: "standard",
   },
   {
     aliases: ["gpt-4o-mini", "gpt4o-mini", "mini"],
     slug: "openai/gpt-4o-mini",
-    description: "OpenAI GPT-4o Mini — ultra-fast, cheap, multimodal small frontier model",
+    description: "OpenAI GPT-4o Mini — ultra-fast, cheap, multimodal small frontier model (img)",
     tier: "main",
     vision: true,
     cost: 1,
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
+    complexity: "simple",
   },
   {
     aliases: ["gemini-2.5-flash-lite", "gemini-lite", "flash-lite"],
     slug: "google/gemini-2.5-flash-lite",
-    description: "Google Gemini 2.5 Flash Lite — low-cost workhorse, 1M context, native multimodal",
+    description: "Google Gemini 2.5 Flash Lite — low-cost workhorse, 1M context, native multimodal (img)",
     tier: "main",
     vision: true,
     cost: 1,
     toolUse: true,
     jsonMode: true,
     maxContext: 1048576,
+    complexity: "simple",
   },
   {
     // Sonar is the backend for the `web_search` tool (see
@@ -207,7 +215,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     aliases: ["sonar", "perplexity"],
     slug: "perplexity/sonar",
     description:
-      "Perplexity Sonar \u2014 internal backend for the web_search tool (not user-selectable as a primary model).",
+      "Perplexity Sonar — internal backend for the web_search tool (not user-selectable as a primary model).",
     tier: "backend",
     cost: 3,
     toolUse: false,
@@ -221,12 +229,13 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     aliases: ["qwen-235b", "qwen235"],
     slug: "qwen/qwen3-235b-a22b-2507",
     description:
-      "Qwen3 235B A22B \u2014 big open-weights reasoning, very cheap",
+      "Qwen3 235B A22B — big open-weights reasoning, very cheap",
     tier: "main",
     cost: 1,
     toolUse: true,
     jsonMode: true,
     maxContext: 262144,
+    complexity: "simple",
   },
 ];
 
@@ -291,30 +300,48 @@ export function renderModelListAnsi(current: string): string {
   const GREEN = "\x1b[32m";
   const MAGENTA = "\x1b[35m";
   const YELLOW = "\x1b[33m";
+  const RED = "\x1b[31m";
 
   const costGlyph = (c?: 1 | 2 | 3): string => {
     if (c === 1) return `${GREEN}$${RESET}`;
     if (c === 2) return `${YELLOW}$$${RESET}`;
-    if (c === 3) return `\x1b[31m$$$${RESET}`;
+    if (c === 3) return `${RED}$$$${RESET}`;
     return "";
   };
 
   const out: string[] = [];
   out.push(
-    `${BOLD}Available models${RESET} ${DIM}(use: /model <alias|slug>) \u2014 ${MAGENTA}[img]${RESET}${DIM} = vision, $=cheap $$=mid $$$=premium${RESET}`,
+    `${BOLD}Available Models by Task Complexity Recommendation${RESET} ${DIM}(use: /model <alias|slug>)${RESET}`,
+  );
+  out.push(
+    `${DIM}Legend: ${MAGENTA}[img]${RESET}${DIM} = vision, $=cheap, $$=mid, $$$=premium${RESET}`,
   );
   out.push("");
-  out.push(`${BOLD}Main${RESET}`);
-  for (const m of entries) {
-    const isActive = m.slug === current;
-    const marker = isActive ? `${GREEN}\u25cf${RESET}` : " ";
-    const alias = `${CYAN}${m.aliases[0]}${RESET}`;
-    const slug = `${DIM}${m.slug}${RESET}`;
-    const visionTag = m.vision ? ` ${MAGENTA}[img]${RESET}` : "";
-    const cost = costGlyph(m.cost);
-    const costPart = cost ? ` ${cost}` : "";
-    out.push(`  ${marker} ${alias.padEnd(24)} ${slug}${visionTag}${costPart}`);
-    out.push(`      ${DIM}${m.description}${RESET}`);
+
+  const groups = [
+    { key: "simple", title: "🟢 Simple Tasks (Fast, low-latency, and highly economical)", color: GREEN },
+    { key: "standard", title: "🟡 Standard Tasks (Methodical tool-use and daily coding)", color: YELLOW },
+    { key: "complex", title: "🔴 Complex Tasks (Deep logical reasoning and planning)", color: RED },
+  ];
+
+  for (const group of groups) {
+    const groupModels = entries.filter((m) => (m.complexity || "standard") === group.key);
+    if (groupModels.length === 0) continue;
+
+    out.push(`${BOLD}${group.color}${group.title}${RESET}`);
+    for (const m of groupModels) {
+      const isActive = m.slug === current;
+      const marker = isActive ? `${GREEN}\u25cf${RESET}` : " ";
+      const alias = `${CYAN}${m.aliases[0]}${RESET}`;
+      const slug = `${DIM}${m.slug}${RESET}`;
+      const visionTag = m.vision ? ` ${MAGENTA}[img]${RESET}` : "";
+      const cost = costGlyph(m.cost);
+      const costPart = cost ? ` ${cost}` : "";
+      out.push(`  ${marker} ${alias.padEnd(24)} ${slug}${visionTag}${costPart}`);
+      out.push(`      ${DIM}${m.description}${RESET}`);
+    }
+    out.push("");
   }
-  return out.join("\r\n") + "\r\n";
+
+  return out.join("\r\n");
 }

@@ -312,29 +312,55 @@ export class SettingsUI {
       <div class="model-settings-list">
     `;
 
-    html += models.map(m => {
-      // Pair the registry default with the user override so a model
-      // shipped `enabled: false` reads as off on first run, even when
-      // the user has never opened settings before.
-      const isEnabled = settings.isModelEnabled(m.slug, m.enabled !== false);
-      const tierLabel = m.tier === "main" ? "Main" : "Explore";
+    const categories = [
+      { key: "simple", title: "🟢 Simple Tasks", subtitle: "Fast, low-latency, and highly economical", border: "1px solid rgba(16, 185, 129, 0.2)" },
+      { key: "standard", title: "🟡 Standard Tasks", subtitle: "Methodical tool-use and reliable daily coding", border: "1px solid rgba(245, 158, 11, 0.2)" },
+      { key: "complex", title: "🔴 Complex Tasks", subtitle: "Deep logical reasoning, long-horizon planning, and audits", border: "1px solid rgba(239, 68, 68, 0.2)" },
+    ];
 
-      return `
-        <div class="model-setting-card">
-          <div class="model-setting-info">
-            <div class="model-setting-name">
-              ${escapeHtml(m.aliases[0])} 
-              <span class="model-setting-tier ${m.tier}">${tierLabel}</span>
+    for (const cat of categories) {
+      const catModels = models.filter(m => (m.complexity || "standard") === cat.key);
+      if (catModels.length === 0) continue;
+
+      html += `
+        <div class="settings-subsection-container" style="margin-top: 16px; margin-bottom: 20px; padding: 14px; background: rgba(15, 23, 42, 0.35); border-radius: 10px; border: ${cat.border};">
+          <div class="settings-subsection-header" style="margin-bottom: 12px;">
+            <div class="settings-subsection-title" style="font-size: 13px; font-weight: 700; color: #f3f4f6; display: flex; align-items: center; gap: 6px;">
+              ${cat.title}
             </div>
-            <div class="model-setting-desc">${escapeHtml(m.description)}</div>
+            <div class="settings-subsection-subtitle" style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
+              ${cat.subtitle}
+            </div>
           </div>
-          <label class="prism-toggle">
-            <input type="checkbox" data-slug="${escapeHtml(m.slug)}" ${isEnabled ? "checked" : ""}>
-            <span class="toggle-slider"></span>
-          </label>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+      `;
+
+      html += catModels.map(m => {
+        const isEnabled = settings.isModelEnabled(m.slug, m.enabled !== false);
+        const tierLabel = m.tier === "main" ? "Main" : "Explore";
+
+        return `
+          <div class="model-setting-card" style="margin-bottom: 0;">
+            <div class="model-setting-info">
+              <div class="model-setting-name">
+                ${escapeHtml(m.aliases[0])} 
+                <span class="model-setting-tier ${m.tier}">${tierLabel}</span>
+              </div>
+              <div class="model-setting-desc">${escapeHtml(m.description)}</div>
+            </div>
+            <label class="prism-toggle">
+              <input type="checkbox" data-slug="${escapeHtml(m.slug)}" ${isEnabled ? "checked" : ""}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        `;
+      }).join("");
+
+      html += `
+          </div>
         </div>
       `;
-    }).join("");
+    }
 
     html += `</div>`;
     this.content.innerHTML = html;
