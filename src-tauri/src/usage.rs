@@ -1,4 +1,5 @@
 use std::fs::{self, File, OpenOptions};
+use std::hash::{Hash, Hasher};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use serde::{Serialize, Deserialize};
@@ -9,12 +10,30 @@ use crate::pricing::{get_pricing_basis, PricingBasis};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UsageEvent {
+    #[serde(default)]
+    pub schema_version: String,
     pub event_id: String,
+    #[serde(default)]
+    pub idempotency_key: String,
     pub timestamp: String,
     pub request_id: Option<String>,
+    #[serde(default)]
+    pub turn_id: String,
     pub chat_id: String,
+    #[serde(default)]
+    pub user_id: String,
     pub workspace_id: String,
+    #[serde(default)]
+    pub workspace_id_hash: String,
     pub mode: String,
+    #[serde(default)]
+    pub surface: String,
+    #[serde(default)]
+    pub trigger_source: String,
+    #[serde(default)]
+    pub lifecycle: String,
+    #[serde(default)]
+    pub feature_tags: Vec<String>,
     pub model: String,
     pub provider: String,
     pub prompt_tokens: u32,
@@ -25,7 +44,11 @@ pub struct UsageEvent {
     pub cancelled: bool,
     pub estimated_cost_usd: f64,
     pub markup_cost_usd: f64,
+    #[serde(default)]
+    pub final_cost_usd: Option<f64>,
     pub pricing_basis: PricingBasis,
+    #[serde(default)]
+    pub pricing_basis_version: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -73,14 +96,45 @@ pub fn emit_usage_event(
     
     let estimated_cost_usd = (prompt_tokens as f64 * pricing.input_per_m / 1_000_000.0) +
                              (completion_tokens as f64 * pricing.output_per_m / 1_000_000.0);
+    let lifecycle = if cancelled {
+        "cancelled"
+    } else if success {
+        "completed"
+    } else {
+        "failed"
+    };
+    let surface = infer_surface(&mode);
+    let trigger_source = infer_trigger_source(&mode);
+    let feature_tags = infer_feature_tags(&mode);
+    let turn_id = request_id.clone().unwrap_or_else(|| Uuid::new_v4().to_string());
+    let workspace_id_hash = hash_workspace_id(&workspace_id);
+    let idempotency_key = format!(
+        "{}:{}:{}:{}:{}:{}:{}",
+        request_id.clone().unwrap_or_else(|| "none".into()),
+        chat_id,
+        mode,
+        model,
+        prompt_tokens,
+        completion_tokens,
+        lifecycle
+    );
 
     let event = UsageEvent {
+        schema_version: "v2".to_string(),
         event_id: Uuid::new_v4().to_string(),
+        idempotency_key,
         timestamp: Utc::now().to_rfc3339(),
         request_id,
+        turn_id,
         chat_id,
+        user_id: "local".to_string(),
         workspace_id,
+        workspace_id_hash,
         mode,
+        surface,
+        trigger_source,
+        lifecycle: lifecycle.to_string(),
+        feature_tags,
         model,
         provider,
         prompt_tokens,
@@ -91,7 +145,9 @@ pub fn emit_usage_event(
         cancelled,
         estimated_cost_usd,
         markup_cost_usd: estimated_cost_usd * 20.0,
+        final_cost_usd: None,
         pricing_basis: pricing,
+        pricing_basis_version: "pricing_basis/v1".to_string(),
     };
 
     let _ = app_handle.emit("usage-event", &event);
@@ -104,6 +160,43 @@ pub fn emit_usage_event(
     }
 
     estimated_cost_usd
+}
+
+fn infer_surface(mode: &str) -> String {
+    match mode {
+        "reviewer" => "verifier".to_string(),
+        "web_search" => "web_search".to_string(),
+        "audit" | "build" | "fix" | "new" | "refactor" | "review" | "test-gen" | "chat" => {
+            "agent".to_string()
+        }
+        _ => "agent".to_string(),
+    }
+}
+
+fn infer_trigger_source(mode: &str) -> String {
+    match mode {
+        "reviewer" => "auto_verifier".to_string(),
+        "web_search" => "tool_call".to_string(),
+        _ => "user".to_string(),
+    }
+}
+
+fn infer_feature_tags(mode: &str) -> Vec<String> {
+    let mut tags = vec!["usage".to_string(), mode.to_string()];
+    match mode {
+        "reviewer" => tags.push("verification".to_string()),
+        "web_search" => tags.push("search".to_string()),
+        "audit" => tags.push("diagnostic".to_string()),
+        "fix" | "refactor" | "build" | "new" | "test-gen" => tags.push("generation".to_string()),
+        _ => {}
+    }
+    tags
+}
+
+fn hash_workspace_id(workspace_id: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    workspace_id.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
 }
 
 #[tauri::command]
@@ -138,10 +231,15 @@ pub fn get_usage_summary(chat_id: String) -> Result<UsageSummary, String> {
     let mut today_calls = 0;
     // Map: (mode, model) -> (tokens, cost, markup, calls)
     let mut interaction_map: std::collections::HashMap<(String, String), (u32, f64, f64, u32)> = std::collections::HashMap::new();
+    let mut seen_dedupe_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for line in reader.lines() {
         let Ok(l) = line else { continue };
         let Ok(event) = serde_json::from_str::<UsageEvent>(&l) else { continue };
+        let dedupe_key = usage_dedupe_key(&event);
+        if !seen_dedupe_keys.insert(dedupe_key) {
+            continue;
+        }
 
         let is_today = event.timestamp.starts_with(&today_prefix);
         let is_session = event.chat_id == chat_id;
@@ -229,12 +327,17 @@ pub fn get_total_today_tokens() -> u64 {
     let now = Utc::now();
     let today_str = now.format("%Y-%m-%d").to_string();
     let mut total = 0u64;
+    let mut seen_dedupe_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     if let Ok(file) = File::open(path) {
         let reader = BufReader::new(file);
         for line in reader.lines() {
             if let Ok(l) = line {
                 if let Ok(event) = serde_json::from_str::<UsageEvent>(&l) {
+                    let dedupe_key = usage_dedupe_key(&event);
+                    if !seen_dedupe_keys.insert(dedupe_key) {
+                        continue;
+                    }
                     if event.timestamp.starts_with(&today_str) {
                         total += (event.prompt_tokens + event.completion_tokens) as u64;
                     }
@@ -243,4 +346,23 @@ pub fn get_total_today_tokens() -> u64 {
         }
     }
     total
+}
+
+fn usage_dedupe_key(event: &UsageEvent) -> String {
+    if !event.idempotency_key.is_empty() {
+        return event.idempotency_key.clone();
+    }
+    if !event.event_id.is_empty() {
+        return event.event_id.clone();
+    }
+    // Legacy fallback for older rows without explicit ids.
+    format!(
+        "{}:{}:{}:{}:{}:{}",
+        event.timestamp,
+        event.chat_id,
+        event.mode,
+        event.model,
+        event.prompt_tokens,
+        event.completion_tokens
+    )
 }
