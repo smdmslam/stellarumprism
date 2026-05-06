@@ -7,6 +7,7 @@
 //!
 //! Frontend cancellation is supported via `agent_cancel`.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -34,6 +35,112 @@ fn is_signature_change(args_json: &str) -> bool {
         }
     }
     false
+}
+
+fn signature_changed_symbols(args_json: &str) -> Vec<String> {
+    let Ok(args) = serde_json::from_str::<serde_json::Value>(args_json) else { return Vec::new(); };
+    let mut out = HashSet::<String>::new();
+    if let (Some(old_str), Some(new_str)) = (
+        args.get("old_string").and_then(|v| v.as_str()),
+        args.get("new_string").and_then(|v| v.as_str()),
+    ) {
+        let sig_patterns = ["export ", "pub ", "async ", "function ", "fn ", "class ", "interface ", "=>"];
+        let old_lines_with_sig: Vec<_> = old_str
+            .lines()
+            .filter(|l| sig_patterns.iter().any(|p| l.contains(p)))
+            .collect();
+        let new_lines_with_sig: Vec<_> = new_str
+            .lines()
+            .filter(|l| sig_patterns.iter().any(|p| l.contains(p)))
+            .collect();
+        if old_lines_with_sig != new_lines_with_sig {
+            for line in old_lines_with_sig.iter().chain(new_lines_with_sig.iter()) {
+                if let Some(sym) = extract_signature_symbol(line) {
+                    out.insert(sym);
+                }
+            }
+        }
+    }
+    out.into_iter().collect()
+}
+
+fn extract_signature_symbol(line: &str) -> Option<String> {
+    // Known declaration forms in this repo family:
+    //   export function foo(...)
+    //   async function foo(...)
+    //   fn foo(...)
+    //   class Foo
+    //   interface Foo
+    //   export const foo = (...) =>
+    for kw in ["function", "fn", "class", "interface"] {
+        if let Some(sym) = first_ident_after_keyword(line, kw) {
+            return Some(sym);
+        }
+    }
+    for kw in ["const", "let", "var"] {
+        if let Some(sym) = first_ident_after_keyword(line, kw) {
+            return Some(sym);
+        }
+    }
+    None
+}
+
+fn first_ident_after_keyword(line: &str, keyword: &str) -> Option<String> {
+    let needle = format!("{keyword} ");
+    let idx = line.find(&needle)?;
+    let rest = &line[idx + needle.len()..];
+    let ident: String = rest
+        .chars()
+        .skip_while(|c| !is_ident_char(*c))
+        .take_while(|c| is_ident_char(*c))
+        .collect();
+    if ident.is_empty() {
+        None
+    } else {
+        Some(ident)
+    }
+}
+
+fn is_ident_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '$'
+}
+
+fn scan_mentions_required_symbol(args_json: &str, required_symbols: &HashSet<String>) -> bool {
+    if required_symbols.is_empty() {
+        // Fallback: if we couldn't extract a concrete symbol, any scan still
+        // indicates the model attempted consumer enumeration after signature edits.
+        return true;
+    }
+    let haystacks = extract_all_string_values(args_json);
+    for sym in required_symbols {
+        if haystacks.iter().any(|h| h.contains(sym)) {
+            return true;
+        }
+    }
+    false
+}
+
+fn extract_all_string_values(args_json: &str) -> Vec<String> {
+    let mut out = vec![args_json.to_string()];
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(args_json) else { return out; };
+    fn walk(v: &serde_json::Value, out: &mut Vec<String>) {
+        match v {
+            serde_json::Value::String(s) => out.push(s.clone()),
+            serde_json::Value::Array(xs) => {
+                for x in xs {
+                    walk(x, out);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                for (_k, val) in map {
+                    walk(val, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    walk(&v, &mut out);
+    out
 }
 
 /// Max number of non-system messages kept in the rolling history. Older
@@ -1644,8 +1751,10 @@ pub async fn agent_query(
         // Track every tool call we executed so the reviewer can see them.
         let mut tool_summaries: Vec<(String, String, bool)> = Vec::new();
 
-        let mut has_grep = false;
         let mut has_signature_edit = false;
+        let mut signature_edit_first_round: Option<usize> = None;
+        let mut has_consumer_scan_after_signature_edit = false;
+        let mut required_consumer_symbols: HashSet<String> = HashSet::new();
 
         // Tool-use loop: stream → if tools requested, execute & continue; else break.
         let mut attach_images_this_turn = !pending_images.is_empty();
@@ -1683,18 +1792,42 @@ pub async fn agent_query(
                     usage,
                     request_id,
                 }) => {
-                    if has_signature_edit && !has_grep {
-                        let rejection = "SYSTEM ENFORCEMENT: You modified a function signature or exported symbol in this turn, but did not call `grep` to find its consumers. You MUST call `grep` to ensure no call-sites are broken before concluding.";
+                    if has_signature_edit && !has_consumer_scan_after_signature_edit {
+                        let symbol_hint = if required_consumer_symbols.is_empty() {
+                            "an unresolved symbol from your signature edit".to_string()
+                        } else {
+                            let mut syms: Vec<String> =
+                                required_consumer_symbols.iter().cloned().collect();
+                            syms.sort();
+                            format!("these changed symbol(s): {}", syms.join(", "))
+                        };
+                        let rejection = format!(
+                            "SYSTEM ENFORCEMENT: You modified a function signature or exported symbol in this turn, but did not run a post-edit consumer scan for {symbol_hint}. You MUST call `grep`/`rg`/`find` for the changed symbol(s), review call-sites/importers, and update affected consumers in this same turn before concluding."
+                        );
+                        let mut syms: Vec<String> =
+                            required_consumer_symbols.iter().cloned().collect();
+                        syms.sort();
+                        crate::audit::log_event(
+                            &cwd_str,
+                            chat_id_for_task.clone(),
+                            request_id.clone(),
+                            "consumer_enforcement_triggered",
+                            serde_json::json!({
+                                "consumer_enforcement_triggered": true,
+                                "required_symbols": syms,
+                                "reason": "signature_change_without_targeted_consumer_scan_after_edit",
+                            }),
+                        );
                         if !assistant_text.trim().is_empty() {
                             session_for_task.append_raw(Message::assistant(assistant_text.clone()));
                         } else {
                             session_for_task.append_raw(Message::assistant("I have completed my edits."));
                         }
-                        session_for_task.append_raw(Message::user(rejection));
+                            session_for_task.append_raw(Message::user(rejection.clone()));
                         let _ = app_handle.emit(
                             &error_event,
                             serde_json::json!({
-                                "error": "Signature change detected without grep. Forcing consumer check...",
+                                "error": rejection,
                                 "fatal": false
                             }),
                         );
@@ -1822,11 +1955,28 @@ pub async fn agent_query(
                     // via the oneshot channel registered in `approval_pending`.
                     for call in &calls {
                         if call.function.name == "grep" || call.function.name == "rg" || call.function.name == "find" {
-                            has_grep = true;
+                            // Consumer-enumeration guardrail only counts scans that happen
+                            // at/after the first detected signature edit in this turn.
+                            if let Some(sig_round) = signature_edit_first_round {
+                                if round >= sig_round {
+                                    if scan_mentions_required_symbol(
+                                        &call.function.arguments,
+                                        &required_consumer_symbols,
+                                    ) {
+                                        has_consumer_scan_after_signature_edit = true;
+                                    }
+                                }
+                            }
                         }
                         if call.function.name == "edit_file" {
                             if is_signature_change(&call.function.arguments) {
                                 has_signature_edit = true;
+                                if signature_edit_first_round.is_none() {
+                                    signature_edit_first_round = Some(round);
+                                }
+                                for sym in signature_changed_symbols(&call.function.arguments) {
+                                    required_consumer_symbols.insert(sym);
+                                }
                             }
                         }
 
