@@ -64,7 +64,7 @@ export interface ModelEntry {
   /** Max context window in tokens (ballpark; used as a soft lower bound). */
   maxContext?: number;
   /** Recommended task complexity category */
-  complexity?: "simple" | "standard" | "complex";
+  complexity?: "simple" | "standard" | "complex" | "experimental";
 }
 
 export interface PricingBasis {
@@ -127,9 +127,10 @@ export function compareModelsByComplexity(a: ModelEntry, b: ModelEntry): number 
     complex: 1,
     standard: 2,
     simple: 3,
+    experimental: 4,
   };
-  const aW = complexityWeight[a.complexity || "standard"];
-  const bW = complexityWeight[b.complexity || "standard"];
+  const aW = complexityWeight[a.complexity || "standard"] ?? 2;
+  const bW = complexityWeight[b.complexity || "standard"] ?? 2;
   if (aW !== bW) return aW - bW;
   return compareModelsByCostDesc(a, b);
 }
@@ -145,6 +146,18 @@ export const MODEL_LIBRARY: ModelEntry[] = [
   // not as commented-out or `enabled: false` rot in this file).
   //
 
+  {
+    aliases: ["sonnet-4.6", "sonnet4.6", "sonnet"],
+    slug: "anthropic/claude-sonnet-4.6",
+    description: "Claude Sonnet 4.6 — Anthropic's most capable Sonnet-class frontier coding model (img)",
+    tier: "main",
+    vision: true,
+    cost: 3,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 1000000,
+    complexity: "complex",
+  },
   {
     aliases: ["gpt-5.4", "gpt5.4", "gpt-5"],
     slug: "openai/gpt-5.4",
@@ -250,6 +263,18 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     maxContext: 262144,
     complexity: "simple",
   },
+  {
+    aliases: ["cobuddy", "baidu-cobuddy", "buddy"],
+    slug: "baidu/cobuddy:free",
+    description: "Baidu Qianfan CoBuddy — experimental fast free-tier coding assistant",
+    tier: "main",
+    vision: false,
+    cost: 1,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 131072,
+    complexity: "experimental",
+  },
 ];
 
 /** Look up a model entry by its full OpenRouter slug. Returns null for unknowns. */
@@ -335,6 +360,7 @@ export function renderModelListAnsi(current: string): string {
     { key: "complex", title: "Complex Tasks (Deep logical reasoning and planning)", color: CYAN },
     { key: "standard", title: "Standard Tasks (Methodical tool-use and daily coding)", color: CYAN },
     { key: "simple", title: "Simple Tasks (Fast, low-latency, and highly economical)", color: CYAN },
+    { key: "experimental", title: "Experimental Tasks (Specialized, free-tier, and playground coding)", color: CYAN },
   ];
 
   for (const group of groups) {

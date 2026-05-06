@@ -360,6 +360,12 @@ export class SettingsUI {
         subtitle: "Fast, low-latency, and highly economical",
         iconHtml: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--prism-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap" style="display: inline-block; vertical-align: middle;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
       },
+      {
+        key: "experimental",
+        title: "Experimental Tasks",
+        subtitle: "Specialized, free-tier sandbox, and community-driven coding models",
+        iconHtml: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--prism-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flask-conical" style="display: inline-block; vertical-align: middle;"><path d="M10 2v8L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45L14 10V2z"/><path d="M6 14h12M8 2h8"/></svg>`,
+      },
     ];
 
     for (const cat of categories) {

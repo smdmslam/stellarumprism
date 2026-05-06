@@ -31,6 +31,10 @@ pub fn get_pricing_map() -> HashMap<&'static str, PricingBasis> {
     map.insert("z-ai/glm-5", PricingBasis { input_per_m: 0.60, output_per_m: 2.08 });
     // Claude Haiku 4.5
     map.insert("anthropic/claude-haiku-4.5", PricingBasis { input_per_m: 1.0, output_per_m: 5.0 });
+    // Claude Sonnet 4.6
+    map.insert("anthropic/claude-sonnet-4.6", PricingBasis { input_per_m: 3.0, output_per_m: 15.0 });
+    // Baidu Qianfan CoBuddy Free
+    map.insert("baidu/cobuddy:free", PricingBasis { input_per_m: 0.0, output_per_m: 0.0 });
     // Qwen3 235B
     map.insert("qwen/qwen3-235b-a22b-2507", PricingBasis { input_per_m: 0.071, output_per_m: 0.10 });
     // Perplexity Sonar
