@@ -313,9 +313,24 @@ export class SettingsUI {
     `;
 
     const categories = [
-      { key: "simple", title: "🟢 Simple Tasks", subtitle: "Fast, low-latency, and highly economical", border: "1px solid rgba(16, 185, 129, 0.2)" },
-      { key: "standard", title: "🟡 Standard Tasks", subtitle: "Methodical tool-use and reliable daily coding", border: "1px solid rgba(245, 158, 11, 0.2)" },
-      { key: "complex", title: "🔴 Complex Tasks", subtitle: "Deep logical reasoning, long-horizon planning, and audits", border: "1px solid rgba(239, 68, 68, 0.2)" },
+      {
+        key: "complex",
+        title: "Complex Tasks",
+        subtitle: "Deep logical reasoning, long-horizon planning, and complex refactors",
+        iconHtml: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--prism-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cpu" style="display: inline-block; vertical-align: middle;"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3"/></svg>`,
+      },
+      {
+        key: "standard",
+        title: "Standard Tasks",
+        subtitle: "Methodical tool-use and reliable daily coding",
+        iconHtml: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--prism-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-wrench" style="display: inline-block; vertical-align: middle;"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`,
+      },
+      {
+        key: "simple",
+        title: "Simple Tasks",
+        subtitle: "Fast, low-latency, and highly economical",
+        iconHtml: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--prism-cyan)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap" style="display: inline-block; vertical-align: middle;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+      },
     ];
 
     for (const cat of categories) {
@@ -323,10 +338,11 @@ export class SettingsUI {
       if (catModels.length === 0) continue;
 
       html += `
-        <div class="settings-subsection-container" style="margin-top: 16px; margin-bottom: 20px; padding: 14px; background: rgba(15, 23, 42, 0.35); border-radius: 10px; border: ${cat.border};">
+        <div class="settings-subsection-container" style="margin-top: 16px; margin-bottom: 20px; padding: 14px; background: rgba(15, 23, 42, 0.35); border-radius: 10px; border: 1px solid rgba(6, 182, 212, 0.2);">
           <div class="settings-subsection-header" style="margin-bottom: 12px;">
-            <div class="settings-subsection-title" style="font-size: 13px; font-weight: 700; color: #f3f4f6; display: flex; align-items: center; gap: 6px;">
-              ${cat.title}
+            <div class="settings-subsection-title" style="font-size: 13px; font-weight: 700; color: #f3f4f6; display: flex; align-items: center; gap: 8px;">
+              ${cat.iconHtml}
+              <span>${cat.title}</span>
             </div>
             <div class="settings-subsection-subtitle" style="font-size: 11px; color: #94a3b8; margin-top: 2px;">
               ${cat.subtitle}

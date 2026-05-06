@@ -167,7 +167,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     toolUse: true,
     jsonMode: true,
     maxContext: 128000,
-    complexity: "complex",
+    complexity: "standard",
   },
   {
     aliases: ["haiku", "claude-haiku"],
@@ -179,7 +179,7 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     toolUse: true,
     jsonMode: true,
     maxContext: 200000,
-    complexity: "standard",
+    complexity: "complex",
   },
   {
     aliases: ["gpt-4o-mini", "gpt4o-mini", "mini"],
@@ -319,9 +319,9 @@ export function renderModelListAnsi(current: string): string {
   out.push("");
 
   const groups = [
-    { key: "simple", title: "🟢 Simple Tasks (Fast, low-latency, and highly economical)", color: GREEN },
-    { key: "standard", title: "🟡 Standard Tasks (Methodical tool-use and daily coding)", color: YELLOW },
-    { key: "complex", title: "🔴 Complex Tasks (Deep logical reasoning and planning)", color: RED },
+    { key: "complex", title: "Complex Tasks (Deep logical reasoning and planning)", color: CYAN },
+    { key: "standard", title: "Standard Tasks (Methodical tool-use and daily coding)", color: CYAN },
+    { key: "simple", title: "Simple Tasks (Fast, low-latency, and highly economical)", color: CYAN },
   ];
 
   for (const group of groups) {
