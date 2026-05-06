@@ -21,6 +21,7 @@
  */
 import { marked } from "marked";
 import type { WriteEntry } from "./turn-summary";
+import { AgentFind } from "./agent-find";
 
 // ---------------------------------------------------------------------------
 // marked setup
@@ -160,6 +161,7 @@ export class AgentView implements AgentViewApi {
   private readonly cb?: AgentViewCallbacks;
   /** True while streaming should keep the latest output in view. */
   private followStream = true;
+  private readonly find: AgentFind;
 
   private currentTurn: HTMLElement | null = null;
   /** `<section class="agent-turn-prose">` for the active turn. */
@@ -184,6 +186,7 @@ export class AgentView implements AgentViewApi {
       // back near the bottom.
       this.followStream = this.isPinnedToBottom();
     });
+    this.find = new AgentFind(this.root, this.scrollHost);
   }
 
   beginTurn(userPrompt: string): void {
@@ -708,6 +711,7 @@ export class AgentView implements AgentViewApi {
   clear(): void {
     this.scrollHost.innerHTML = "";
     this.followStream = true;
+    this.find.clear();
     this.endTurn();
   }
 
