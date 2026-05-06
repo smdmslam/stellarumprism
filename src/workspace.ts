@@ -1016,6 +1016,12 @@ export class Workspace {
       // Let the @path autocomplete source ask for our current cwd on demand.
       getCwd: () => this.cwd,
     });
+
+    const initAgent = this.input.isAgentMode();
+    reflectIntent(
+      { intent: initAgent ? "agent" : "command", explicit: false, payload: "" },
+      initAgent,
+    );
   }
 
   private setupBadges(): void {

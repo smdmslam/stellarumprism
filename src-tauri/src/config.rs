@@ -400,6 +400,21 @@ pub fn save_default_model(new_model: &str) -> std::io::Result<()> {
     fs::write(path, serialized)
 }
 
+/// Persist a partial update (API key string) back to the file.
+pub fn save_api_key(new_key: &str) -> std::io::Result<()> {
+    let Some(path) = config_path() else {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "no home dir",
+        ));
+    };
+    let mut cfg = load_or_init();
+    cfg.openrouter.api_key = new_key.to_string();
+    let serialized = toml::to_string_pretty(&cfg)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    fs::write(path, serialized)
+}
+
 /// Tauri-managed state wrapper so we can hot-update the model at runtime.
 #[derive(Default)]
 pub struct ConfigState {
@@ -417,6 +432,9 @@ impl ConfigState {
     }
     pub fn set_default_model(&self, model: String) {
         self.inner.write().openrouter.default_model = model;
+    }
+    pub fn set_api_key(&self, api_key: String) {
+        self.inner.write().openrouter.api_key = api_key;
     }
     pub fn set_verifier_enabled(&self, enabled: bool) {
         self.inner.write().agent.verifier.enabled = enabled;
@@ -540,5 +558,15 @@ pub fn set_agent_model(
 ) -> Result<(), String> {
     save_default_model(&model).map_err(|e| e.to_string())?;
     state.set_default_model(model);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_openrouter_api_key(
+    key: String,
+    state: tauri::State<'_, ConfigState>,
+) -> Result<(), String> {
+    save_api_key(&key).map_err(|e| e.to_string())?;
+    state.set_api_key(key);
     Ok(())
 }

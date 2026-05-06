@@ -11,6 +11,8 @@ import { readSessionState } from "./session";
 import { initUsageSync } from "./services/usage-persistence";
 import { initPricing } from "./models";
 import { applyDevInstanceBadge } from "./dev-instance-badge";
+import { settings } from "./settings";
+import { OnboardingWizard } from "./onboarding";
 
 declare global {
   interface Window {
@@ -93,6 +95,11 @@ window.addEventListener("DOMContentLoaded", () => {
         tabs.ensureAtLeastOneTab();
         tabs.reconcileActiveWorkspace();
         toolbar?.updateLayoutButtons();
+
+        if (!settings.hasCompletedOnboarding()) {
+          const wizard = new OnboardingWizard(tabs, toolbar!);
+          wizard.start();
+        }
       });
     })().catch((err) => {
       console.error("Session restore task:", err);

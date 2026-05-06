@@ -23,6 +23,7 @@ import {
   type CompletionResult,
 } from "@codemirror/autocomplete";
 import { detectIntent, type Intent, type IntentResult } from "./intent";
+import { settings } from "./settings";
 import {
   SLASH_COMMANDS,
   modelCompletions,
@@ -80,7 +81,7 @@ export class PrismInput {
   private draft = "";
 
   /** When true, every submission is treated as an agent prompt. */
-  private agentMode = false;
+  private agentMode = settings.getDefaultPromptMode() === "agent";
 
   constructor(host: HTMLElement, opts: PrismInputOptions) {
     this.opts = opts;

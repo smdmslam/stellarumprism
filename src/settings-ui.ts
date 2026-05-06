@@ -194,6 +194,25 @@ export class SettingsUI {
       </div>
 
       <div class="settings-group">
+        <label class="settings-group-title">Default Input Mode</label>
+        <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
+          Select the default input mode when starting a fresh workspace session or tab.
+        </p>
+        <div class="model-setting-card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;">
+          <div class="model-setting-info">
+            <div class="model-setting-name">Default Mode</div>
+            <div class="model-setting-desc">
+              Choose whether the input editor defaults to <strong>AGENT (Ask / Natural Language)</strong> or <strong>CMD (Terminal Command)</strong>.
+            </div>
+          </div>
+          <select id="setting-default-prompt-mode" style="background: #111827; border: 1px solid #374151; color: #e5e7eb; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: 600; outline: none; cursor: pointer; height: 32px; box-sizing: border-box;">
+            <option value="agent" ${settings.getDefaultPromptMode() === "agent" ? "selected" : ""}>AGENT (Ask)</option>
+            <option value="command" ${settings.getDefaultPromptMode() === "command" ? "selected" : ""}>CMD (Terminal)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="settings-group">
         <label class="settings-group-title">Editor Configuration</label>
         <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
           Controls for the CodeMirror editor core.
@@ -250,6 +269,12 @@ export class SettingsUI {
         statusEl.textContent = isChecked ? "ALWAYS" : "AUTO";
         statusEl.style.color = isChecked ? "var(--prism-emerald)" : "var(--prism-cyan)";
       }
+    });
+
+    const promptModeSelect = document.getElementById("setting-default-prompt-mode") as HTMLSelectElement;
+    promptModeSelect?.addEventListener("change", () => {
+      const mode = promptModeSelect.value as "agent" | "command";
+      settings.setDefaultPromptMode(mode);
     });
   }
 

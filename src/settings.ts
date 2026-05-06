@@ -53,6 +53,10 @@ export interface AppSettings {
   strictMode: boolean;
   /** Optional mapped cloud folder path (e.g. iCloud/Dropbox) for chat history syncing */
   cloudSyncPath?: string;
+  /** Whether the onboarding wizard has been completed */
+  hasCompletedOnboarding: boolean;
+  /** Default prompt mode on startup: 'agent' or 'command' */
+  defaultPromptMode: "agent" | "command";
 }
 
 const STORAGE_KEY = "prism-settings-v1";
@@ -69,6 +73,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   chatFontSize: 13,
   strictMode: true,
   cloudSyncPath: undefined,
+  hasCompletedOnboarding: false,
+  defaultPromptMode: "agent",
 };
 
 export class SettingsManager {
@@ -310,6 +316,26 @@ export class SettingsManager {
 
   setCloudSyncPath(path: string | undefined): void {
     this.current.cloudSyncPath = path;
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  hasCompletedOnboarding(): boolean {
+    return this.current.hasCompletedOnboarding ?? false;
+  }
+
+  setCompletedOnboarding(completed: boolean): void {
+    this.current.hasCompletedOnboarding = completed;
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  getDefaultPromptMode(): "agent" | "command" {
+    return this.current.defaultPromptMode ?? "agent";
+  }
+
+  setDefaultPromptMode(mode: "agent" | "command"): void {
+    this.current.defaultPromptMode = mode;
     this.save();
     window.dispatchEvent(new CustomEvent("prism-settings-changed"));
   }
