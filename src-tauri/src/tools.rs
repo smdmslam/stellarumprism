@@ -111,7 +111,7 @@ pub fn allows_session_approval(tool_name: &str) -> bool {
 /// Used by the approval UI before executing the call. Returns a
 /// plain-text string with optional diff-ish `--- old` / `+++ new`
 /// markers that the frontend colorizes.
-pub fn preview_write(tool_name: &str, args_json: &str) -> String {
+pub fn preview_write(tool_name: &str, args_json: &str, cwd: &str) -> String {
     let parsed: Value = serde_json::from_str(args_json).unwrap_or(Value::Null);
     match tool_name {
         "write_file" => {
@@ -141,10 +141,23 @@ pub fn preview_write(tool_name: &str, args_json: &str) -> String {
                 .get("replace_all")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
+
+            let mut start_line = 1;
+            let mut found = false;
+            if let Ok(resolved) = resolve_path(cwd, path) {
+                if let Ok(content) = std::fs::read_to_string(&resolved) {
+                    if let Some(idx) = content.find(old) {
+                        found = true;
+                        start_line = content[..idx].chars().filter(|&c| c == '\n').count() + 1;
+                    }
+                }
+            }
+
             format!(
-                "edit_file: {}{}\n\n--- old\n{}\n+++ new\n{}",
+                "edit_file: {}{} (line {})\n\n--- old\n{}\n+++ new\n{}",
                 path,
                 if replace_all { " (replace_all)" } else { "" },
+                if found { start_line.to_string() } else { "?".to_string() },
                 truncate_preview(old, 400),
                 truncate_preview(new, 400),
             )

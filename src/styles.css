@@ -1861,6 +1861,60 @@ input:checked + .toggle-slider:before {
 .agent-diff-code .cm-type { color: #e5c07b; }
 .agent-diff-code .cm-function { color: #61afef; }
 
+/* Premium Intra-line Word Highlights */
+.agent-diff-char-added {
+  background: rgba(16, 185, 129, 0.25);
+  border-radius: 3px;
+  padding: 1px 2px;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.2);
+}
+.agent-diff-char-removed {
+  background: rgba(244, 63, 94, 0.25);
+  border-radius: 3px;
+  padding: 1px 2px;
+  text-decoration: line-through;
+  box-shadow: 0 0 6px rgba(244, 63, 94, 0.2);
+}
+
+/* Beautiful Glassmorphic Context Fold Rows */
+.agent-diff-fold-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 14px;
+  background: rgba(31, 41, 55, 0.15);
+  border-top: 1px solid rgba(31, 41, 55, 0.2);
+  border-bottom: 1px solid rgba(31, 41, 55, 0.2);
+  color: #6b7280;
+  font-family: var(--prism-font-mono);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+  gap: 8px;
+  transition: all 150ms ease;
+}
+
+.agent-diff-fold-row:hover {
+  background: rgba(14, 165, 233, 0.1);
+  color: #0ea5e9;
+  text-shadow: 0 0 8px rgba(14, 165, 233, 0.3);
+}
+
+.agent-diff-fold-row svg {
+  transition: transform 150ms ease;
+}
+
+.agent-diff-fold-row:hover svg {
+  transform: scale(1.15);
+}
+
+.agent-diff-fold-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: max-height 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .agent-notice-turn-footer {
   color: #4b5563;
   font-size: 11px;

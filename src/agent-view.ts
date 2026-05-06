@@ -564,50 +564,104 @@ export class AgentView implements AgentViewApi {
       const hunkContent = document.createElement("div");
       hunkContent.className = "agent-diff-hunk-content";
 
-      for (const line of hunk.lines) {
+      // Partition lines to pair additions/removals and fold long context blocks
+      const lineItems = buildRenderedLineItems(hunk.lines);
+
+      const createLineEl = (type: "added" | "removed" | "context", oldLine: number | null, newLine: number | null, contentHtml: string): HTMLDivElement => {
         const lineEl = document.createElement("div");
-        lineEl.className = `agent-diff-line agent-diff-line-${line.type}`;
+        lineEl.className = `agent-diff-line agent-diff-line-${type}`;
         
         const gutter = document.createElement("div");
         gutter.className = "agent-diff-gutter";
         
         const oldNo = document.createElement("span");
         oldNo.className = "agent-diff-ln agent-diff-ln-old";
-        oldNo.textContent = line.oldLine !== null ? String(line.oldLine) : "";
+        oldNo.textContent = oldLine !== null ? String(oldLine) : "";
         
         const newNo = document.createElement("span");
         newNo.className = "agent-diff-ln agent-diff-ln-new";
-        newNo.textContent = line.newLine !== null ? String(line.newLine) : "";
+        newNo.textContent = newLine !== null ? String(newLine) : "";
         
         gutter.appendChild(oldNo);
         gutter.appendChild(newNo);
         lineEl.appendChild(gutter);
 
-        const content = document.createElement("div");
-        content.className = "agent-diff-content";
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "agent-diff-content";
         
         const prefix = document.createElement("span");
         prefix.className = "agent-diff-prefix";
-        prefix.textContent = line.type === "added" ? "+" : line.type === "removed" ? "-" : " ";
-        content.appendChild(prefix);
+        prefix.textContent = type === "added" ? "+" : type === "removed" ? "-" : " ";
+        contentDiv.appendChild(prefix);
 
         const code = document.createElement("code");
         code.className = "agent-diff-code";
-        // Simple syntax highlighting
-        code.innerHTML = highlightCode(line.content, lang);
-        content.appendChild(code);
+        code.innerHTML = contentHtml;
+        contentDiv.appendChild(code);
         
-        lineEl.appendChild(content);
+        lineEl.appendChild(contentDiv);
 
-        if (this.cb && line.newLine !== null) {
+        const targetLine = newLine !== null ? newLine : (oldLine !== null ? oldLine : null);
+        if (this.cb && targetLine !== null) {
           lineEl.style.cursor = "pointer";
           lineEl.onclick = (ev) => {
             ev.stopPropagation();
-            this.cb!.onFileClick(path, line.newLine!);
+            this.cb!.onFileClick(path, targetLine);
           };
         }
+        return lineEl;
+      };
 
-        hunkContent.appendChild(lineEl);
+      for (const item of lineItems) {
+        if (item.type === "single") {
+          const line = item.line;
+          const contentHtml = highlightCode(line.content, lang);
+          hunkContent.appendChild(createLineEl(line.type, line.oldLine, line.newLine, contentHtml));
+        } else if (item.type === "paired") {
+          const rem = item.removed;
+          const add = item.added;
+          const diffResult = diffWords(rem.content, add.content);
+
+          hunkContent.appendChild(createLineEl("removed", rem.oldLine, rem.newLine, diffResult.oldHtml));
+          hunkContent.appendChild(createLineEl("added", add.oldLine, add.newLine, diffResult.newHtml));
+        } else if (item.type === "fold") {
+          const foldRow = document.createElement("div");
+          foldRow.className = "agent-diff-fold-row";
+          
+          const iconSpan = document.createElement("span");
+          iconSpan.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+          foldRow.appendChild(iconSpan);
+
+          const textSpan = document.createElement("span");
+          textSpan.textContent = `+${item.lines.length} unchanged lines (click to expand)`;
+          foldRow.appendChild(textSpan);
+
+          const foldContent = document.createElement("div");
+          foldContent.className = "agent-diff-fold-content";
+          foldContent.style.display = "none";
+
+          for (const line of item.lines) {
+            const contentHtml = highlightCode(line.content, lang);
+            foldContent.appendChild(createLineEl(line.type, line.oldLine, line.newLine, contentHtml));
+          }
+
+          foldRow.onclick = (ev) => {
+            ev.stopPropagation();
+            if (foldContent.style.display === "none") {
+              foldContent.style.display = "flex";
+              textSpan.textContent = `Collapse unchanged lines`;
+              iconSpan.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+            } else {
+              foldContent.style.display = "none";
+              textSpan.textContent = `+${item.lines.length} unchanged lines (click to expand)`;
+              iconSpan.innerHTML = `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`;
+            }
+            queueMicrotask(() => syncDiffPreviewOverflow());
+          };
+
+          hunkContent.appendChild(foldRow);
+          hunkContent.appendChild(foldContent);
+        }
       }
       body.appendChild(hunkContent);
     }
@@ -818,6 +872,12 @@ function parseUnifiedDiff(diff: string): DiffHunk[] {
  * There are no `@@` hunk lines; the unified-diff branch yields zero hunks without this.
  */
 function parsePrismEditPreview(s: string): DiffHunk[] {
+  let startLine = 1;
+  const lineMatch = / \(line (\d+)\)/.exec(s);
+  if (lineMatch) {
+    startLine = parseInt(lineMatch[1], 10);
+  }
+
   const oldMarker = "--- old\n";
   const i = s.indexOf(oldMarker);
   if (i < 0) return [];
@@ -838,8 +898,8 @@ function parsePrismEditPreview(s: string): DiffHunk[] {
   const newLines = newText.split("\n");
 
   const lines: DiffLine[] = [];
-  let o = 1;
-  let n = 1;
+  let o = startLine;
+  let n = startLine;
   for (const content of oldLines) {
     lines.push({
       type: "removed",
@@ -861,9 +921,9 @@ function parsePrismEditPreview(s: string): DiffHunk[] {
 
   return [
     {
-      header: "@@ edit preview (old → new) @@",
-      oldStart: 1,
-      newStart: 1,
+      header: `@@ edit preview (at line ${startLine}) @@`,
+      oldStart: startLine,
+      newStart: startLine,
       lines,
     },
   ];
@@ -1069,4 +1129,152 @@ function getFileIcon(filename: string): string {
     default:
       return fallback;
   }
+}
+
+interface RenderedLineItemSingle {
+  type: "single";
+  line: DiffLine;
+}
+
+interface RenderedLineItemPaired {
+  type: "paired";
+  removed: DiffLine;
+  added: DiffLine;
+}
+
+interface RenderedLineItemFold {
+  type: "fold";
+  lines: DiffLine[];
+}
+
+type RenderedLineItem = RenderedLineItemSingle | RenderedLineItemPaired | RenderedLineItemFold;
+
+function buildRenderedLineItems(lines: DiffLine[]): RenderedLineItem[] {
+  const items: RenderedLineItem[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    if (lines[i].type === "context") {
+      // Collect consecutive context lines
+      const contextLines: DiffLine[] = [];
+      while (i < lines.length && lines[i].type === "context") {
+        contextLines.push(lines[i]);
+        i++;
+      }
+      
+      // If there are more than 10 context lines, fold the middle!
+      // (We keep 3 lines of context at the top and bottom visible, and fold the rest
+      // if the folded part is at least 4 lines).
+      const threshold = 10;
+      if (contextLines.length > threshold) {
+        const visibleTop = contextLines.slice(0, 3);
+        const visibleBottom = contextLines.slice(contextLines.length - 3);
+        const folded = contextLines.slice(3, contextLines.length - 3);
+        
+        for (const line of visibleTop) {
+          items.push({ type: "single", line });
+        }
+        items.push({ type: "fold", lines: folded });
+        for (const line of visibleBottom) {
+          items.push({ type: "single", line });
+        }
+      } else {
+        for (const line of contextLines) {
+          items.push({ type: "single", line });
+        }
+      }
+    } else if (lines[i].type === "removed") {
+      // Handle pairing
+      const removals: DiffLine[] = [];
+      while (i < lines.length && lines[i].type === "removed") {
+        removals.push(lines[i]);
+        i++;
+      }
+      const additions: DiffLine[] = [];
+      while (i < lines.length && lines[i].type === "added") {
+        additions.push(lines[i]);
+        i++;
+      }
+
+      const pairCount = Math.min(removals.length, additions.length);
+      for (let k = 0; k < pairCount; k++) {
+        items.push({
+          type: "paired",
+          removed: removals[k],
+          added: additions[k],
+        });
+      }
+      for (let k = pairCount; k < removals.length; k++) {
+        items.push({ type: "single", line: removals[k] });
+      }
+      for (let k = pairCount; k < additions.length; k++) {
+        items.push({ type: "single", line: additions[k] });
+      }
+    } else {
+      // Standard added lines
+      items.push({ type: "single", line: lines[i] });
+      i++;
+    }
+  }
+  return items;
+}
+
+function diffWords(oldStr: string, newStr: string): { oldHtml: string; newHtml: string } {
+  if (!oldStr && !newStr) {
+    return { oldHtml: "&nbsp;", newHtml: "&nbsp;" };
+  }
+  if (!oldStr) {
+    return { oldHtml: "&nbsp;", newHtml: `<ins class="agent-diff-char-added">${escapeForSpan(newStr)}</ins>` };
+  }
+  if (!newStr) {
+    return { oldHtml: `<del class="agent-diff-char-removed">${escapeForSpan(oldStr)}</del>`, newHtml: "&nbsp;" };
+  }
+
+  // Tokenize preserving whitespace, words, and delimiters
+  const tokenize = (s: string) => {
+    return s.split(/(\s+|[.,;:{}\[\]()'"+\-*\/&|%^~=<>?!`~]+)/).filter(Boolean);
+  };
+
+  const oldTokens = tokenize(oldStr);
+  const newTokens = tokenize(newStr);
+
+  // Dynamic programming LCS
+  const dp: number[][] = Array(oldTokens.length + 1)
+    .fill(null)
+    .map(() => Array(newTokens.length + 1).fill(0));
+
+  for (let i = 1; i <= oldTokens.length; i++) {
+    for (let j = 1; j <= newTokens.length; j++) {
+      if (oldTokens[i - 1] === newTokens[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  let i = oldTokens.length;
+  let j = newTokens.length;
+  const oldResult: string[] = [];
+  const newResult: string[] = [];
+
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldTokens[i - 1] === newTokens[j - 1]) {
+      const escaped = escapeForSpan(oldTokens[i - 1]);
+      oldResult.unshift(escaped);
+      newResult.unshift(escaped);
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      newResult.unshift(`<ins class="agent-diff-char-added">${escapeForSpan(newTokens[j - 1])}</ins>`);
+      j--;
+    } else {
+      oldResult.unshift(`<del class="agent-diff-char-removed">${escapeForSpan(oldTokens[i - 1])}</del>`);
+      i--;
+    }
+  }
+
+  return {
+    oldHtml: oldResult.join(""),
+    newHtml: newResult.join(""),
+  };
 }

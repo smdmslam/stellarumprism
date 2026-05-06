@@ -1846,6 +1846,7 @@ pub async fn agent_query(
                             let preview = crate::tools::preview_write(
                                 &call.function.name,
                                 &call.function.arguments,
+                                &cwd_for_tools,
                             );
                             let (tx, rx) = tokio::sync::oneshot::channel::<ApprovalDecision>();
                             approval_pending.insert(call.id.clone(), tx);
