@@ -1591,12 +1591,27 @@ export class Workspace {
       );
       return;
     }
-    if (/^off|disable|disabled|no|0$/i.test(arg)) {
+    const onWithModel = /^(?:on|enable|enabled|yes|1)\s+(.+)$/i.exec(arg);
+    if (onWithModel) {
+      const modelArg = onWithModel[1].trim();
+      const resolved = resolveModel(modelArg);
+      if (!resolved) {
+        this.notifyError(
+          `[verify] unknown model "${stripAnsi(modelArg)}". Try /verify on <model alias>.`,
+        );
+        return;
+      }
+      await this.agent.setVerifierModel(resolved);
+      await this.agent.setVerifierEnabled(true);
+      this.notify(`[verify] on, reviewer model = ${stripAnsi(resolved)}`);
+      return;
+    }
+    if (/^(off|disable|disabled|no|0)$/i.test(arg)) {
       await this.agent.setVerifierEnabled(false);
       this.notify(`[verify] off`);
       return;
     }
-    if (/^on|enable|enabled|yes|1$/i.test(arg)) {
+    if (/^(on|enable|enabled|yes|1)$/i.test(arg)) {
       await this.agent.setVerifierEnabled(true);
       this.notify(`[verify] on`);
       return;
