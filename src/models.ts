@@ -184,6 +184,32 @@ export const MODEL_LIBRARY: ModelEntry[] = [
     complexity: "standard",
   },
   {
+    aliases: ["grok-4.20", "grok420", "grok-420"],
+    slug: "x-ai/grok-4.20",
+    description:
+      "xAI Grok 4.20 — flagship agentic model, very low hallucination profile, 2M context (img)",
+    tier: "main",
+    vision: true,
+    cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 2000000,
+    complexity: "complex",
+  },
+  {
+    aliases: ["grok-4.3", "grok43", "grok-43"],
+    slug: "x-ai/grok-4.3",
+    description:
+      "xAI Grok 4.3 — strong reasoning model for agentic workflows, 1M context (img)",
+    tier: "main",
+    vision: true,
+    cost: 2,
+    toolUse: true,
+    jsonMode: true,
+    maxContext: 1000000,
+    complexity: "complex",
+  },
+  {
     aliases: ["glm-5", "glm"],
     slug: "z-ai/glm-5",
     description:
