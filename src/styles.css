@@ -137,11 +137,16 @@ body {
   padding: 0 6px;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
+  scrollbar-width: none; /* Hide scrollbar for Firefox */
+  -ms-overflow-style: none; /* Hide scrollbar for IE/Edge */
   -webkit-app-region: drag;
 }
-.tab-strip::-webkit-scrollbar { height: 4px; }
-.tab-strip::-webkit-scrollbar-thumb { background: #1f2937; border-radius: 2px; }
+/* Hide scrollbar for Chrome, Safari, Opera, Edge, and Tauri/WebViews */
+.tab-strip::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
 
 .tab {
   -webkit-app-region: no-drag;

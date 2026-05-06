@@ -54,6 +54,14 @@ export class TabManager {
       void this.flushSessionWrite();
     });
 
+    // Smoothly convert vertical mouse wheel scrolls to horizontal scrolling on the tab strip
+    opts.tabStripEl.addEventListener("wheel", (e) => {
+      if (e.deltaY !== 0) {
+        opts.tabStripEl.scrollLeft += e.deltaY;
+        e.preventDefault();
+      }
+    }, { passive: false });
+
     // Wire the single "+" new-tab button in the strip.
     opts.tabStripEl.addEventListener("click", (e) => {
       const target = e.target as HTMLElement | null;
