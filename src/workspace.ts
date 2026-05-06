@@ -3764,6 +3764,62 @@ export class Workspace {
         data: `cd ${quoted}\n`,
       });
     });
+
+    listEl.addEventListener("contextmenu", (e) => {
+      const row = (e.target as HTMLElement | null)?.closest<HTMLElement>(".bookmark-item");
+      if (!row) return;
+      e.preventDefault();
+      const path = row.dataset.path!;
+      this.showBookmarkContextMenu(e as MouseEvent, path);
+    });
+  }
+
+  private showBookmarkContextMenu(e: MouseEvent, path: string): void {
+    const menu = document.createElement("div");
+    menu.className = "tree-context-menu";
+
+    const addItem = (
+      label: string,
+      icon: string,
+      onClick: () => void,
+      danger = false,
+    ) => {
+      const item = document.createElement("div");
+      item.className = "tree-context-menu-item" + (danger ? " danger" : "");
+      item.innerHTML =
+        `<span class="tree-context-menu-icon">${icon}</span>` +
+        `<span class="tree-context-menu-label">${escapeHtml(label)}</span>`;
+      item.addEventListener("click", () => { close(); onClick(); });
+      menu.appendChild(item);
+    };
+
+    addItem("Remove Bookmark", "★", () => {
+      void invoke("remove_bookmarked_directory", { dir: path });
+      this.notify(`[workspace] removed ${path} from bookmarks`);
+      void this.renderBookmarksList();
+    }, true);
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "tree-context-menu-backdrop";
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") { ev.preventDefault(); close(); }
+    };
+    const close = () => {
+      menu.remove();
+      backdrop.remove();
+      document.removeEventListener("keydown", onKey, true);
+    };
+    backdrop.addEventListener("click", close);
+    backdrop.addEventListener("contextmenu", (ev) => { ev.preventDefault(); close(); });
+    document.addEventListener("keydown", onKey, true);
+
+    document.body.appendChild(backdrop);
+    document.body.appendChild(menu);
+    const margin = 4;
+    const maxLeft = Math.max(margin, window.innerWidth - menu.offsetWidth - margin);
+    const maxTop = Math.max(margin, window.innerHeight - menu.offsetHeight - margin);
+    menu.style.left = `${Math.min(e.clientX, maxLeft)}px`;
+    menu.style.top = `${Math.min(e.clientY, maxTop)}px`;
   }
 
   /**
