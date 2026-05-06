@@ -398,12 +398,29 @@ export class TabManager {
     const menu = document.createElement("div");
     menu.className = "tab-context-menu";
 
-    const addTarget = (label: string, icon: string, onClick: () => void) => {
+    const iconSvg = (name: "copy" | "copy-plus" | "eraser" | "pencil"): string => {
+      if (name === "copy") {
+        return `<svg class="lucide" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+      }
+      if (name === "copy-plus") {
+        return `<svg class="lucide" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/><path d="M16 13v6"/><path d="M13 16h6"/></svg>`;
+      }
+      if (name === "eraser") {
+        return `<svg class="lucide" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21 10-10"/><path d="m5 19-2-2a2.8 2.8 0 0 1 0-4l8-8a2.8 2.8 0 0 1 4 0l6 6a2.8 2.8 0 0 1 0 4l-6 6"/><path d="M18 17H9"/></svg>`;
+      }
+      return `<svg class="lucide" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+    };
+
+    const addTarget = (
+      label: string,
+      icon: "copy" | "copy-plus" | "eraser" | "pencil",
+      onClick: () => void,
+    ) => {
       const item = document.createElement("div");
       item.className = "tab-context-menu-item";
       const iconEl = document.createElement("span");
       iconEl.className = "tab-context-menu-icon";
-      iconEl.textContent = icon;
+      iconEl.innerHTML = iconSvg(icon);
       const labelEl = document.createElement("span");
       labelEl.className = "tab-context-menu-label";
       labelEl.textContent = label;
@@ -416,11 +433,11 @@ export class TabManager {
       menu.appendChild(item);
     };
 
-    addTarget("Duplicate Path", "\u21b3", () => {
+    addTarget("Duplicate Path", "copy-plus", () => {
       this.newTab({ cwd: ws.getCwd() });
     });
 
-    addTarget("Duplicate Full Session", "\u29c9", () => {
+    addTarget("Duplicate Full Session", "copy", () => {
       ws.duplicateSession().then((newRestoreOpts) => {
         if (newRestoreOpts) {
           this.newTab(newRestoreOpts);
@@ -428,7 +445,7 @@ export class TabManager {
       });
     });
 
-    addTarget("Clear Chat", "\u232b", () => {
+    addTarget("Clear Chat", "eraser", () => {
       ws.handleSubmit("/clear", {
         intent: "command",
         explicit: true,
@@ -436,7 +453,7 @@ export class TabManager {
       });
     });
 
-    addTarget("Rename Tab", "\u270f\ufe0f", async () => {
+    addTarget("Rename Tab", "pencil", async () => {
       const newTitle = await ws.askText({
         title: "Rename Tab",
         defaultValue: ws.getTitle(),
