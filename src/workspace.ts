@@ -21,7 +21,12 @@ import {
   type FullHistoryMessage,
 } from "./agent";
 import { AgentView } from "./agent-view";
-import { resolveModel, renderModelListAnsi, modelSupportsVision } from "./models";
+import {
+  getModelEntry,
+  resolveModel,
+  renderModelListAnsi,
+  modelSupportsVision,
+} from "./models";
 import {
   modelCompletions,
   renderHelpAnsi,
@@ -3596,19 +3601,49 @@ export class Workspace {
 
     const currentModel = this.agent.getModel();
     const completions = modelCompletions();
+    const headingLabel = (complexity: string): string => {
+      if (complexity === "complex") return "Complex";
+      if (complexity === "standard") return "Standard";
+      if (complexity === "simple") return "Simple";
+      if (complexity === "experimental") return "Experimental";
+      return "Standard";
+    };
+    let lastHeading = "";
     menu.innerHTML = completions
       .map((m: { label: string; detail: string; info: string }) => {
         // detail is either "<slug>" or "<slug> [img]"; the slug is the
         // first token. Highlight the row matching the active model so
         // users can see what they're switching from.
         const slug = m.detail.split(" ")[0];
+        const entry = getModelEntry(slug);
+        const complexity = entry?.complexity ?? "standard";
+        const heading = headingLabel(complexity);
+        const headingHtml =
+          heading === lastHeading
+            ? ""
+            : `<div class="model-selector-heading"><span class="model-selector-heading-label">${escapeHtml(heading)}</span><span class="model-selector-heading-rule" aria-hidden="true"></span></div>`;
+        lastHeading = heading;
         const isActive = slug === currentModel;
         const cls = isActive
           ? "model-selector-item model-selector-item-active"
           : "model-selector-item";
+        const cost = entry?.cost;
+        const costText = cost === 1 ? "$" : cost === 2 ? "$$" : cost === 3 ? "$$$" : "";
+        const costClass =
+          cost === 1
+            ? "model-item-cost model-item-cost-1"
+            : cost === 2
+              ? "model-item-cost model-item-cost-2"
+              : cost === 3
+                ? "model-item-cost model-item-cost-3"
+                : "model-item-cost";
         return (
+          headingHtml +
           `<div class="${cls}" data-slug="${escapeAttr(m.label)}">` +
+          `<span class="model-item-head">` +
           `<span class="model-item-label">${escapeHtml(m.label)}</span>` +
+          (costText ? `<span class="${costClass}">${costText}</span>` : "") +
+          `</span>` +
           `<span class="model-item-detail">${escapeHtml(m.detail)}</span>` +
           `</div>`
         );
