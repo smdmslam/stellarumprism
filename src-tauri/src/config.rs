@@ -182,6 +182,8 @@ pub struct Config {
     pub agent: AgentConfig,
     #[serde(default)]
     pub recent_directories: Vec<String>,
+    #[serde(default)]
+    pub bookmarked_directories: Vec<String>,
 }
 
 fn default_model() -> String {
@@ -431,6 +433,23 @@ impl ConfigState {
         }
         let _ = save_config(&inner);
     }
+    
+    pub fn add_bookmarked_directory(&self, dir: String) {
+        let mut inner = self.inner.write();
+        if !inner.bookmarked_directories.contains(&dir) {
+            inner.bookmarked_directories.push(dir);
+            let _ = save_config(&inner);
+        }
+    }
+
+    pub fn remove_bookmarked_directory(&self, dir: String) {
+        let mut inner = self.inner.write();
+        let len = inner.bookmarked_directories.len();
+        inner.bookmarked_directories.retain(|d| d != &dir);
+        if inner.bookmarked_directories.len() != len {
+            let _ = save_config(&inner);
+        }
+    }
 }
 
 pub fn save_config(cfg: &Config) -> std::io::Result<()> {
@@ -458,6 +477,29 @@ pub fn add_recent_directory(
     state: tauri::State<'_, ConfigState>,
 ) -> Result<(), String> {
     state.add_recent_directory(dir);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_bookmarked_directories(state: tauri::State<'_, ConfigState>) -> Vec<String> {
+    state.snapshot().bookmarked_directories
+}
+
+#[tauri::command]
+pub fn add_bookmarked_directory(
+    dir: String,
+    state: tauri::State<'_, ConfigState>,
+) -> Result<(), String> {
+    state.add_bookmarked_directory(dir);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn remove_bookmarked_directory(
+    dir: String,
+    state: tauri::State<'_, ConfigState>,
+) -> Result<(), String> {
+    state.remove_bookmarked_directory(dir);
     Ok(())
 }
 

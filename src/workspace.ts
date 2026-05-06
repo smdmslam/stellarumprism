@@ -432,6 +432,10 @@ export class Workspace {
           </div>
         </div>
         <div class="sidebar-pane sidebar-pane-files" data-tab="files">
+          <div class="bookmarks-container" hidden>
+            <div class="bookmarks-header">Bookmarks</div>
+            <div class="bookmarks-list"></div>
+          </div>
           <div class="file-tree" tabindex="0" role="tree" aria-label="Project files"></div>
         </div>
         <div class="sidebar-pane sidebar-pane-blocks" data-tab="blocks" hidden>
@@ -708,6 +712,7 @@ export class Workspace {
     this.wireBlockSidebar();
     this.wireSidebarTabs();
     this.wireFileTree();
+    this.wireBookmarksList();
 
     // Sync with Reader UI (Star indicators)
     getReaderUI().setOnChange(() => {
@@ -1271,6 +1276,24 @@ export class Workspace {
         sessionId: this.id,
         data: `cd ${quoted}\n`,
       });
+      return;
+    }
+    // /bookmark [rm] — bookmark the current cwd.
+    const bookmarkSlash = /^\s*\/bookmark(?:\s+(rm))?\s*$/i.exec(text);
+    if (bookmarkSlash) {
+      if (!this.cwd) {
+        this.notifyError(`[workspace] cwd unknown — wait for the shell prompt`);
+        return;
+      }
+      const isRemove = !!bookmarkSlash[1];
+      if (isRemove) {
+        void invoke("remove_bookmarked_directory", { dir: this.cwd });
+        this.notify(`[workspace] removed ${this.cwd} from bookmarks`);
+      } else {
+        void invoke("add_bookmarked_directory", { dir: this.cwd });
+        this.notify(`[workspace] added ${this.cwd} to bookmarks`);
+      }
+      void this.renderBookmarksList();
       return;
     }
     const modelArg = /^\s*\/model\s+(\S.*)$/i.exec(text);
@@ -3532,11 +3555,12 @@ export class Workspace {
   private async renderCwdMenu(): Promise<void> {
     const menu = this.root.querySelector<HTMLElement>(".cwd-selector-menu")!;
     const recent = await invoke<string[]>("get_recent_directories");
-    if (recent.length === 0) {
+    const topRecent = recent.slice(0, 5);
+    if (topRecent.length === 0) {
       menu.innerHTML = `<div class="menu-empty-hint">No recent directories</div>`;
       return;
     }
-    menu.innerHTML = recent
+    menu.innerHTML = topRecent
       .map((path) => {
         const name = path.split("/").filter(Boolean).pop() || path;
         return (
@@ -3696,6 +3720,51 @@ export class Workspace {
   }
 
   // -- file tree -----------------------------------------------------------
+
+  private async renderBookmarksList(): Promise<void> {
+    const container = this.root.querySelector<HTMLElement>(".bookmarks-container");
+    const list = this.root.querySelector<HTMLElement>(".bookmarks-list");
+    if (!container || !list) return;
+
+    try {
+      const bookmarks = await invoke<string[]>("get_bookmarked_directories");
+      if (bookmarks.length === 0) {
+        container.setAttribute("hidden", "");
+        return;
+      }
+      container.removeAttribute("hidden");
+      list.innerHTML = bookmarks
+        .map((path) => {
+          const name = path.split("/").filter(Boolean).pop() || path;
+          return (
+            `<div class="bookmark-item" data-path="${escapeAttr(path)}" tabindex="0" role="button">` +
+            `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="bookmark-icon"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>` +
+            `<span class="bookmark-name">${escapeHtml(name)}</span>` +
+            `</div>`
+          );
+        })
+        .join("");
+    } catch (err) {
+      console.error("failed to load bookmarks:", err);
+    }
+  }
+
+  private wireBookmarksList(): void {
+    const listEl = this.root.querySelector<HTMLElement>(".bookmarks-list");
+    if (!listEl) return;
+    listEl.addEventListener("click", (e) => {
+      const row = (e.target as HTMLElement | null)?.closest<HTMLElement>(".bookmark-item");
+      if (!row) return;
+      const path = row.dataset.path;
+      if (!path) return;
+      
+      const quoted = `'${path.replace(/'/g, "'\\''")}'`;
+      void invoke("write_to_shell", {
+        sessionId: this.id,
+        data: `cd ${quoted}\n`,
+      });
+    });
+  }
 
   /**
    * Wire click + keyboard handlers on the `.file-tree` element. Listeners
@@ -4263,6 +4332,7 @@ export class Workspace {
       this.fileTreeRootLoaded = true;
       this.fileTreeLastCwd = this.cwd;
       this.renderFileTree();
+      void this.renderBookmarksList();
     } catch (err) {
       treeEl.innerHTML =
         `<div class="file-tree-error">failed to list cwd: ${escapeHtml(String(err))}</div>`;

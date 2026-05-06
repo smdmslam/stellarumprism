@@ -70,6 +70,12 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     takesArg: true,
   },
   {
+    label: "/bookmark",
+    detail: "Bookmark current directory",
+    info: "Adds the current working directory to the Bookmarks section in the file explorer. Use `/bookmark rm` to remove it.",
+    takesArg: true,
+  },
+  {
     label: "/verify",
     detail: "Toggle reviewer pass",
     info: "Controls the secondary review of agent answers. Usage: /verify on, /verify off, /verify <model> to set the reviewer model, or /verify alone to print the current setting.",

@@ -4004,6 +4004,50 @@ input:checked + .toggle-slider:before {
 
 /* ---------- file tree (Files sidebar pane) ---------- */
 
+.bookmarks-container {
+  flex: 0 0 auto;
+  border-bottom: 1px solid #1f2937;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+.bookmarks-container[hidden] {
+  display: none;
+}
+.bookmarks-header {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  padding: 8px 12px 4px;
+  font-weight: 600;
+}
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  color: #d1d5db;
+  font-size: 12px;
+  user-select: none;
+  font-family: "JetBrains Mono", "SF Mono", Menlo, Monaco, Consolas, monospace;
+}
+.bookmark-item:hover, .bookmark-item:focus {
+  background: rgba(125, 211, 252, 0.08);
+  outline: none;
+}
+.bookmark-icon {
+  color: #7dd3fc;
+  opacity: 0.8;
+  flex: 0 0 auto;
+}
+.bookmark-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+
 .file-tree {
   flex: 1 1 auto;
   min-height: 0;

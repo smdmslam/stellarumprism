@@ -123,6 +123,9 @@ pub fn run() {
             pricing::get_all_pricing,
             config::get_recent_directories,
             config::add_recent_directory,
+            config::get_bookmarked_directories,
+            config::add_bookmarked_directory,
+            config::remove_bookmarked_directory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
