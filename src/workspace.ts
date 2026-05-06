@@ -315,6 +315,12 @@ export class Workspace {
    */
   private renderLoadedChatPref: "always" | "never" | null = null;
   /**
+   * Per-tab model-switch handoff packet, queued after `/model` changes
+   * and consumed on the next agent turn. Keeps continuity stable across
+   * model swaps without permanently bloating session history.
+   */
+  private pendingModelHandoff: ModelSwitchHandoff | null = null;
+  /**
    * IDE-shape file-tree state. Owned by the workspace so the tree
    * persists across sidebar-tab switches; rebuilt from scratch only
    * when the cwd changes (rare).
@@ -1329,8 +1335,7 @@ export class Workspace {
         );
         return;
       }
-      void this.agent.setModel(resolved);
-      this.notify(`[agent] model set to ${stripAnsi(resolved)}`);
+      void this.switchModelWithHandoff(resolved);
       return;
     }
 
@@ -1824,6 +1829,16 @@ export class Workspace {
           : manifest;
       }
     }
+    // One-shot model-switch continuity handoff. This packet is compact
+    // by default, with optional expansion for explicit "continue/resume"
+    // prompts so shorter-context models stay budget-safe.
+    const handoffBlock = this.consumeModelHandoffPrefix(prompt);
+    if (handoffBlock.length > 0) {
+      systemPrefix = systemPrefix
+        ? `${handoffBlock}\n\n${systemPrefix}`
+        : handoffBlock;
+      this.notify(`→ [handoff] continuity packet applied`);
+    }
 
     const refs = extractFileRefs(prompt);
     const { resolved, errors } =
@@ -1877,6 +1892,70 @@ export class Workspace {
         verifierEnabledOverride: strictMode ? true : undefined,
       },
     );
+  }
+
+  private async switchModelWithHandoff(nextModel: string): Promise<void> {
+    const current = this.agent.getModel();
+    if (current === nextModel) {
+      this.notify(`[agent] model already ${stripAnsi(nextModel)}`);
+      return;
+    }
+    const handoff = await this.buildModelSwitchHandoff(current, nextModel);
+    await this.agent.setModel(nextModel);
+    this.pendingModelHandoff = handoff;
+    this.notify(
+      `[agent] model set to ${stripAnsi(nextModel)} · handoff queued for next turn`,
+    );
+  }
+
+  private async buildModelSwitchHandoff(
+    fromModel: string,
+    toModel: string,
+  ): Promise<ModelSwitchHandoff> {
+    const history = await this.agent.getHistoryFull();
+    const recent = history.slice(-40);
+    const userPrompts = recent
+      .filter((m) => m.role === "user" && typeof m.content === "string")
+      .map((m) => (m.content ?? "").trim())
+      .filter((s) => s.length > 0)
+      .slice(-3);
+    const latestAssistant = [...recent]
+      .reverse()
+      .find((m) => m.role === "assistant" && typeof m.content === "string")
+      ?.content ?? "";
+    const todoLines = extractCheckboxTodos(latestAssistant).slice(0, 6);
+    const decisions = extractDecisionBullets(latestAssistant).slice(0, 6);
+    const touchedFiles = extractTouchedFilesFromHistory(recent).slice(0, 12);
+    const toolOutcomes = extractRecentToolOutcomes(recent).slice(0, 8);
+
+    const constraints: string[] = [];
+    if (this.cwd) constraints.push(`cwd=${this.cwd}`);
+    constraints.push(`strict_mode=${settings.getStrictMode() ? "on" : "off"}`);
+    constraints.push(`skills_awareness=${this.skillsAware ? "on" : "off"}`);
+    constraints.push(`engaged_skills=${this.engagedSkills.size}`);
+
+    return {
+      fromModel,
+      toModel,
+      createdAtIso: new Date().toISOString(),
+      latestUserPrompts: userPrompts,
+      constraints,
+      decisions,
+      touchedFiles,
+      pendingTodos: todoLines,
+      toolOutcomes,
+    };
+  }
+
+  private consumeModelHandoffPrefix(prompt: string): string {
+    const packet = this.pendingModelHandoff;
+    if (!packet) return "";
+    this.pendingModelHandoff = null;
+    const wantsExpanded =
+      /\b(continue|resume|pick up|where were we|handoff|recap|context)\b/i.test(
+        prompt,
+      ) || prompt.trim().length <= 24;
+    return renderModelHandoffPrefix(packet, wantsExpanded);
   }
 
   // -- image attachments --------------------------------------------------
@@ -5515,6 +5594,161 @@ function cryptoRandomId(): string {
   } catch {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   }
+}
+
+interface ModelSwitchHandoff {
+  fromModel: string;
+  toModel: string;
+  createdAtIso: string;
+  latestUserPrompts: string[];
+  constraints: string[];
+  decisions: string[];
+  touchedFiles: string[];
+  pendingTodos: string[];
+  toolOutcomes: string[];
+}
+
+function renderModelHandoffPrefix(
+  packet: ModelSwitchHandoff,
+  expanded: boolean,
+): string {
+  const out: string[] = [];
+  out.push("MODEL SWITCH HANDOFF (one-shot continuity packet)");
+  out.push(
+    `from=${packet.fromModel} to=${packet.toModel} at=${packet.createdAtIso}`,
+  );
+  if (packet.latestUserPrompts.length > 0) {
+    out.push("recent_user_goals:");
+    for (const p of packet.latestUserPrompts.slice(0, expanded ? 3 : 2)) {
+      out.push(`- ${truncateInline(p, expanded ? 280 : 160)}`);
+    }
+  }
+  if (packet.constraints.length > 0) {
+    out.push("constraints_and_mode:");
+    for (const c of packet.constraints) out.push(`- ${truncateInline(c, 160)}`);
+  }
+  if (packet.decisions.length > 0) {
+    out.push("decisions_made:");
+    for (const d of packet.decisions.slice(0, expanded ? 6 : 3)) {
+      out.push(`- ${truncateInline(d, expanded ? 200 : 140)}`);
+    }
+  }
+  if (packet.touchedFiles.length > 0) {
+    out.push("touched_files:");
+    for (const f of packet.touchedFiles.slice(0, expanded ? 12 : 6)) {
+      out.push(`- ${truncateInline(f, 160)}`);
+    }
+  }
+  if (packet.pendingTodos.length > 0) {
+    out.push("pending_todos:");
+    for (const t of packet.pendingTodos.slice(0, expanded ? 6 : 3)) {
+      out.push(`- ${truncateInline(t, 180)}`);
+    }
+  }
+  if (packet.toolOutcomes.length > 0) {
+    out.push("latest_tool_outcomes:");
+    for (const t of packet.toolOutcomes.slice(0, expanded ? 8 : 4)) {
+      out.push(`- ${truncateInline(t, expanded ? 220 : 130)}`);
+    }
+  }
+  out.push(
+    "Instruction: continue from this state; only ask to restate context if absolutely necessary.",
+  );
+  return out.join("\n");
+}
+
+function extractCheckboxTodos(markdown: string): string[] {
+  const out: string[] = [];
+  for (const line of markdown.split(/\r?\n/)) {
+    const m = /^\s*[-*]\s+\[\s?\]\s+(.+)$/.exec(line);
+    if (m) out.push(m[1].trim());
+  }
+  return dedupeLines(out);
+}
+
+function extractDecisionBullets(markdown: string): string[] {
+  const out: string[] = [];
+  for (const line of markdown.split(/\r?\n/)) {
+    const m = /^\s*(?:[-*]|\d+\.)\s+(.+)$/.exec(line);
+    if (!m) continue;
+    const text = m[1].trim();
+    if (text.length < 18) continue;
+    out.push(text);
+  }
+  return dedupeLines(out);
+}
+
+function extractTouchedFilesFromHistory(messages: FullHistoryMessage[]): string[] {
+  const out: string[] = [];
+  for (const m of messages) {
+    if (m.role !== "assistant" || !Array.isArray(m.tool_calls)) continue;
+    for (const tc of m.tool_calls) {
+      const args = parseJsonLoose(tc.function.arguments);
+      if (!args) continue;
+      collectPathishStrings(args, out);
+    }
+  }
+  return dedupeLines(out).filter((p) => /[./\\]/.test(p));
+}
+
+function extractRecentToolOutcomes(messages: FullHistoryMessage[]): string[] {
+  const out: string[] = [];
+  for (const m of messages) {
+    if (m.role !== "tool") continue;
+    const name = (m.name ?? "tool").trim() || "tool";
+    const content = typeof m.content === "string" ? m.content : "";
+    const firstLine = content.split(/\r?\n/, 1)[0] ?? "";
+    out.push(`${name}: ${firstLine}`);
+  }
+  return dedupeLines(out);
+}
+
+function collectPathishStrings(node: unknown, out: string[]): void {
+  if (typeof node === "string") {
+    if (node.length > 1 && node.length < 260) out.push(node);
+    return;
+  }
+  if (Array.isArray(node)) {
+    for (const item of node) collectPathishStrings(item, out);
+    return;
+  }
+  if (!node || typeof node !== "object") return;
+  const obj = node as Record<string, unknown>;
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === "string" && /path|file|target|source|dest|cwd/i.test(k)) {
+      out.push(v);
+    } else {
+      collectPathishStrings(v, out);
+    }
+  }
+}
+
+function parseJsonLoose(raw: string): unknown | null {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function truncateInline(s: string, max: number): string {
+  const clean = s.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
+}
+
+function dedupeLines(lines: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const key = line.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(line);
+  }
+  return out;
 }
 
 /**
