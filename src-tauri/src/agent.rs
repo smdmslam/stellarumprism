@@ -1525,6 +1525,35 @@ struct OrFunctionDelta {
     arguments: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct OrNonStreamResponse {
+    #[serde(default)]
+    choices: Vec<OrNonStreamChoice>,
+}
+
+#[derive(Deserialize)]
+struct OrNonStreamChoice {
+    #[serde(default)]
+    message: OrNonStreamMessage,
+}
+
+#[derive(Deserialize, Default)]
+struct OrNonStreamMessage {
+    #[serde(default)]
+    content: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RouteControlDecision {
+    pub task_class: String,
+    pub risk_level: String,
+    pub estimated_context_tokens: u32,
+    pub recommended_model: String,
+    pub confidence: f32,
+    #[serde(default)]
+    pub rationale: String,
+}
+
 // ---------------------------------------------------------------------------
 // Tauri commands
 // ---------------------------------------------------------------------------
@@ -2387,6 +2416,62 @@ pub async fn agent_query(
     });
 
     Ok(request_id)
+}
+
+#[tauri::command]
+pub async fn agent_route_control(
+    cfg: State<'_, ConfigState>,
+    prompt: String,
+    current_model: String,
+    message_count: u32,
+) -> Result<RouteControlDecision, String> {
+    let snapshot = cfg.snapshot();
+    if snapshot.openrouter.api_key.is_empty() {
+        return Err("OpenRouter API key is empty".into());
+    }
+    let api_key = snapshot.openrouter.api_key;
+    let base_url = snapshot.openrouter.base_url;
+    let model = "google/gemini-2.5-flash-lite";
+    let system = "You are Prism's control-plane model router. Output ONLY strict JSON with keys: task_class, risk_level, estimated_context_tokens, recommended_model, confidence, rationale. task_class must be one of: chat, coding, refactor, audit, build, review, debugging, long_context. risk_level must be one of: low, medium, high, critical. estimated_context_tokens must be integer >= 256. recommended_model must be a full OpenRouter slug, tool-capable. confidence is 0..1.";
+    let user = format!(
+        "Current model: {current_model}\nSession message_count: {message_count}\nUser prompt:\n{prompt}\n\nSelect a model for execution (not control-plane). Prefer cheaper models for low-risk chat, stronger/long-context for risky or wide tasks."
+    );
+    let body = serde_json::json!({
+        "model": model,
+        "stream": false,
+        "response_format": { "type": "json_object" },
+        "messages": [
+            { "role": "system", "content": system },
+            { "role": "user", "content": user }
+        ]
+    });
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .header("HTTP-Referer", "https://prism.local")
+        .header("X-Title", "Prism")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("control-plane upstream {}: {}", status, text));
+    }
+    let parsed: OrNonStreamResponse = resp.json().await.map_err(|e| e.to_string())?;
+    let content = parsed
+        .choices
+        .get(0)
+        .and_then(|c| c.message.content.as_ref())
+        .ok_or_else(|| "control-plane: empty response content".to_string())?;
+    let decision: RouteControlDecision =
+        serde_json::from_str(content).map_err(|e| format!("control-plane JSON parse failed: {e}"))?;
+    Ok(decision)
 }
 
 #[tauri::command]

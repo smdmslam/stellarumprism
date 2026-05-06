@@ -34,7 +34,7 @@ pub mod audit;
 
 use agent::{
     agent_cancel, agent_drop_session, agent_get_history, agent_get_history_full,
-    agent_get_session_info, agent_new_session, agent_query, AgentState, SessionState,
+    agent_get_session_info, agent_new_session, agent_query, agent_route_control, AgentState, SessionState,
 };
 use approval::{agent_clear_session_approval, agent_tool_decision, ApprovalState};
 use file_ref::{
@@ -77,6 +77,7 @@ pub fn run() {
             resize_shell,
             kill_shell,
             agent_query,
+            agent_route_control,
             agent_cancel,
             agent_new_session,
             agent_drop_session,

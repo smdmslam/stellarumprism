@@ -38,6 +38,11 @@ import { decideEngagement, formatKB, SESSION_SKILL_BUDGET_BYTES } from "./skill-
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { settings } from "./settings";
 import { findMode, type Mode } from "./modes";
+import {
+  applyRouteGuardrails,
+  normalizeControlPlaneDecision,
+  type ControlPlaneDecision,
+} from "./auto-router";
 import { RECIPES, findRecipe } from "./recipes";
 import { runRecipe } from "./recipes/runner";
 import type { StepResult } from "./recipes/types";
@@ -314,6 +319,12 @@ export class Workspace {
    * surprised by silent re-rendering after a long gap.
    */
   private renderLoadedChatPref: "always" | "never" | null = null;
+  /** True when `/model auto` is active for this tab. */
+  private autoRouterEnabled = true;
+  /** True after explicit `/model <slug>` pin in this tab. */
+  private manualModelPinned = false;
+  /** Last auto-routed model used, for no-thrash stabilization. */
+  private lastAutoRoutedModel: string | null = null;
   /**
    * Per-tab model-switch handoff packet, queued after `/model` changes
    * and consumed on the next agent turn. Keeps continuity stable across
@@ -1328,6 +1339,13 @@ export class Workspace {
     }
     const modelArg = /^\s*\/model\s+(\S.*)$/i.exec(text);
     if (modelArg) {
+      const raw = modelArg[1].trim().toLowerCase();
+      if (raw === "auto") {
+        this.autoRouterEnabled = true;
+        this.manualModelPinned = false;
+        this.notify(`[agent] auto router enabled (Flash-Lite control plane)`);
+        return;
+      }
       const resolved = resolveModel(modelArg[1].trim());
       if (!resolved) {
         this.notifyError(
@@ -1335,6 +1353,8 @@ export class Workspace {
         );
         return;
       }
+      this.autoRouterEnabled = false;
+      this.manualModelPinned = true;
       void this.switchModelWithHandoff(resolved);
       return;
     }
@@ -1878,6 +1898,19 @@ export class Workspace {
       ? images.map((i) => ({ url: i.dataUrl }))
       : [];
 
+    let routedModelOverride = options.modelOverride;
+    if (
+      !options.mode &&
+      this.autoRouterEnabled &&
+      !this.manualModelPinned &&
+      !routedModelOverride
+    ) {
+      const routed = await this.resolveAutoRouteModel(prompt);
+      if (routed) {
+        routedModelOverride = routed;
+      }
+    }
+
     void this.agent.query(
       prompt,
       resolved.map((r) => ({
@@ -1888,10 +1921,38 @@ export class Workspace {
       imagePayload,
       {
         ...options,
+        modelOverride: routedModelOverride,
         systemPrefix,
         verifierEnabledOverride: strictMode ? true : undefined,
       },
     );
+  }
+
+  private async resolveAutoRouteModel(prompt: string): Promise<string | null> {
+    try {
+      const raw = await invoke<Partial<ControlPlaneDecision>>("agent_route_control", {
+        prompt,
+        currentModel: this.agent.getModel(),
+        messageCount: this.agent.getMessageCount(),
+      });
+      const parsed = normalizeControlPlaneDecision(raw);
+      if (!parsed) return null;
+      const guarded = applyRouteGuardrails({
+        decision: parsed,
+        fallbackModel: this.agent.getModel(),
+        previousAutoModel: this.lastAutoRoutedModel,
+      });
+      this.lastAutoRoutedModel = guarded.model;
+      this.notify(
+        `→ [auto-router] ${stripAnsi(guarded.model)} (${stripAnsi(parsed.task_class)}, ${stripAnsi(parsed.risk_level)}, conf=${parsed.confidence.toFixed(2)}) · ${stripAnsi(guarded.reason)}`,
+      );
+      return guarded.model;
+    } catch (e) {
+      this.notify(
+        `→ [auto-router] control-plane unavailable; using ${stripAnsi(this.agent.getModel())}`,
+      );
+      return null;
+    }
   }
 
   private async switchModelWithHandoff(nextModel: string): Promise<void> {
