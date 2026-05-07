@@ -5,7 +5,7 @@
 
 /**
  * A user-defined virtual skill grouping. Unlike filesystem families
- * (subdirectories under `.prism/skills/`), saved-search groups are
+ * (subdirectories under `prism/skills/`), saved-search groups are
  * defined by a search term \u2014 the group's contents are *whatever
  * matches the term right now*. Adding a new skill that matches the
  * term auto-joins the group; renaming or moving a skill that no

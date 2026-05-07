@@ -9,7 +9,7 @@
 //!
 //! Keeping these in their own module (rather than appending to `tools.rs`)
 //! because they are NOT agent tools \u2014 the LLM never calls them. They
-//! are frontend-triggered side-effects scoped to the `.prism/` subtree.
+//! are frontend-triggered side-effects scoped to the `prism/` subtree.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,8 +17,8 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 /// Name of the per-project directory every Second Pass report is written
-/// to. Always under `<cwd>/.prism/second-pass/`.
-const REPORT_SUBDIR: &str = ".prism/second-pass";
+/// to (`<cwd>/prism/second-pass/`).
+const REPORT_SUBDIR: &str = "prism/second-pass";
 
 #[derive(Debug, Serialize)]
 pub struct WriteAuditReportResult {
@@ -33,7 +33,7 @@ pub struct WriteAuditReportResult {
 }
 
 /// Write a Second Pass audit report to disk under the workspace's
-/// `.prism/second-pass/` directory. Creates the directory (and its
+/// `prism/second-pass/` directory. Creates the directory (and its
 /// parent) if it doesn't exist yet. Writes atomically via tmp + rename
 /// so a partial write can't leave a corrupt report.
 ///
@@ -101,7 +101,7 @@ pub fn write_audit_report(
 }
 
 /// Discover the newest audit JSON sidecar under
-/// `<cwd>/.prism/second-pass/` and return its contents along with the
+/// `<cwd>/prism/second-pass/` and return its contents along with the
 /// resolved absolute path. If `path` is supplied, use it directly
 /// instead of searching (the user explicitly chose a report).
 ///
@@ -128,7 +128,7 @@ pub fn read_latest_audit_report(
     let target_path: PathBuf = match path.as_deref().map(str::trim) {
         Some(p) if !p.is_empty() => {
             // Allow absolute paths or paths relative to cwd. We do NOT
-            // require the user-supplied path to live under .prism/; if
+            // require the user-supplied path to live under prism/; if
             // they hand us an explicit file, we trust them.
             let pb = if Path::new(p).is_absolute() {
                 PathBuf::from(p)
@@ -152,7 +152,7 @@ pub fn read_latest_audit_report(
     })
 }
 
-/// Find the newest `audit-*.json` file under `<cwd>/.prism/second-pass/`.
+/// Find the newest `audit-*.json` file under `<cwd>/prism/second-pass/`.
 fn find_latest_sidecar(cwd: &str) -> Result<PathBuf, String> {
     let dir = Path::new(cwd).join(REPORT_SUBDIR);
     if !dir.exists() {
@@ -231,10 +231,10 @@ mod tests {
             None,
         )
         .expect("should write");
-        let expected_parent = cwd.join(".prism").join("second-pass");
+        let expected_parent = cwd.join("prism").join("second-pass");
         assert!(
             expected_parent.exists(),
-            ".prism/second-pass/ not created"
+            "prism/second-pass/ not created"
         );
         let written = Path::new(&res.path);
         assert!(written.exists(), "report file missing: {}", res.path);
@@ -330,7 +330,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let target = cwd.join(".prism").join("second-pass").join(filename);
+        let target = cwd.join("prism").join("second-pass").join(filename);
         assert_eq!(fs::read_to_string(&target).unwrap(), "second");
     }
 
@@ -346,7 +346,7 @@ mod tests {
         )
         .unwrap();
         let tmp = cwd
-            .join(".prism")
+            .join("prism")
             .join("second-pass")
             .join(format!(".{}.prism-tmp", filename));
         assert!(!tmp.exists(), "tmp leaked: {}", tmp.display());

@@ -666,7 +666,7 @@ function countByConfidence(
 
 /**
  * Render the full markdown report \u2014 YAML frontmatter + structured body.
- * This is what gets written to `.prism/second-pass/audit-<ts>.md` and
+ * This is what gets written to `prism/second-pass/audit-<ts>.md` and
  * handed off to external editors (Cursor / Antigravity / etc.).
  */
 export function renderMarkdownReport(report: AuditReport): string {

@@ -55,7 +55,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     label: "/save",
     detail: "Save chat to markdown",
-    info: "Opens a file dialog to save the current chat to a .md file. Default location: <project>/.prism/chats/ when a project cwd is known, otherwise ~/Documents/Prism/Chats/. The directory is created on demand. Use `/save full` (or `/save --full`) to write the v2 tool-aware format that preserves assistant tool_calls + tool results so a loaded session can be truly continued by another model. Filename gets a `.full.md` extension in that mode.",
+    info: "Opens a file dialog to save the current chat to a .md file. Default location: <project>/prism/chats/ when a project cwd is known, otherwise ~/Documents/Prism/Chats/. The directory is created on demand. Use `/save full` (or `/save --full`) to write the v2 tool-aware format that preserves assistant tool_calls + tool results so a loaded session can be truly continued by another model. Filename gets a `.full.md` extension in that mode.",
     takesArg: true,
   },
   {
@@ -110,13 +110,13 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     label: "/skills",
     detail: "List or load/unload skills",
     info:
-      "Bare `/skills` lists the project's skill library (every `.md` under `.prism/skills/`). Subcommands: `/skills load <slug>` engages a skill for this tab \u2014 a chip appears in the input bar and the skill's body is prepended to every agent turn until you `/skills unload <slug>` (or click the chip's \u00d7). Engagement is per-tab and ephemeral; closing the tab discards it. Authoring rules + size caps live in `docs/skills.md`.",
+      "Bare `/skills` lists the project's skill library (every `.md` under `prism/skills/`). Subcommands: `/skills load <slug>` engages a skill for this tab \u2014 a chip appears in the input bar and the skill's body is prepended to every agent turn until you `/skills unload <slug>` (or click the chip's \u00d7). Engagement is per-tab and ephemeral; closing the tab discards it. Authoring rules + size caps live in `docs/skills.md`.",
     takesArg: true,
   },
   {
     label: "/last",
     detail: "Show last audit + last build",
-    info: "Print a compact summary of the workspace's persisted state.json: the most recent /audit and the most recent build/new/refactor/test-gen completion, with paths to their full reports under .prism/.",
+    info: "Print a compact summary of the workspace's persisted state.json: the most recent /audit and the most recent build/new/refactor/test-gen completion, with paths to their full reports under prism/.",
   },
   {
     label: "/protocol",

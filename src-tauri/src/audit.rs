@@ -82,7 +82,7 @@ fn audit_trail_path(cwd: &str) -> Option<PathBuf> {
     if cwd.is_empty() {
         return None;
     }
-    let p = PathBuf::from(cwd).join(".prism");
+    let p = PathBuf::from(cwd).join("prism");
     let _ = std::fs::create_dir_all(&p);
     Some(p.join("audit-trail.jsonl"))
 }

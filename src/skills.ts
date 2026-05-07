@@ -49,7 +49,7 @@ export interface SkillBody {
   sizeBytes: number;
 }
 
-/** Cheap manifest of every skill under `<cwd>/.prism/skills/*.md`. */
+/** Cheap manifest of every skill under `<cwd>/prism/skills/*.md`. */
 export async function listSkills(cwd: string): Promise<SkillSummary[]> {
   return await invoke<SkillSummary[]>("list_skills", { cwd });
 }
@@ -72,15 +72,15 @@ export function renderSkillsMarkdown(skills: SkillSummary[]): string {
   if (skills.length === 0) {
     return (
       "### Skills\n\n" +
-      "_No skills found in `.prism/skills/`._\n\n" +
-      "Drop a markdown file in `.prism/skills/<slug>.md` to add one. " +
-      "See `.prism/skills/README.md` for the format and `docs/skills.md` " +
+      "_No skills found in `prism/skills/`._\n\n" +
+      "Drop a markdown file in `prism/skills/<slug>.md` to add one. " +
+      "See `prism/skills/README.md` for the format and `docs/skills.md` " +
       "for size discipline + authoring rules."
     );
   }
   const out: string[] = [];
   out.push("### Skills\n\n");
-  out.push(`_${skills.length} skill${skills.length === 1 ? "" : "s"} in \`.prism/skills/\`._\n\n`);
+  out.push(`_${skills.length} skill${skills.length === 1 ? "" : "s"} in \`prism/skills/\`._\n\n`);
   out.push("| Skill | Description | Size |\n");
   out.push("| :--- | :--- | ---: |\n");
   for (const s of skills) {

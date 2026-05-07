@@ -239,7 +239,7 @@ export class Workspace {
   private activeBuildFeature: string | null = null;
   /**
    * Most recent successfully parsed build/new/refactor/test-gen report.
-   * Hydrated on first cwd resolution from `<cwd>/.prism/state.json`'s
+   * Hydrated on first cwd resolution from `<cwd>/prism/state.json`'s
    * `last_build` pointer; updated after every successful build-family
    * completion.
    */
@@ -353,7 +353,7 @@ export class Workspace {
   /**
    * Whether the file tree includes hidden dotfiles (`.git`,
    * `.gitignore`, etc.). Default false; toggled by the eye-icon
-   * button next to the Files tab. `.prism/` is always shown
+   * button next to the Files tab.
    * regardless of this flag (handled by the backend allowlist).
    */
   private showHiddenFiles = false;
@@ -1239,7 +1239,7 @@ export class Workspace {
       this.notify("[files] sidebar → Files tab");
       return;
     }
-    // /skills — list everything under `.prism/skills/` as a markdown
+    // /skills — list everything under `prism/skills/` as a markdown
     // table. Subcommands:
     //   /skills                 list the corpus
     //   /skills load <slug>     engage a skill for this tab (chip + body in systemPrefix)
@@ -1264,7 +1264,7 @@ export class Workspace {
             if (this.agentView) {
               this.agentView.appendReport(renderSkillsMarkdown(awarenessFiltered));
             } else {
-              this.notify(`[skills] ${awarenessFiltered.length} skill(s) in .prism/skills/`);
+              this.notify(`[skills] ${awarenessFiltered.length} skill(s) in prism/skills/`);
             }
           })
           .catch((err) => {
@@ -2402,7 +2402,7 @@ export class Workspace {
    * the raw transcript into structured findings, renders both an ANSI
    * summary (for xterm) and a full markdown report (for the durable
    * handoff), and asks the Rust side to persist the markdown under
-   * `<cwd>/.prism/second-pass/`.
+   * `<cwd>/prism/second-pass/`.
    */
   private async handleAuditComplete(info: {
     responseText: string;
@@ -2485,7 +2485,7 @@ export class Workspace {
    * test-gen) finishes successfully. Mirrors `handleAuditComplete`:
    *   1. Parse the BUILD/RENAME/SCAFFOLD/TEST GEN REPORT block.
    *   2. Render an ANSI summary into xterm.
-   *   3. Persist markdown + JSON sidecar under `<cwd>/.prism/builds/`.
+   *   3. Persist markdown + JSON sidecar under `<cwd>/prism/builds/`.
    *   4. Update `state.json.last_build` with a pointer + summary.
    *
    * `/fix` deliberately does NOT route through this hook — its output
@@ -2560,7 +2560,7 @@ export class Workspace {
 
   /**
    * On first cwd resolution (or when the user `cd`s into a new project),
-   * load `<cwd>/.prism/state.json` if it exists and rehydrate
+   * load `<cwd>/prism/state.json` if it exists and rehydrate
    * `lastAuditReport` and `lastBuildReport` from the pointed-to JSON
    * sidecars. Best-effort: any failure logs and leaves in-memory state
    * empty so the next audit/build rewrites it cleanly.
@@ -2696,7 +2696,7 @@ export class Workspace {
   private renderLastMarkdown(): string {
     const out: string[] = [];
     if (!this.lastAuditReport && !this.lastBuildReport) {
-      return "_No persisted state yet — run `/audit` or `/build` to populate `.prism/state.json`._";
+      return "_No persisted state yet — run `/audit` or `/build` to populate `prism/state.json`._";
     }
 
     out.push("### Last Activity\n\n");
@@ -2739,12 +2739,12 @@ export class Workspace {
     const out: string[] = ["\r\n"];
     if (!this.lastAuditReport && !this.lastBuildReport) {
       out.push(
-        `${DIM}[last] no persisted state yet — run /audit or /build to populate ${CYAN}.prism/state.json${RESET}\r\n`,
+        `${DIM}[last] no persisted state yet — run /audit or /build to populate ${CYAN}prism/state.json${RESET}\r\n`,
       );
       return out.join("");
     }
     out.push(
-      `${BOLD}Last activity${RESET} ${DIM}— from ${CYAN}.prism/state.json${RESET}\r\n`,
+      `${BOLD}Last activity${RESET} ${DIM}— from ${CYAN}prism/state.json${RESET}\r\n`,
     );
     if (this.lastAuditReport) {
       const a = this.lastAuditReport;
@@ -3935,8 +3935,8 @@ export class Workspace {
     btn.classList.toggle("sidebar-tab-action-on", this.showHiddenFiles);
     btn.textContent = this.showHiddenFiles ? "●" : "○";
     btn.title = this.showHiddenFiles
-      ? "Hide hidden files (.git, .env, … will be hidden again; .prism/ is always shown)"
-      : "Show hidden files (.git, .env, …; .prism/ is always shown)";
+      ? "Hide hidden files (.git, .env, … will be hidden again)"
+      : "Show hidden files (.git, .env, …)";
   }
 
   /**
@@ -5325,7 +5325,7 @@ export class Workspace {
         // fallback for users mid-tab who haven't established a cwd yet
         // and for legacy chats saved before this change.
         defaultPath: this.cwd
-          ? `${this.cwd}/.prism/history/`
+          ? `${this.cwd}/prism/history/`
           : await expandTilde("~/Documents/Prism/Chats/"),
         multiple: false,
         directory: false,
@@ -5560,13 +5560,13 @@ export class Workspace {
     // file dialog or finder.
     const ext = full ? "full.md" : "md";
     // Project-local default keeps chats next to the codebase they're
-    // about, alongside audit reports under .prism/. Home fallback keeps
+    // about, alongside audit reports under prism/. Home fallback keeps
     // /save working before a cwd is established (e.g. a fresh tab where
     // the user runs /save before issuing any shell command). The save
     // dialog itself runs `mkdir -p` on the chosen directory at write
     // time, so neither path needs to pre-exist.
     const defaultPath = this.cwd
-      ? `${this.cwd}/.prism/history/${slug}.${ext}`
+      ? `${this.cwd}/prism/history/${slug}.${ext}`
       : await expandTilde(`~/Documents/Prism/Chats/${slug}.${ext}`);
     let target: string | null = null;
     try {
@@ -5630,7 +5630,7 @@ export class Workspace {
   }
 
   /**
-   * Automatically persists the current chat session to `.prism/history/` inside the
+   * Automatically persists the current chat session to `prism/history/` inside the
    * workspace directory, and double-writes to any configured cloud sync folder.
    */
   async autoSaveChat(): Promise<void> {
@@ -5639,7 +5639,7 @@ export class Workspace {
       const history = await this.agent.getHistory();
       if (history.length === 0) return;
 
-      const targetDir = `${this.cwd}/.prism/history`;
+      const targetDir = `${this.cwd}/prism/history`;
       const targetPath = `${targetDir}/${this.id}.full.md`;
 
       await invoke("save_chat_markdown", {

@@ -115,7 +115,7 @@ export function parseFixArgs(raw: string): ParsedFixArgs {
           include: "confirmed",
           allowCandidate,
           error:
-            "--report expects a path (e.g. --report=.prism/second-pass/audit-2026-01-01T00-00-00.json)",
+            "--report expects a path (e.g. --report=prism/second-pass/audit-2026-01-01T00-00-00.json)",
         };
       }
       reportPath = next;

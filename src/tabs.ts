@@ -66,6 +66,12 @@ export class TabManager {
     opts.tabStripEl.addEventListener("click", (e) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
+      const newBtn = target.closest<HTMLElement>(".new-tab-btn");
+      if (newBtn) {
+        e.stopPropagation();
+        this.newTab();
+        return;
+      }
       const closeBtn = target.closest<HTMLElement>(".tab-close");
       if (closeBtn) {
         e.stopPropagation();
@@ -378,7 +384,8 @@ export class TabManager {
             `</div>`
           );
         })
-        .join("");
+        .join("") +
+      `<button class="new-tab-btn" type="button" title="New tab (Ctrl/Cmd+T)" aria-label="New tab">+</button>`;
 
     // Wire up context menus natively after render since innerHTML strips them
     strip.querySelectorAll(".tab").forEach((tabEl) => {

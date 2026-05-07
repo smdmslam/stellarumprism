@@ -524,7 +524,7 @@ function slashCompletions(
             filter: false,
             options: [
               {
-                label: "(no skills in .prism/skills/)",
+                label: "(no skills in prism/skills/)",
                 detail: "",
                 type: "text",
                 apply: () => {},

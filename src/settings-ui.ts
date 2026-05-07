@@ -501,7 +501,7 @@ export class SettingsUI {
         </div>
       </div>
       <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 20px;">
-        Skills are persistent behavioral guides loaded from <code>.prism/skills/</code>. Enabled skills are injected into the agent's context.
+        Skills are persistent behavioral guides loaded from <code>prism/skills/</code>. Enabled skills are injected into the agent's context.
       </p>
       
       <div class="skills-search-container">
@@ -750,7 +750,7 @@ export class SettingsUI {
           select.addEventListener("change", async () => {
             const from = select.dataset.path!;
             const targetName = select.value;
-            const targetDir = targetName === "Other" ? ".prism/skills" : `.prism/skills/${targetName}`;
+            const targetDir = targetName === "Other" ? "prism/skills" : `prism/skills/${targetName}`;
             
             try {
               await invoke("move_file", { cwd, from, to: targetDir });
@@ -802,7 +802,7 @@ export class SettingsUI {
       });
 
     } catch (err) {
-      skillsListEl.innerHTML = `<div class="error-state">Failed to access .prism/skills/ directory.</div>`;
+      skillsListEl.innerHTML = `<div class="error-state">Failed to access prism/skills/ directory.</div>`;
     }
   }
 
@@ -823,7 +823,7 @@ export class SettingsUI {
     this.content.innerHTML = `
       <h2 class="settings-section-title">History</h2>
       <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 24px;">
-        Saved conversation artifacts found in <code>.prism/history/</code>.
+        Saved conversation artifacts found in <code>prism/history/</code>.
       </p>
 
       <!-- Cloud Sync Configuration -->
@@ -856,7 +856,7 @@ export class SettingsUI {
               </span>
               <div class="sync-info">
                 <div class="sync-title">Cloud Sync Disabled</div>
-                <div class="sync-desc">Auto-saves will live only in this project's local <code>.prism/history/</code>.</div>
+                <div class="sync-desc">Auto-saves will live only in this project's local <code>prism/history/</code>.</div>
               </div>
               <button id="map-sync-btn" class="history-load-btn" style="background: #10b981; font-size: 11px;">Map Cloud Folder</button>
             </div>
@@ -903,11 +903,11 @@ export class SettingsUI {
     const historyEl = document.getElementById("history-list")!;
 
     try {
-      // 1. Create .prism/history on demand so it's always ready
-      await invoke("create_dir", { cwd, path: ".prism/history" });
+      // 1. Create prism/history on demand so it's always ready
+      await invoke("create_dir", { cwd, path: "prism/history" });
 
-      // 2. List entries in .prism/history directory
-      const localPath = `${cwd}/.prism/history`;
+      // 2. List entries in prism/history directory
+      const localPath = `${cwd}/prism/history`;
       const result = await invoke<any>("list_dir_entries", { cwd: localPath, partial: "" });
       const localFiles = (result.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
 
@@ -1018,7 +1018,7 @@ export class SettingsUI {
       const chats = Array.from(chatsMap.values());
       
       if (chats.length === 0) {
-        historyEl.innerHTML = `<div class="empty-state">No saved chats found in .prism/history/</div>`;
+        historyEl.innerHTML = `<div class="empty-state">No saved chats found in prism/history/</div>`;
         return;
       }
 
@@ -1091,7 +1091,7 @@ export class SettingsUI {
       });
 
     } catch (err) {
-      historyEl.innerHTML = `<div class="error-state">No .prism/history directory found or failed to scan.</div>`;
+      historyEl.innerHTML = `<div class="error-state">No prism/history directory found or failed to scan.</div>`;
     }
   }
 
