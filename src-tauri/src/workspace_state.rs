@@ -29,9 +29,12 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 /// Subdirectory under cwd where every per-project artifact Prism manages
-/// lives under `<cwd>/prism/...`.
+/// lives. The audit module writes to `<cwd>/prism/second-pass/`; this
+/// module writes to `<cwd>/prism/state.json` and `<cwd>/prism/builds/`.
 const PRISM_DIR: &str = "prism";
+const LEGACY_PRISM_DIR: &str = ".prism";
 const STATE_FILENAME: &str = "state.json";
+const BUILDS_SUBDIR: &str = "prism/builds";
 
 // ---------------------------------------------------------------------------
 // state.json schema
@@ -98,7 +101,7 @@ pub struct Layout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LastAudit {
     /// Relative path under cwd to the JSON sidecar
-    /// (e.g. `prism/second-pass/audit-2026-04-25T19-30-00.json`).
+    /// (e.g. `.prism/second-pass/audit-2026-04-25T19-30-00.json`).
     pub path: String,
     /// ISO-8601 timestamp from the audit report itself.
     pub generated_at: String,
@@ -123,7 +126,7 @@ pub struct AuditCounts {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LastBuild {
     /// Relative path under cwd to the JSON sidecar
-    /// (e.g. `prism/builds/build-2026-04-25T19-30-00.json`).
+    /// (e.g. `.prism/builds/build-2026-04-25T19-30-00.json`).
     pub path: String,
     /// ISO-8601 timestamp from the build report itself.
     pub generated_at: String,
@@ -162,7 +165,8 @@ pub struct RecentFile {
 // Tauri commands: state.json
 // ---------------------------------------------------------------------------
 
-/// Read the workspace state file at `<cwd>/prism/state.json`. Returns
+/// Read the workspace state file at `<cwd>/prism/state.json` (fallback:
+/// `<cwd>/.prism/state.json`). Returns
 /// `Ok(None)` when the file simply doesn't exist yet (the common case
 /// for a brand-new project) so the frontend can hydrate cleanly without
 /// distinguishing "no state" from a real read error.
@@ -171,7 +175,9 @@ pub fn read_workspace_state(cwd: String) -> Result<Option<WorkspaceState>, Strin
     if cwd.trim().is_empty() {
         return Err("cwd is empty; shell integration may not be started".into());
     }
-    let path = Path::new(&cwd).join(PRISM_DIR).join(STATE_FILENAME);
+    let primary = Path::new(&cwd).join(PRISM_DIR).join(STATE_FILENAME);
+    let legacy = Path::new(&cwd).join(LEGACY_PRISM_DIR).join(STATE_FILENAME);
+    let path = if primary.exists() { primary } else { legacy };
     if !path.exists() {
         return Ok(None);
     }
@@ -191,7 +197,7 @@ pub fn read_workspace_state(cwd: String) -> Result<Option<WorkspaceState>, Strin
     }
 }
 
-/// Atomically write the workspace state file. Creates `prism/` if
+/// Atomically write the workspace state file. Creates `.prism/` if
 /// missing. Caps `recent_files` at 10 entries before writing so the
 /// file can't grow unbounded over a long-running project.
 #[tauri::command]
@@ -231,7 +237,7 @@ pub struct WriteBuildReportResult {
 }
 
 /// Write a build/refactor/fix/test-gen completion report under
-/// `<cwd>/prism/builds/`. Mirrors `second_pass::write_audit_report`:
+/// `<cwd>/.prism/builds/`. Mirrors `second_pass::write_audit_report`:
 /// markdown is the human-readable artifact, JSON is the
 /// machine-readable contract every future consumer reads.
 #[tauri::command]
@@ -254,7 +260,7 @@ pub fn write_build_report(
         ));
     }
 
-    let dir = Path::new(&cwd).join(PRISM_DIR).join("builds");
+    let dir = Path::new(&cwd).join(BUILDS_SUBDIR);
     fs::create_dir_all(&dir)
         .map_err(|e| format!("cannot create {}: {}", dir.display(), e))?;
 
@@ -293,7 +299,7 @@ pub struct BuildReportLookup {
     pub bytes: u64,
 }
 
-/// Discover the newest build JSON sidecar under `<cwd>/prism/builds/`
+/// Discover the newest build JSON sidecar under `<cwd>/.prism/builds/`
 /// or return the file at `path` if explicitly supplied. Same shape as
 /// `read_latest_audit_report` so the frontend code looks symmetric.
 #[tauri::command]
@@ -329,7 +335,7 @@ pub fn read_latest_build_report(
 }
 
 fn find_latest_build_sidecar(cwd: &str) -> Result<PathBuf, String> {
-    let dir = Path::new(cwd).join(PRISM_DIR).join("builds");
+    let dir = Path::new(cwd).join(BUILDS_SUBDIR);
     if !dir.exists() {
         return Err(format!(
             "no build reports found at {} (run /build, /new, /refactor, /fix, or /test-gen first)",
@@ -408,7 +414,7 @@ mod tests {
         let cwd = fresh_tmp();
         let mut state = WorkspaceState::default();
         state.last_audit = Some(LastAudit {
-            path: "prism/second-pass/audit-2026-04-25T19-30-00.json".into(),
+            path: ".prism/second-pass/audit-2026-04-25T19-30-00.json".into(),
             generated_at: "2026-04-25T19:30:00Z".into(),
             scope: Some("HEAD~3".into()),
             counts: AuditCounts {
@@ -421,7 +427,7 @@ mod tests {
             },
         });
         state.last_build = Some(LastBuild {
-            path: "prism/builds/build-2026-04-25T19-32-00.json".into(),
+            path: ".prism/builds/build-2026-04-25T19-32-00.json".into(),
             generated_at: "2026-04-25T19:32:00Z".into(),
             feature: "add Stripe checkout".into(),
             status: "completed".into(),
@@ -513,8 +519,8 @@ mod tests {
             Some(r#"{"status":"completed"}"#.into()),
         )
         .expect("should write");
-        let dir = cwd.join(PRISM_DIR).join("builds");
-        assert!(dir.exists(), "prism/builds/ not created");
+        let dir = cwd.join(BUILDS_SUBDIR);
+        assert!(dir.exists(), ".prism/builds/ not created");
         let md = Path::new(&res.path);
         assert!(md.exists(), "markdown missing: {}", res.path);
         let json_path = res.json_path.expect("sidecar should be written");

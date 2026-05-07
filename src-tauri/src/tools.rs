@@ -805,7 +805,7 @@ pub fn tool_schema() -> Value {
             "type": "function",
             "function": {
                 "name": "read_skill",
-                "description": "Load a user-curated skill (markdown body from `prism/skills/<slug>.md`) into the conversation context. ONLY available when the user has turned skills awareness ON. Each call surfaces an approval card to the user; on approval the skill body is returned for THIS turn AND the skill is engaged for the rest of the tab session (its body rides every subsequent turn until the user disengages). Use this when the available-skills manifest in the system prompt suggests a skill that genuinely applies to the current task. Do not call speculatively \u{2014} every call costs the user an approval click. Returns the skill body as the tool result so you can immediately apply its guidance.",
+                "description": "Load a user-curated skill (markdown body from `prism/skills/<slug>.md` (legacy `.prism/skills/` fallback)) into the conversation context. ONLY available when the user has turned skills awareness ON. Each call surfaces an approval card to the user; on approval the skill body is returned for THIS turn AND the skill is engaged for the rest of the tab session (its body rides every subsequent turn until the user disengages). Use this when the available-skills manifest in the system prompt suggests a skill that genuinely applies to the current task. Do not call speculatively \u{2014} every call costs the user an approval click. Returns the skill body as the tool result so you can immediately apply its guidance.",
                 "parameters": {
                     "type": "object",
                     "properties": {

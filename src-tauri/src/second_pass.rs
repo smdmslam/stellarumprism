@@ -17,8 +17,9 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 
 /// Name of the per-project directory every Second Pass report is written
-/// to (`<cwd>/prism/second-pass/`).
+/// to. Always under `<cwd>/prism/second-pass/`.
 const REPORT_SUBDIR: &str = "prism/second-pass";
+const LEGACY_REPORT_SUBDIR: &str = ".prism/second-pass";
 
 #[derive(Debug, Serialize)]
 pub struct WriteAuditReportResult {
@@ -152,14 +153,14 @@ pub fn read_latest_audit_report(
     })
 }
 
-/// Find the newest `audit-*.json` file under `<cwd>/prism/second-pass/`.
+/// Find the newest `audit-*.json` file under `<cwd>/prism/second-pass/`
+/// with fallback to `<cwd>/.prism/second-pass/`.
 fn find_latest_sidecar(cwd: &str) -> Result<PathBuf, String> {
-    let dir = Path::new(cwd).join(REPORT_SUBDIR);
+    let primary = Path::new(cwd).join(REPORT_SUBDIR);
+    let legacy = Path::new(cwd).join(LEGACY_REPORT_SUBDIR);
+    let dir = if primary.exists() { primary } else { legacy };
     if !dir.exists() {
-        return Err(format!(
-            "no audit reports found at {} (run /audit first)",
-            dir.display()
-        ));
+        return Err(format!("no audit reports found (run /audit first)"));
     }
     let mut candidates: Vec<PathBuf> = Vec::new();
     for entry in fs::read_dir(&dir).map_err(|e| format!("cannot list {}: {}", dir.display(), e))? {
@@ -231,10 +232,10 @@ mod tests {
             None,
         )
         .expect("should write");
-        let expected_parent = cwd.join("prism").join("second-pass");
+        let expected_parent = cwd.join(".prism").join("second-pass");
         assert!(
             expected_parent.exists(),
-            "prism/second-pass/ not created"
+            ".prism/second-pass/ not created"
         );
         let written = Path::new(&res.path);
         assert!(written.exists(), "report file missing: {}", res.path);
@@ -330,7 +331,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let target = cwd.join("prism").join("second-pass").join(filename);
+        let target = cwd.join(".prism").join("second-pass").join(filename);
         assert_eq!(fs::read_to_string(&target).unwrap(), "second");
     }
 
@@ -346,7 +347,7 @@ mod tests {
         )
         .unwrap();
         let tmp = cwd
-            .join("prism")
+            .join(".prism")
             .join("second-pass")
             .join(format!(".{}.prism-tmp", filename));
         assert!(!tmp.exists(), "tmp leaked: {}", tmp.display());

@@ -2,7 +2,8 @@
 //!
 //! Two Tauri commands the frontend needs to surface skills:
 //!   - `list_skills(cwd)`  — cheap manifest of every `.md` under
-//!     `prism/skills/`, with `{slug, name, description, sizeBytes}`.
+//!     `prism/skills/` (fallback: `.prism/skills/`), with
+//!     `{slug, name, description, sizeBytes}`.
 //!     Bodies are NOT read here; this is what the LLM-aware track's
 //!     manifest line is built from on every turn, so it has to be cheap.
 //!   - `read_skill(cwd, slug)` — returns the body. Used by both Track A
@@ -65,13 +66,14 @@ pub struct SkillBody {
     pub size_bytes: u64,
 }
 
-/// List every skill under `<cwd>/prism/skills/*.md`. Skips `README.md`
+/// List every skill under `<cwd>/prism/skills/*.md` (fallback:
+/// `<cwd>/.prism/skills/*.md`). Skips `README.md`
 /// (documentation, not a skill) and any file whose frontmatter or
 /// content is unreadable; never errors the whole call on a single bad
 /// file so the manifest is always at least as complete as it can be.
 #[tauri::command]
 pub fn list_skills(cwd: String) -> Result<Vec<SkillSummary>, String> {
-    let dir = skills_dir(&cwd)?;
+    let dir = skills_dir_for_list(&cwd)?;
     if !dir.exists() {
         return Ok(Vec::new());
     }
@@ -125,10 +127,11 @@ pub fn list_skills(cwd: String) -> Result<Vec<SkillSummary>, String> {
     Ok(out)
 }
 
-/// List all subdirectories under `<cwd>/prism/skills/`.
+/// List all subdirectories under `<cwd>/prism/skills/` (fallback:
+/// `<cwd>/.prism/skills/`).
 #[tauri::command]
 pub fn list_skill_folders(cwd: String) -> Result<Vec<String>, String> {
-    let dir = skills_dir(&cwd)?;
+    let dir = skills_dir_for_list(&cwd)?;
     if !dir.exists() {
         return Ok(Vec::new());
     }
@@ -163,8 +166,7 @@ pub fn list_skill_folders(cwd: String) -> Result<Vec<String>, String> {
 /// before deciding to engage.
 #[tauri::command]
 pub fn read_skill(cwd: String, slug: String) -> Result<SkillBody, String> {
-    let dir = skills_dir(&cwd)?;
-    let path = dir.join(format!("{}.md", slug));
+    let path = resolve_skill_path(&cwd, &slug)?;
     let metadata = fs::metadata(&path)
         .map_err(|e| format!("skill `{}` not found: {}", slug, e))?;
     if !metadata.is_file() {
@@ -208,6 +210,37 @@ fn skills_dir(cwd: &str) -> Result<PathBuf, String> {
         return Err("cwd unknown".into());
     }
     Ok(PathBuf::from(cwd).join("prism").join("skills"))
+}
+
+fn legacy_skills_dir(cwd: &str) -> Result<PathBuf, String> {
+    if cwd.is_empty() {
+        return Err("cwd unknown".into());
+    }
+    Ok(PathBuf::from(cwd).join(".prism").join("skills"))
+}
+
+fn skills_dir_for_list(cwd: &str) -> Result<PathBuf, String> {
+    let preferred = skills_dir(cwd)?;
+    if preferred.exists() {
+        return Ok(preferred);
+    }
+    let legacy = legacy_skills_dir(cwd)?;
+    if legacy.exists() {
+        return Ok(legacy);
+    }
+    Ok(preferred)
+}
+
+fn resolve_skill_path(cwd: &str, slug: &str) -> Result<PathBuf, String> {
+    let preferred = skills_dir(cwd)?.join(format!("{}.md", slug));
+    if preferred.exists() {
+        return Ok(preferred);
+    }
+    let legacy = legacy_skills_dir(cwd)?.join(format!("{}.md", slug));
+    if legacy.exists() {
+        return Ok(legacy);
+    }
+    Ok(preferred)
 }
 
 /// True if `path` is a `.md` file we should treat as a skill. Skips
@@ -483,7 +516,7 @@ mod tests {
     }
 
     fn write_skill(root: &Path, slug: &str, body: &str) {
-        let dir = root.join("prism").join("skills");
+        let dir = root.join(".prism").join("skills");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join(format!("{}.md", slug)), body).unwrap();
     }
@@ -499,7 +532,7 @@ mod tests {
     fn list_skills_skips_readme_and_non_md() {
         let root = fresh_skills_root();
         write_skill(&root, "actual-skill", "# Actual\nSomething useful.");
-        let dir = root.join("prism").join("skills");
+        let dir = root.join(".prism").join("skills");
         fs::write(dir.join("README.md"), "# Don't surface me").unwrap();
         fs::write(dir.join("notes.txt"), "not a skill").unwrap();
 

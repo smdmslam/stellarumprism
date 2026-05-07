@@ -49,7 +49,7 @@ export interface SkillBody {
   sizeBytes: number;
 }
 
-/** Cheap manifest of every skill under `<cwd>/prism/skills/*.md`. */
+/** Cheap manifest of every skill under `<cwd>/prism/skills/*.md` (with legacy fallback). */
 export async function listSkills(cwd: string): Promise<SkillSummary[]> {
   return await invoke<SkillSummary[]>("list_skills", { cwd });
 }

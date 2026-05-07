@@ -519,6 +519,8 @@ export class SettingsUI {
     const newGroupBtn = document.getElementById("skills-new-group")!;
 
     refreshBtn.addEventListener("click", () => this.renderSkills());
+    // Ensure visible prism/skills exists for new skills and move targets.
+    await invoke("create_dir", { cwd, path: "prism/skills" }).catch(() => {});
     // `+ Group` is repurposed: instead of creating a filesystem
     // subdirectory (the legacy behavior), it saves the current search
     // bar text as a named virtual group. The group's contents are
@@ -903,13 +905,21 @@ export class SettingsUI {
     const historyEl = document.getElementById("history-list")!;
 
     try {
-      // 1. Create prism/history on demand so it's always ready
+      // 1. Ensure visible prism/history exists for new writes.
       await invoke("create_dir", { cwd, path: "prism/history" });
 
-      // 2. List entries in prism/history directory
-      const localPath = `${cwd}/prism/history`;
-      const result = await invoke<any>("list_dir_entries", { cwd: localPath, partial: "" });
-      const localFiles = (result.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
+      // 2. Read from visible path first, then legacy .prism path as fallback.
+      const localHistoryDirs = [`${cwd}/prism/history`, `${cwd}/.prism/history`];
+      const localFilesByDir = new Map<string, any[]>();
+      for (const dir of localHistoryDirs) {
+        try {
+          const result = await invoke<any>("list_dir_entries", { cwd: dir, partial: "" });
+          const files = (result.entries as any[]).filter(e => e.kind === "file" && e.name.endsWith(".md"));
+          localFilesByDir.set(dir, files);
+        } catch {
+          // Missing dir is normal during migration.
+        }
+      }
 
       interface ChatMetadata {
         path: string;
@@ -949,27 +959,42 @@ export class SettingsUI {
         return meta;
       };
 
-      // Read local files frontmatter
-      for (const entry of localFiles) {
-        try {
-          const fileData = await invoke<any>("read_file_text", { cwd: localPath, path: entry.name });
-          const frontmatter = parseFrontmatter(fileData.content);
-          const chatId = frontmatter.chat_id || entry.name;
-          const created = frontmatter.created || "";
-          
-          chatsMap.set(chatId, {
-            path: fileData.path,
-            name: entry.name,
-            title: frontmatter.title || entry.name.replace(/\.full\.md$/, "").replace(/\.md$/, ""),
-            model: frontmatter.model || "unknown",
-            chatId,
-            created,
-            messagesCount: frontmatter.messages ? parseInt(frontmatter.messages, 10) : undefined,
-            format: frontmatter.format,
-            source: "local"
-          });
-        } catch (e) {
-          console.error("Failed to read local chat frontmatter:", e);
+      // Read local files frontmatter from both dirs (prism first).
+      for (const [localPath, localFiles] of localFilesByDir.entries()) {
+        for (const entry of localFiles) {
+          try {
+            const fileData = await invoke<any>("read_file_text", { cwd: localPath, path: entry.name });
+            const frontmatter = parseFrontmatter(fileData.content);
+            const chatId = frontmatter.chat_id || entry.name;
+            const created = frontmatter.created || "";
+            const existing = chatsMap.get(chatId);
+            if (existing) {
+              // Prefer visible prism path over legacy .prism path.
+              if (existing.path.includes("/.prism/") && fileData.path.includes("/prism/")) {
+                existing.path = fileData.path;
+                existing.name = entry.name;
+                existing.title = frontmatter.title || entry.name.replace(/\.full\.md$/, "").replace(/\.md$/, "");
+                existing.model = frontmatter.model || existing.model || "unknown";
+                existing.created = created || existing.created;
+                existing.messagesCount = frontmatter.messages ? parseInt(frontmatter.messages, 10) : existing.messagesCount;
+                existing.format = frontmatter.format || existing.format;
+              }
+              continue;
+            }
+            chatsMap.set(chatId, {
+              path: fileData.path,
+              name: entry.name,
+              title: frontmatter.title || entry.name.replace(/\.full\.md$/, "").replace(/\.md$/, ""),
+              model: frontmatter.model || "unknown",
+              chatId,
+              created,
+              messagesCount: frontmatter.messages ? parseInt(frontmatter.messages, 10) : undefined,
+              format: frontmatter.format,
+              source: "local"
+            });
+          } catch (e) {
+            console.error("Failed to read local chat frontmatter:", e);
+          }
         }
       }
 
