@@ -101,7 +101,8 @@ pub struct Layout {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LastAudit {
     /// Relative path under cwd to the JSON sidecar
-    /// (e.g. `.prism/second-pass/audit-2026-04-25T19-30-00.json`).
+    /// (e.g. `prism/second-pass/audit-2026-04-25T19-30-00.json`; legacy
+    /// workspaces may still reference `.prism/second-pass/` in older state files).
     pub path: String,
     /// ISO-8601 timestamp from the audit report itself.
     pub generated_at: String,
@@ -126,7 +127,8 @@ pub struct AuditCounts {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LastBuild {
     /// Relative path under cwd to the JSON sidecar
-    /// (e.g. `.prism/builds/build-2026-04-25T19-30-00.json`).
+    /// (e.g. `prism/builds/build-2026-04-25T19-32-00.json`; legacy paths may
+    /// still use `.prism/builds/` in older state files).
     pub path: String,
     /// ISO-8601 timestamp from the build report itself.
     pub generated_at: String,
@@ -197,7 +199,7 @@ pub fn read_workspace_state(cwd: String) -> Result<Option<WorkspaceState>, Strin
     }
 }
 
-/// Atomically write the workspace state file. Creates `.prism/` if
+/// Atomically write the workspace state file. Creates `prism/` if
 /// missing. Caps `recent_files` at 10 entries before writing so the
 /// file can't grow unbounded over a long-running project.
 #[tauri::command]
@@ -237,7 +239,7 @@ pub struct WriteBuildReportResult {
 }
 
 /// Write a build/refactor/fix/test-gen completion report under
-/// `<cwd>/.prism/builds/`. Mirrors `second_pass::write_audit_report`:
+/// `<cwd>/prism/builds/`. Mirrors `second_pass::write_audit_report`:
 /// markdown is the human-readable artifact, JSON is the
 /// machine-readable contract every future consumer reads.
 #[tauri::command]
@@ -299,7 +301,7 @@ pub struct BuildReportLookup {
     pub bytes: u64,
 }
 
-/// Discover the newest build JSON sidecar under `<cwd>/.prism/builds/`
+/// Discover the newest build JSON sidecar under `<cwd>/prism/builds/`
 /// or return the file at `path` if explicitly supplied. Same shape as
 /// `read_latest_audit_report` so the frontend code looks symmetric.
 #[tauri::command]
@@ -414,7 +416,7 @@ mod tests {
         let cwd = fresh_tmp();
         let mut state = WorkspaceState::default();
         state.last_audit = Some(LastAudit {
-            path: ".prism/second-pass/audit-2026-04-25T19-30-00.json".into(),
+            path: "prism/second-pass/audit-2026-04-25T19-30-00.json".into(),
             generated_at: "2026-04-25T19:30:00Z".into(),
             scope: Some("HEAD~3".into()),
             counts: AuditCounts {
@@ -427,7 +429,7 @@ mod tests {
             },
         });
         state.last_build = Some(LastBuild {
-            path: ".prism/builds/build-2026-04-25T19-32-00.json".into(),
+            path: "prism/builds/build-2026-04-25T19-32-00.json".into(),
             generated_at: "2026-04-25T19:32:00Z".into(),
             feature: "add Stripe checkout".into(),
             status: "completed".into(),
@@ -520,7 +522,7 @@ mod tests {
         )
         .expect("should write");
         let dir = cwd.join(BUILDS_SUBDIR);
-        assert!(dir.exists(), ".prism/builds/ not created");
+        assert!(dir.exists(), "prism/builds/ not created");
         let md = Path::new(&res.path);
         assert!(md.exists(), "markdown missing: {}", res.path);
         let json_path = res.json_path.expect("sidecar should be written");

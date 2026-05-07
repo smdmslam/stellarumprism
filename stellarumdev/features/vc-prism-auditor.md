@@ -90,10 +90,10 @@ Each finding is actionable. Each points at a specific file:line. You work down t
 
 ### The handoff: three flows, one artifact
 
-Every audit writes a durable markdown report to `./.prism/second-pass/audit-<timestamp>.md`. That single file is the contract. From there, users pick whichever workflow fits:
+Every audit writes a durable markdown report to `./prism/second-pass/audit-<timestamp>.md`. That single file is the contract. From there, users pick whichever workflow fits:
 
 - **Manual.** Read the findings in the terminal, fix them yourself in whatever editor you use.
-- **Agent handoff.** Tell Cursor / Antigravity / Copilot Chat: *"Read `.prism/second-pass/audit-*.md` and fix each finding."* The editor's own agent does the work.
+- **Agent handoff.** Tell Cursor / Antigravity / Copilot Chat: *"Read `prism/second-pass/audit-*.md` and fix each finding."* The editor's own agent does the work.
 - **In-Prism.** Run `/fix 1,3,5` or `/fix all` and Prism itself works through findings using the existing edit-with-approval flow — you never leave the terminal.
 
 The report is always written. The fix mechanism is your choice. This is the critical UX move: **Prism doesn't force users to leave their current editor to get value.** A Cursor user runs Second Pass, gets a markdown file, feeds it back to Cursor. A Prism-only user stays in Prism. Both work; both are first-class.
@@ -106,7 +106,7 @@ Every meaningful artifact Prism produces — audit reports, chat transcripts, sk
 
 ### Skills: bring your own knowledge
 
-Prism reads markdown files from `~/.prism/skills/` (global) and `./.prism/skills/` (per-project) as **skills** — reusable knowledge packs the agent pulls into context on demand or automatically at session start. Same pattern Anthropic formalized as Claude Skills, same file format, but usable against any model Prism routes to.
+Prism reads markdown files from `~/.prism/skills/` (global, if present) and `./prism/skills/` (per-project; legacy `./.prism/skills/` still read when migrating) as **skills** — reusable knowledge packs the agent pulls into context on demand or automatically at session start. Same pattern Anthropic formalized as Claude Skills, same file format, but usable against any model Prism routes to.
 
 This is where Second Pass compounds into something more than a lint tool. Every audit you run can be archived as a skill: `./.prism/skills/past-refactor-gotchas.md`. Over time the agent gets smarter at *your specific codebase* because its own past findings feed back in. You build institutional memory automatically, just by using the tool.
 
