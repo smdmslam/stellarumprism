@@ -2295,12 +2295,17 @@ export class Workspace {
   }
 
   private stopTaskElapsedTicker(): void {
+    const start = this.taskBusyStartMs;
     if (this.taskElapsedTimer != null) {
       window.clearInterval(this.taskElapsedTimer);
       this.taskElapsedTimer = null;
     }
+    // Preserve the completed turn's elapsed time so users can compare
+    // long-running test runs without having to keep watching live.
+    if (start != null) {
+      this.updateTaskElapsedDisplay(Date.now() - start);
+    }
     this.taskBusyStartMs = null;
-    this.updateTaskElapsedDisplay(0);
   }
 
   private updateTaskElapsedDisplay(elapsedMs: number): void {
