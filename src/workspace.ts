@@ -227,6 +227,12 @@ export class Workspace {
   /** Pending image attachments for the next agent query. */
   private pendingImages: PendingImage[] = [];
   /**
+   * Chains async FileReader work for pasted/dropped images so a fast Enter
+   * after attach cannot dispatch before `pendingImages` is populated (which
+   * produced "I don't see the image" on the first turn).
+   */
+  private pendingImageIngest: Promise<void> = Promise.resolve();
+  /**
    * Scope string for the currently in-flight audit (e.g. "HEAD~3",
    * "@src/pages", or "" for working tree vs HEAD). Used by
    * handleAuditComplete to tag the generated report. Cleared on
@@ -1960,6 +1966,9 @@ export class Workspace {
         ? await resolveFileRefs(refs, this.cwd)
         : { resolved: [], errors: [] };
 
+    // Wait for any in-flight image decode (paste/drop) before taking
+    // attachments — otherwise the first submit can race ahead of FileReader.
+    await this.pendingImageIngest;
     // Pull pending images out of the workspace so they're scoped to this turn.
     const images = this.takePendingImages();
     if (images.length > 0 && !modelSupportsVision(this.agent.getModel())) {
@@ -2945,7 +2954,7 @@ export class Workspace {
           const f = it.getAsFile();
           if (f) {
             e.preventDefault();
-            void this.addImageFile(f);
+            this.queueImageAttachment(f);
           }
         }
       }
@@ -2970,10 +2979,24 @@ export class Workspace {
       e.preventDefault();
       for (const f of Array.from(files)) {
         if (f.type.startsWith("image/")) {
-          void this.addImageFile(f);
+          this.queueImageAttachment(f);
         }
       }
     });
+  }
+
+  /** Queue a file for async decode; serialized with other images via `pendingImageIngest`. */
+  private queueImageAttachment(file: File): void {
+    const prev = this.pendingImageIngest;
+    this.pendingImageIngest = (async () => {
+      await prev.catch(() => {});
+      try {
+        await this.addImageFile(file);
+      } catch (e) {
+        console.warn("[images] attach failed", e);
+        this.notify("[images] could not read that image");
+      }
+    })();
   }
 
   /** Convert a File to a DataURL and push onto pendingImages. */
