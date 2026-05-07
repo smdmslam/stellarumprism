@@ -27,6 +27,12 @@ pub fn get_pricing_map() -> HashMap<&'static str, PricingBasis> {
     // xAI Grok 4.1 Fast
     map.insert("x-ai/grok-4.1-fast", PricingBasis { input_per_m: 0.2, output_per_m: 0.5 });
     map.insert("x-ai/grok-4-fast", PricingBasis { input_per_m: 0.2, output_per_m: 0.5 });
+    // xAI Grok 4.20
+    map.insert("x-ai/grok-4.20", PricingBasis { input_per_m: 1.25, output_per_m: 2.50 });
+    // xAI Grok 4.3
+    map.insert("x-ai/grok-4.3", PricingBasis { input_per_m: 1.25, output_per_m: 2.50 });
+    // xAI Grok 4.2 (kept for compatibility when users pin full slug)
+    map.insert("x-ai/grok-4.2", PricingBasis { input_per_m: 1.25, output_per_m: 2.50 });
     // Z.ai GLM 5
     map.insert("z-ai/glm-5", PricingBasis { input_per_m: 0.60, output_per_m: 2.08 });
     // Claude Haiku 4.5
@@ -45,7 +51,15 @@ pub fn get_pricing_map() -> HashMap<&'static str, PricingBasis> {
 
 pub fn get_pricing_basis(model: &str) -> PricingBasis {
     let map = get_pricing_map();
-    map.get(model).cloned().unwrap_or(PricingBasis { input_per_m: 0.0, output_per_m: 0.0 })
+    if let Some(basis) = map.get(model) {
+        return basis.clone();
+    }
+    // Safety fallback: new Grok 4.x variants should never silently
+    // report $0 usage if we forget to add an explicit row.
+    if model.starts_with("x-ai/grok-4") {
+        return PricingBasis { input_per_m: 1.25, output_per_m: 2.50 };
+    }
+    PricingBasis { input_per_m: 0.0, output_per_m: 0.0 }
 }
 
 #[tauri::command]
