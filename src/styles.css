@@ -4199,6 +4199,14 @@ input:checked + .toggle-slider:before {
   white-space: nowrap;
 }
 
+.model-item-pricing {
+  font-size: 10px;
+  color: #67e8f9;
+  line-height: 1.2;
+  margin-top: 1px;
+  white-space: nowrap;
+}
+
 .sidebar-pane[hidden] { display: none; }
 
 /* ---------- file tree (Files sidebar pane) ---------- */

@@ -23,6 +23,7 @@ import {
 import { AgentView } from "./agent-view";
 import {
   getModelEntry,
+  getModelPricingBasis,
   resolveModel,
   renderModelListAnsi,
   modelSupportsVision,
@@ -3834,6 +3835,12 @@ export class Workspace {
       return "Standard";
     };
     let lastHeading = "";
+    const formatPerM = (n: number): string => {
+      if (!Number.isFinite(n)) return "$0";
+      if (n === 0) return "$0";
+      if (n >= 1) return `$${n.toFixed(2).replace(/\.00$/, "")}`;
+      return `$${n.toFixed(3).replace(/0+$/, "").replace(/\.$/, "")}`;
+    };
     menu.innerHTML = completions
       .map((m: { label: string; detail: string; info: string }) => {
         // detail is either "<slug>" or "<slug> [img]"; the slug is the
@@ -3862,6 +3869,8 @@ export class Workspace {
               : cost === 3
                 ? "model-item-cost model-item-cost-3"
                 : "model-item-cost";
+        const pricing = getModelPricingBasis(slug);
+        const pricingLabel = `${formatPerM(pricing.input_per_m)}/M in · ${formatPerM(pricing.output_per_m)}/M out`;
         return (
           headingHtml +
           `<div class="${cls}" data-slug="${escapeAttr(m.label)}">` +
@@ -3870,6 +3879,7 @@ export class Workspace {
           (costText ? `<span class="${costClass}">${costText}</span>` : "") +
           `</span>` +
           `<span class="model-item-detail">${escapeHtml(m.detail)}</span>` +
+          `<span class="model-item-pricing">${escapeHtml(pricingLabel)}</span>` +
           `</div>`
         );
       })
