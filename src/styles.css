@@ -3539,12 +3539,48 @@ input:checked + .toggle-slider:before {
 
 .actions-label {
   width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #c084fc;
   padding-bottom: 2px;
+}
+
+.actions-label-text {
+  flex: 1 1 auto;
+}
+
+.actions-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.actions-control-btn {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #d1d5db;
+  background: #1f2937;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+
+.actions-control-btn:hover {
+  background: #374151;
+}
+
+.actions-control-btn-close {
+  width: 22px;
+  padding: 2px 0;
+  text-align: center;
 }
 
 .action-card {
@@ -3591,6 +3627,25 @@ input:checked + .toggle-slider:before {
   border-color: #374151;
 }
 .btn-copy:hover { background: #374151; }
+
+.suggestions-reopen-pill {
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.12);
+  border: 1px solid rgba(192, 132, 252, 0.35);
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.suggestions-reopen-pill:hover {
+  background: rgba(192, 132, 252, 0.2);
+}
 
 /* ---------- approval card (gated write tool) ---------- */
 .approval-card {

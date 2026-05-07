@@ -226,6 +226,15 @@ export interface AgentControllerOptions {
    * (intent parser + slash handlers) rather than writing into the shell.
    */
   onRunSuggestedSlash?: (command: string) => void;
+  /**
+   * Fires whenever suggested-actions visibility/restorability changes so
+   * the workspace can show or hide a "reopen suggestions" affordance.
+   */
+  onSuggestedActionsStateChange?: (state: {
+    visible: boolean;
+    canRestore: boolean;
+    sessionHidden: boolean;
+  }) => void;
 }
 
 /**
@@ -274,6 +283,10 @@ export class AgentController {
   /** Resolved model slug for the in-flight request. Used for onAuditComplete metadata. */
   private currentResolvedModel: string | null = null;
   private suggestedFork = false;
+  /** Last non-empty suggested command set (for explicit reopen). */
+  private lastSuggestedCommands: string[] = [];
+  /** Session-level hide gate for suggestions. */
+  private suggestedActionsHiddenForSession = false;
   /**
    * Every `http_fetch` tool call captured during the in-flight turn.
    * Reset at the start of each query and handed to the audit-complete
@@ -369,6 +382,8 @@ export class AgentController {
   /** Clear the rolling conversation so the next query starts fresh. */
   async newSession(): Promise<void> {
     this.suggestedFork = false;
+    this.lastSuggestedCommands = [];
+    this.suggestedActionsHiddenForSession = false;
     try {
       await invoke("agent_new_session", { chatId: this.opts.chatId });
     } catch (e) {
@@ -377,7 +392,15 @@ export class AgentController {
     this.messageCount = 0;
     this.opts.onSessionChange?.(0);
     this.opts.view?.clear();
-    this.clearActionBar();
+    this.clearActionBar(false);
+  }
+
+  /** Reopen the last suggestion set if one exists. */
+  reopenSuggestedActions(): boolean {
+    if (this.lastSuggestedCommands.length === 0) return false;
+    this.suggestedActionsHiddenForSession = false;
+    this.renderActionBar(this.lastSuggestedCommands);
+    return true;
   }
 
   /** Fetch the current chat history (user + assistant messages, oldest first). */
@@ -1038,7 +1061,7 @@ export class AgentController {
         }).catch((err) => {
           this.opts.view.appendError(`[approval] ${String(err)}`);
         });
-        this.clearActionBar();
+        this.clearActionBar(false);
         return;
       }
 
@@ -1423,20 +1446,32 @@ export class AgentController {
   private renderActionBar(commands: string[]): void {
     const bar = this.getActionsEl();
     if (!bar) return;
+    this.lastSuggestedCommands = commands.slice();
+    if (this.suggestedActionsHiddenForSession) {
+      this.clearActionBar(true);
+      return;
+    }
     if (commands.length === 0) {
       bar.innerHTML = "";
       bar.classList.remove("visible");
+      this.emitSuggestedActionsState();
       return;
     }
     bar.classList.add("visible");
     bar.innerHTML =
-      `<div class="actions-label">Suggested:</div>` +
+      `<div class="actions-label">` +
+      `<span class="actions-label-text">Suggested:</span>` +
+      `<span class="actions-controls">` +
+      `<button class="actions-control-btn" type="button" data-action="dismiss-session">Hide for session</button>` +
+      `<button class="actions-control-btn actions-control-btn-close" type="button" data-action="dismiss" aria-label="Close suggestions" title="Close suggestions">×</button>` +
+      `</span>` +
+      `</div>` +
       commands
         .map(
           (cmd, i) =>
             `<div class="action-card" data-idx="${i}" title="${escapeHtmlAttr(cmd)}">` +
             `<code class="action-cmd">${escapeHtml(cmd)}</code>` +
-            `<button class="btn btn-run" data-action="run" data-idx="${i}">Run</button>` +
+            `<button class="btn btn-run" data-action="run" data-idx="${i}" title="Send command to terminal and execute">Send</button>` +
             `<button class="btn btn-copy" data-action="copy" data-idx="${i}">Copy</button>` +
             `</div>`,
         )
@@ -1446,6 +1481,15 @@ export class AgentController {
       const target = ev.target as HTMLElement | null;
       if (!target) return;
       const action = target.getAttribute("data-action");
+      if (action === "dismiss") {
+        this.clearActionBar(true);
+        return;
+      }
+      if (action === "dismiss-session") {
+        this.suggestedActionsHiddenForSession = true;
+        this.clearActionBar(true);
+        return;
+      }
       const idxAttr = target.getAttribute("data-idx");
       if (!action || idxAttr == null) return;
       const idx = Number(idxAttr);
@@ -1466,13 +1510,29 @@ export class AgentController {
         this.clearActionBar();
       }
     };
+    this.emitSuggestedActionsState();
   }
 
-  private clearActionBar(): void {
+  private clearActionBar(preserveCache = true): void {
     const bar = this.getActionsEl();
     if (!bar) return;
     bar.innerHTML = "";
     bar.classList.remove("visible");
+    if (!preserveCache) {
+      this.lastSuggestedCommands = [];
+      this.suggestedActionsHiddenForSession = false;
+    }
+    this.emitSuggestedActionsState();
+  }
+
+  private emitSuggestedActionsState(): void {
+    const bar = this.getActionsEl();
+    const visible = !!bar?.classList.contains("visible");
+    this.opts.onSuggestedActionsStateChange?.({
+      visible,
+      canRestore: this.lastSuggestedCommands.length > 0 && !visible,
+      sessionHidden: this.suggestedActionsHiddenForSession,
+    });
   }
 
   private getActionsEl(): HTMLElement | null {
@@ -1811,22 +1871,26 @@ function extractRunShellCommand(json: string): string | null {
 }
 
 /**
- * Pull deep-work slash suggestions from the assistant response. This is
- * intentionally allowlisted so the action bar only proposes high-value
- * Prism workflows instead of arbitrary slash tokens.
+ * Pull explicit slash commands from assistant prose. This is intentionally
+ * strict: we only suggest allowlisted commands when they are actually written
+ * in the response (e.g. "/audit"), never inferred from keywords like
+ * "review", "bug", or "security".
  */
 function extractSuggestedSlashCommands(markdown: string): string[] {
-  const out: string[] = [];
   const text = markdown.toLowerCase();
-  const maybePush = (cmd: string, cond: boolean) => {
-    if (cond) out.push(cmd);
-  };
-  maybePush("/audit", /\/audit|\baudit\b|\breview\b|\bsecurity\b/.test(text));
-  maybePush("/refactor", /\/refactor|\brefactor\b|\bclean up\b|\brestructure\b/.test(text));
-  maybePush("/fix", /\/fix|\bfix\b|\bbug\b|\bbroken\b|\berror\b/.test(text));
-  maybePush("/test-gen", /\/test-gen|\btest\b|\bcoverage\b/.test(text));
-  maybePush("/protocol harden", /\/protocol\s+harden|\bharden\b|\bprotocol\b/.test(text));
-  maybePush("/verify on", /\/verify\b|\bstrict\b|\bverify\b/.test(text));
-  return dedupe(out);
+  const patterns: Array<{ cmd: string; re: RegExp }> = [
+    { cmd: "/audit", re: /(^|[^\w-])\/audit(?=\s|$|[.,;:!?])/g },
+    { cmd: "/refactor", re: /(^|[^\w-])\/refactor(?=\s|$|[.,;:!?])/g },
+    { cmd: "/fix", re: /(^|[^\w-])\/fix(?=\s|$|[.,;:!?])/g },
+    { cmd: "/test-gen", re: /(^|[^\w-])\/test-gen(?=\s|$|[.,;:!?])/g },
+    { cmd: "/protocol harden", re: /(^|[^\w-])\/protocol\s+harden(?=\s|$|[.,;:!?])/g },
+    { cmd: "/verify on", re: /(^|[^\w-])\/verify\s+on(?=\s|$|[.,;:!?])/g },
+    { cmd: "/verify off", re: /(^|[^\w-])\/verify\s+off(?=\s|$|[.,;:!?])/g },
+  ];
+  const out: string[] = [];
+  for (const p of patterns) {
+    if (p.re.test(text)) out.push(p.cmd);
+  }
+  return out;
 }
 

@@ -320,6 +320,12 @@ export class Workspace {
    * surprised by silent re-rendering after a long gap.
    */
   private renderLoadedChatPref: "always" | "never" | null = null;
+  /** Agent suggested-command bar state (for reopen affordance). */
+  private suggestedActionsState = {
+    visible: false,
+    canRestore: false,
+    sessionHidden: false,
+  };
   /** Whether we've attempted to load the communication style rules. */
   private communicationStyleLoaded = false;
   /** Cached always-on communication style preflight prefix for this tab. */
@@ -540,6 +546,13 @@ export class Workspace {
                 <span class="model-badge" title="Agent model" role="button" aria-haspopup="menu" aria-expanded="false" aria-label="Active model">...</span>
                 <div class="model-selector-menu" role="menu" hidden></div>
               </div>
+              <button
+                class="suggestions-reopen-pill"
+                type="button"
+                title="Reopen suggested commands"
+                aria-label="Reopen suggested commands"
+                hidden
+              >suggestions</button>
 
               <button class="busy-pill" type="button" title="Cancel agent request" aria-label="Cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
 
@@ -918,6 +931,10 @@ export class Workspace {
           payload: command,
         });
       },
+      onSuggestedActionsStateChange: (state) => {
+        this.suggestedActionsState = state;
+        this.updateSuggestionsReopenPill();
+      },
     });
     this.setupEditor();
     this.setupAttachments();
@@ -1063,6 +1080,9 @@ export class Workspace {
     const intentBadge = this.root.querySelector<HTMLElement>(".intent-badge")!;
     const skillsToggle = this.root.querySelector<HTMLButtonElement>(".skills-toggle");
     const strictToggle = this.root.querySelector<HTMLButtonElement>(".strict-toggle");
+    const suggestionsReopen = this.root.querySelector<HTMLButtonElement>(
+      ".suggestions-reopen-pill",
+    );
 
     intentBadge.addEventListener("click", (e) => {
       e.preventDefault();
@@ -1091,6 +1111,14 @@ export class Workspace {
       e.preventDefault();
       e.stopPropagation();
       this.toggleStrictMode();
+    });
+    suggestionsReopen?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const reopened = this.agent.reopenSuggestedActions();
+      if (!reopened) {
+        this.notify("[suggested] no commands to reopen yet");
+      }
     });
 
     // Delegate menu item clicks.
@@ -3679,7 +3707,9 @@ export class Workspace {
       const onButton = !!target.closest(
         '.sidebar-tab-action[data-action="toggle-file-view-options"]',
       );
-      const onPill = !!target.closest(".model-badge, .intent-badge");
+      const onPill = !!target.closest(
+        ".model-badge, .intent-badge, .suggestions-reopen-pill",
+      );
       const insidePillMenu = !!target.closest(".model-selector-menu");
       
       if (!insideMenu && !onButton) this.hideFileViewOptionsMenu();
@@ -3819,6 +3849,24 @@ export class Workspace {
     this.root.querySelectorAll(".model-badge, .cwd-badge").forEach((b) => {
       b.setAttribute("aria-expanded", "false");
     });
+    this.updateSuggestionsReopenPill();
+  }
+
+  private updateSuggestionsReopenPill(): void {
+    const pill = this.root.querySelector<HTMLButtonElement>(".suggestions-reopen-pill");
+    if (!pill) return;
+    const shouldShow =
+      !this.agent?.isBusy?.() &&
+      this.suggestedActionsState.canRestore &&
+      !this.suggestedActionsState.visible;
+    pill.hidden = !shouldShow;
+    if (!shouldShow) return;
+    pill.textContent = this.suggestedActionsState.sessionHidden
+      ? "suggestions (hidden)"
+      : "suggestions";
+    pill.title = this.suggestedActionsState.sessionHidden
+      ? "Suggestions are hidden for this session. Click to reopen."
+      : "Reopen suggested commands";
   }
 
   private renderModelMenu(): void {
