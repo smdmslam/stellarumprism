@@ -3647,6 +3647,25 @@ input:checked + .toggle-slider:before {
   background: rgba(192, 132, 252, 0.2);
 }
 
+.queued-prompt-pill {
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.14);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.queued-prompt-pill:hover {
+  background: rgba(245, 158, 11, 0.24);
+}
+
 /* ---------- approval card (gated write tool) ---------- */
 .approval-card {
   width: 100%;

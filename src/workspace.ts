@@ -205,6 +205,15 @@ export class Workspace {
   /** Wall-clock span for the in-flight agent request (see `setBusyState`). */
   private taskElapsedTimer: ReturnType<typeof setInterval> | null = null;
   private taskBusyStartMs: number | null = null;
+  /** Next agent turn queued while another is in-flight (single-slot). */
+  private queuedAgentPrompt: {
+    prompt: string;
+    options: {
+      mode?: string;
+      modelOverride?: string;
+      maxToolRounds?: number;
+    };
+  } | null = null;
   private cwd = ""; // populated by OSC 7 from the shell integration
 
   public setTitle(title: string): void {
@@ -553,6 +562,13 @@ export class Workspace {
                 aria-label="Reopen suggested commands"
                 hidden
               >suggestions</button>
+              <button
+                class="queued-prompt-pill"
+                type="button"
+                title="Clear queued prompt"
+                aria-label="Clear queued prompt"
+                hidden
+              >queued 1 ×</button>
 
               <button class="busy-pill" type="button" title="Cancel agent request" aria-label="Cancel agent request"><span class="busy-dot"></span><span class="busy-label">cancel</span></button>
 
@@ -1844,6 +1860,20 @@ export class Workspace {
       maxToolRounds?: number;
     } = {},
   ): Promise<void> {
+    if (this.agent.isBusy()) {
+      const replacing = this.queuedAgentPrompt !== null;
+      this.queuedAgentPrompt = {
+        prompt,
+        options: { ...options },
+      };
+      this.updateQueuedPromptPill();
+      this.notify(
+        replacing
+          ? "[queue] updated queued prompt (runs after current turn)"
+          : "[queue] queued prompt (runs after current turn)",
+      );
+      return;
+    }
     // Contextual nudge: if a plain chat prompt looks like a topic pivot in a
     // long thread, suggest starting a fresh chat.
     if (!options.mode) {
@@ -1990,6 +2020,16 @@ export class Workspace {
         verifierEnabledOverride: strictMode ? true : undefined,
       },
     );
+  }
+
+  private async flushQueuedAgentPrompt(): Promise<void> {
+    if (this.agent.isBusy()) return;
+    const queued = this.queuedAgentPrompt;
+    if (!queued) return;
+    this.queuedAgentPrompt = null;
+    this.updateQueuedPromptPill();
+    this.notify("[queue] running queued prompt");
+    await this.dispatchAgentQuery(queued.prompt, queued.options);
   }
 
   private async resolveAutoRouteModel(prompt: string): Promise<string | null> {
@@ -2183,6 +2223,7 @@ export class Workspace {
    * by setBusyState() / setStalledState() via the agent's callbacks. */
   private setupBusyPill(): void {
     const pill = this.root.querySelector<HTMLButtonElement>(".busy-pill");
+    const queued = this.root.querySelector<HTMLButtonElement>(".queued-prompt-pill");
     if (!pill) return;
     pill.addEventListener("click", (e) => {
       e.preventDefault();
@@ -2190,6 +2231,14 @@ export class Workspace {
       // Agent.cancel() is a no-op when nothing's in flight, so safe.
       this.agent?.cancel();
     });
+    queued?.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.queuedAgentPrompt = null;
+      this.updateQueuedPromptPill();
+      this.notify("[queue] cleared queued prompt");
+    });
+    this.updateQueuedPromptPill();
   }
 
   /** Show/hide the busy pill. Was previously also responsible for
@@ -2211,6 +2260,27 @@ export class Workspace {
         pill.classList.remove("stalled");
       }
     }
+    this.updateQueuedPromptPill();
+    if (!busy) {
+      queueMicrotask(() => {
+        void this.flushQueuedAgentPrompt();
+      });
+    }
+  }
+
+  private updateQueuedPromptPill(): void {
+    const pill = this.root.querySelector<HTMLButtonElement>(".queued-prompt-pill");
+    if (!pill) return;
+    const queued = this.queuedAgentPrompt;
+    if (!queued) {
+      pill.hidden = true;
+      return;
+    }
+    const compact = queued.prompt.replace(/\s+/g, " ").trim();
+    const preview = compact.length > 80 ? `${compact.slice(0, 79)}…` : compact;
+    pill.hidden = false;
+    pill.textContent = "queued 1 ×";
+    pill.title = `[queued] ${preview}\nClick to clear queued prompt`;
   }
 
   private startTaskElapsedTicker(): void {
@@ -3153,6 +3223,8 @@ export class Workspace {
   /** Shared reset path used by /new and the New button. */
   private startNewConversation(): void {
     void this.agent.newSession().then(() => {
+      this.queuedAgentPrompt = null;
+      this.updateQueuedPromptPill();
       this.title = "New Tab";
       this.autoTitleDone = false;
       this.lastChatTopicKeywords = [];
@@ -3708,7 +3780,7 @@ export class Workspace {
         '.sidebar-tab-action[data-action="toggle-file-view-options"]',
       );
       const onPill = !!target.closest(
-        ".model-badge, .intent-badge, .suggestions-reopen-pill",
+        ".model-badge, .intent-badge, .suggestions-reopen-pill, .queued-prompt-pill",
       );
       const insidePillMenu = !!target.closest(".model-selector-menu");
       
