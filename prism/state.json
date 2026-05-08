@@ -2,12 +2,12 @@
   "version": 1,
   "recent_files": [],
   "layout": {
-    "sidebar_width": 456,
+    "sidebar_width": 335,
     "problems_width": 360,
     "preview_height": 340,
-    "agent_pane_width": 659,
-    "preview_visible": false,
-    "terminal_visible": false,
+    "agent_pane_width": 780,
+    "preview_visible": true,
+    "terminal_visible": true,
     "agent_visible": true
   }
 }

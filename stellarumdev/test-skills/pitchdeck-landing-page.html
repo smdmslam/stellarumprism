@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prism Pitch Deck</title>
+    <style>
+        body { margin: 0; font-family: 'Arial', sans-serif; background-color: #F9F9F9; }
+        .slide { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; padding: 20px; box-sizing: border-box; color: #333; text-align: center; }
+        h1, h2 { margin: 10px 0; }
+        h1 { font-size: 2.5em; }
+        h2 { font-size: 2em; }
+        p { font-size: 1.2em; max-width: 800px; }
+        ul { list-style-type: none; padding: 0; }
+        .card { border-radius: 8px; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); padding: 20px; background-color: white; width: 90%; max-width: 800px; }
+        .cover { background-color: #E0E0E0; }
+        .shift { background-color: #D0E1FD; }
+        .problem { background-color: #AEEEEE; }
+        .insight { background-color: #B0E0E6; }
+        .solution { background-color: #AFD3E2; }
+        .value { background-color: #B2DFDB; }
+        .control { background-color: #C8E6C9; }
+        .wedge { background-color: #FFD54F; }
+        .wins { background-color: #FFF59D; }
+        .product { background-color: #FFEB3B; }
+        .moat { background-color: #FFF176; }
+        .why-now { background-color: #FFCC80; }
+        .market { background-color: #FFAB91; }
+        .competition { background-color: #BCAAA4; }
+        .proof { background-color: #B1FBC0; }
+        .business, .vision, .ask { background-color: #FFCCBC; }
+    </style>
+</head>
+<body>
+    <div class="slide cover card">
+        <h1>STELLARUM / PRISM · SEED ROUND · 2026</h1>
+        <h1>Prism</h1>
+        <h2>The verification layer for AI-built software.</h2>
+        <p>AI generates the code. Prism makes it safe to ship.</p>
+    </div>
+    <div class="slide shift card">
+        <h2>THE SHIFT</h2>
+        <p>Software creation accelerated. Verification did not.</p>
+        <p>AI coding tools are increasing the volume of production code every month.</p>
+        <p>But software still ships only when someone trusts it.</p>
+        <p><strong>The bottleneck has moved from writing code to proving it is safe to deploy.</strong></p>
+    </div>
+    <div class="slide problem card">
+        <h2>THE PROBLEM</h2>
+        <p>AI code fails silently. Not because it cannot generate code.</p>
+        <p>Because it leaves behind work that looks finished and is not:</p>
+        <ul>
+            <li>incomplete refactors</li>
+            <li>broken callers</li>
+            <li>dead imports</li>
+            <li>drifted types</li>
+            <li>half-rewired routes</li>
+            <li>passing tests with hidden wiring gaps</li>
+        </ul>
+        <p><strong>The most dangerous AI bugs are the ones that appear plausible enough to merge.</strong></p>
+    </div>
+    <div class="slide insight card">
+        <h2>THE INSIGHT</h2>
+        <p>The editor should not grade its own homework.</p>
+        <p>The same agent that writes a change is structurally the wrong agent to verify it.</p>
+        <p>Today's AI coding tools optimize for:</p>
+        <ul>
+            <li>generation</li>
+            <li>speed</li>
+            <li>autonomy</li>
+            <li>completion</li>
+        </ul>
+        <p><strong>Prism optimizes for:</strong></p>
+        <ul>
+            <li>verification</li>
+            <li>evidence</li>
+            <li>confidence</li>
+            <li>ship-readiness</li>
+        </ul>
+        <p><strong>Generation and verification are separate jobs.</strong></p>
+    </div>
+    <div class="slide solution card">
+        <h2>THE SOLUTION</h2>
+        <p>Prism is the second pass before production.</p>
+        <p>Run Prism after AI-generated work. It checks the change against reality:</p>
+        <ul>
+            <li>compiler output</li>
+            <li>tests</li>
+            <li>symbol resolution</li>
+            <li>schema state</li>
+            <li>runtime probes</li>
+            <li>end-to-end flows</li>
+        </ul>
+        <p><strong>Prism does not ask “does this look right?” It asks “what can be proven?”</strong></p>
+    </div>
+    <div class="slide value card">
+        <h2>THE VALUE</h2>
+        <p>Prism turns AI coding into a system teams can trust.</p>
+        <p><strong>For developers:</strong> Ship faster with less fear.</p>
+        <p><strong>For teams:</strong> Catch regressions earlier. Reduce review load. Keep velocity without losing confidence.</p>
+        <p><strong>For enterprises:</strong> Create an auditable control layer for machine-generated software.</p>
+        <p><strong>Prism increases AI adoption by reducing AI risk.</strong></p>
+    </div>
+    <div class="slide control card">
+        <h2>THE CONTROL POINT</h2>
+        <p>Every AI-generated diff creates demand for verification.</p>
+        <p>The more code AI writes, the more verification the software stack requires.</p>
+        <p>That puts Prism at a high-value checkpoint:</p>
+        <p><strong>between code generation and production</strong></p>
+        <p>This is where trust is decided.</p>
+        <p>This is where budgets form.</p>
+        <p>This is where control points become companies.</p>
+    </div>
+    <div class="slide wedge card">
+        <h2>THE WEDGE</h2>
+        <p>Start where the pain is sharpest.</p>
+        <p>Incomplete AI refactors. This is where today's tools fail most visibly.</p>
+        <p>Prism catches:</p>
+        <ul>
+            <li>missed callers</li>
+            <li>stale imports</li>
+            <li>half-rewired systems</li>
+            <li>broken references</li>
+            <li>incompatible assumptions across files</li>
+        </ul>
+        <p><strong>A sharp wedge wins adoption. Then expands across the full software lifecycle.</strong></p>
+    </div>
+    <div class="slide wins card">
+        <h2>WHY PRISM WINS</h2>
+        <p>Competitors built editors. We built the verification substrate.</p>
+        <p>Prism was designed around deterministic checks below the model:</p>
+        <ul>
+            <li>typecheck</li>
+            <li>LSP diagnostics</li>
+            <li>tests</li>
+            <li>AST resolution</li>
+            <li>schema inspection</li>
+            <li>runtime probes</li>
+            <li>end-to-end execution</li>
+        </ul>
+        <p><strong>Editors can add more generation. Verification requires a different architecture.</strong></p>
+    </div>
+    <div class="slide product card">
+        <h2>THE PRODUCT SURFACE</h2>
+        <p>One substrate. Multiple workflows.</p>
+        <p><strong>Today:</strong></p>
+        <ul>
+            <li>/audit</li>
+            <li>/fix</li>
+            <li>/build</li>
+            <li>/refactor</li>
+            <li>/test-gen</li>
+            <li>/new</li>
+            <li>CI-friendly audit binary</li>
+        </ul>
+        <p><strong>Next:</strong></p>
+        <ul>
+            <li>/review-pr</li>
+            <li>/explain</li>
+            <li>enterprise policy gates</li>
+            <li>broader runtime verification</li>
+        </ul>
+        <p><strong>The wedge is verification. The platform is the trusted layer around AI software development.</strong></p>
+    </div>
+    <div class="slide moat card">
+        <h2>THE MOAT</h2>
+        <p>Trust compounds.</p>
+        <p>Prism's moat strengthens with every project:</p>
+        <ul>
+            <li>persistent workspace memory</li>
+            <li>audit artifacts saved inside the repo</li>
+            <li>shared substrate across CLI, CI, and GUI</li>
+            <li>model-agnostic routing across 20+ models</li>
+            <li>project-specific knowledge that accumulates over time</li>
+        </ul>
+        <p><strong>The more Prism is used, the harder it is to replace.</strong></p>
+    </div>
+    <div class="slide why-now card">
+        <h2>WHY NOW</h2>
+        <p>The timing window is open.</p>
+        <p>Three things changed:</p>
+        <ol>
+            <li><strong>AI code volume is now real:</strong> AI-assisted development is moving into the mainstream.</li>
+            <li><strong>Whole-repo verification is now affordable:</strong> Long-context models and lower-cost inference make this practical.</li>
+            <li><strong>No category leader owns verification after generation:</strong> The market created the need before anyone claimed the layer.</li>
+        </ol>
+    </div>
+    <div class="slide market card">
+        <h2>MARKET</h2>
+        <p>Prism sits inside multiple large and growing markets.</p>
+        <ul>
+            <li>AI code tools: multi-billion-dollar market, growing rapidly</li>
+            <li>Application security and testing: multi-billion-dollar budget lines</li>
+            <li>Code review and CI quality gates: deeply embedded enterprise workflows</li>
+        </ul>
+        <p>Prism sits at the intersection of:</p>
+        <p><strong>AI coding + software quality + review + trust</strong></p>
+        <p>If AI touches software creation, Prism has a market.</p>
+    </div>
+    <div class="slide competition card">
+        <h2>COMPETITION</h2>
+        <p>Others help create code. Prism helps trust it.</p>
+        <table>
+            <tr><th>Category</th><th>Examples</th><th>Primary job</th></tr>
+            <tr><td>AI editors</td><td>Cursor, Copilot, Claude Code</td><td>Generate and edit code</td></tr>
+            <tr><td>PR review bots</td><td>CodeRabbit, Bugbot</td><td>Review changes near merge</td></tr>
+            <tr><td>Static analysis</td><td>Sonar, Semgrep, Snyk</td><td>Scan for rules, security, quality</td></tr>
+            <tr><td>AI terminals</td><td>Warp, Cline, Aider</td><td>General AI-assisted development</td></tr>
+        </table>
+        <p><strong>Prism owns the verification layer after generation and before production.</strong></p>
+    </div>
+    <div class="slide proof card">
+        <h2>PROOF</h2>
+        <p>Built, working, and already validating the thesis.</p>
+        <ul>
+            <li>MVP shipped</li>
+            <li>deterministic verification substrate live</li>
+            <li>IDE surface shipped</li>
+            <li>CI-compatible audit artifact flow live</li>
+            <li>400+ tests passing across Rust + TypeScript</li>
+            <li>real bugs found in dogfooding</li>
+            <li>same substrate already powers multiple workflows</li>
+        </ul>
+        <p><strong>This is not a concept deck. The product exists.</strong></p>
+    </div>
+    <div class="slide business card">
+        <h2>BUSINESS MODEL</h2>
+        <p>Verification is recurring software spend.</p>
+        <table>
+            <tr><th>Tier</th><th>Price</th><th>Buyer</th></tr>
+            <tr><td>Individual</td><td>$15 / month</td><td>Solo developers</td></tr>
+            <tr><td>Team</td><td>$50 / seat / month</td><td>Engineering teams</td></tr>
+            <tr><td>Enterprise</td><td>Custom</td><td>Security, platform, and dev-tooling orgs</td></tr>
+        </table>
+        <p><strong>As AI-generated code volume rises, verification spend rises with it.</strong></p>
+    </div>
+    <div class="slide vision card">
+        <h2>VISION</h2>
+        <p>Every AI-built company will need a trust layer.</p>
+        <p>The first wave of AI developer tools helped teams write faster.</p>
+        <p>The next wave will decide what is safe to ship.</p>
+        <p>Prism is building the system that answers:</p>
+        <ul>
+            <li>Can we trust this change?</li>
+            <li>Can we prove it?</li>
+            <li>Is it ready for production?</li>
+        </ul>
+        <p><strong>Prism is the control plane for software trust in the AI era.</strong></p>
+    </div>
+    <div class="slide ask card">
+        <h2>THE ASK</h2>
+        <p>We are raising a seed round to own the verification category.</p>
+        <p>Use of funds:</p>
+        <ul>
+            <li>accelerate product development</li>
+            <li>expand verification workflows across CI, IDE, and enterprise environments</li>
+            <li>win design partners and early enterprise pilots</li>
+            <li>establish Prism as the default second pass for AI-generated software</li>
+        </ul>
+        <p><strong>AI writes the code. Prism decides when it is ready.</strong></p>
+        <p>*Prism · prism.dev · steven@dmwfinancegroup.com*</p>
+    </div>
+</body>
+</html>
