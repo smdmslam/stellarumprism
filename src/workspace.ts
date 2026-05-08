@@ -2945,20 +2945,34 @@ export class Workspace {
     const inputBar = this.root.querySelector<HTMLElement>(".input-bar");
     if (!inputBar) return;
 
-    // Paste handler — picks up ClipboardItems that contain images.
-    inputBar.addEventListener("paste", (e) => {
-      const items = (e as ClipboardEvent).clipboardData?.items;
+    // Image paste: listen in the **capture** phase on the workspace root so we
+    // see clipboard files *before* CodeMirror's handlers on `.cm-content` run.
+    // A bubble-only listener on `.input-bar` often never fired when the
+    // focused target was inside the editor (same symptom as submitting before
+    // FileReader finished: first model turn had no image).
+    const onPasteCapture = (e: Event) => {
+      if (!(e instanceof ClipboardEvent)) return;
+      if (!inputBar.contains(e.target as Node)) return;
+      const items = e.clipboardData?.items;
       if (!items) return;
+      let handledImage = false;
       for (const it of Array.from(items)) {
         if (it.kind === "file" && it.type.startsWith("image/")) {
           const f = it.getAsFile();
           if (f) {
-            e.preventDefault();
+            handledImage = true;
             this.queueImageAttachment(f);
           }
         }
       }
-    });
+      if (handledImage) {
+        e.preventDefault();
+      }
+    };
+    this.root.addEventListener("paste", onPasteCapture, true);
+    this.disposers.push(() =>
+      this.root.removeEventListener("paste", onPasteCapture, true),
+    );
 
     // Drag & drop onto the workspace (anywhere inside .content).
     const dropZone = this.root.querySelector<HTMLElement>(".content") ?? this.root;
