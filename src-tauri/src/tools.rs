@@ -1,8 +1,9 @@
 //! Tool definitions and dispatcher for the agent's function-calling loop.
 //!
 //! Read tools (`read_file`, `list_directory`, `get_cwd`) are auto-approved.
-//! Filesystem mutation tools (`write_file`, `edit_file`, delete/move/mkdir)
+//! Filesystem mutation tools (`write_file`, `edit_file`, move/mkdir)
 //! and `run_shell` are gated by the approval flow in `agent.rs`.
+//! Agent-driven permanent `delete_file` / `delete_directory` are not exposed.
 //! This file's `requires_approval()` is the policy source of truth.
 
 use std::fs;
@@ -58,8 +59,6 @@ pub fn requires_approval(tool_name: &str) -> bool {
         "write_file"
             | "edit_file"
             | "run_shell"
-            | "delete_file"
-            | "delete_directory"
             | "move_path"
             | "create_directory"
             | "read_skill"
@@ -76,12 +75,6 @@ pub fn is_moot(tool_name: &str, args_json: &str, cwd: &str) -> bool {
             let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
             if let Ok(resolved) = resolve_path(cwd, path) {
                 return resolved.is_dir();
-            }
-        }
-        "delete_file" | "delete_directory" => {
-            let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("");
-            if let Ok(resolved) = resolve_path(cwd, path) {
-                return !resolved.exists();
             }
         }
         "write_file" => {
@@ -199,10 +192,6 @@ pub fn preview_write(tool_name: &str, args_json: &str, cwd: &str) -> String {
                 cwd,
                 timeout,
             )
-        }
-        "delete_file" | "delete_directory" => {
-            let path = parsed.get("path").and_then(|v| v.as_str()).unwrap_or("?");
-            format!("{}: {}", tool_name, path)
         }
         "move_path" => {
             let source = parsed.get("source").and_then(|v| v.as_str()).unwrap_or("?");
@@ -732,40 +721,6 @@ pub fn tool_schema() -> Value {
         {
             "type": "function",
             "function": {
-                "name": "delete_file",
-                "description": "Delete a single file. Path must be inside the shell's current working directory tree. Gated on user approval.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "File path to delete, relative to cwd or absolute (but must resolve under it)."
-                        }
-                    },
-                    "required": ["path"]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "delete_directory",
-                "description": "Delete an entire directory and its contents (recursive). USE WITH CAUTION. Path must be inside the shell's current working directory tree. Gated on user approval.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Directory path to delete, relative to cwd or absolute (but must resolve under it)."
-                        }
-                    },
-                    "required": ["path"]
-                }
-            }
-        },
-        {
-            "type": "function",
-            "function": {
                 "name": "move_path",
                 "description": "Move or rename a file or directory. Path must stay within the shell's current working directory tree. Gated on user approval.",
                 "parameters": {
@@ -889,8 +844,14 @@ pub fn execute(name: &str, args_json: &str, cwd: &str) -> ToolInvocation {
         "run_shell" => Err(
             "run_shell is async; dispatch via execute_run_shell instead of execute".into(),
         ),
-        "delete_file" => tool_delete_file(args_json, cwd),
-        "delete_directory" => tool_delete_directory(args_json, cwd),
+        // Permanent deletion is intentionally not agent-accessible: users lose
+        // work with no recovery path and approvals are a weak safety net.
+        // Remove files in Finder/the editor or use `git rm` / the shell tool
+        // under explicit user-driven approval policy.
+        "delete_file" | "delete_directory" => Err(
+            "delete_file and delete_directory are disabled: Prism does not run agent-driven permanent deletion. Remove paths in Finder or your editor, or use git rm; to clear a file's contents, use write_file/edit_file only when the user explicitly asked to empty that file."
+                .into(),
+        ),
         "move_path" => tool_move_path(args_json, cwd),
         "create_directory" => tool_create_directory(args_json, cwd),
         "read_skill" => tool_read_skill(args_json, cwd),
@@ -2805,48 +2766,6 @@ struct MovePathArgs {
     destination: String,
 }
 
-fn tool_delete_file(args_json: &str, cwd: &str) -> Result<(String, String), String> {
-    let args: DeletePathArgs = serde_json::from_str(args_json)
-        .map_err(|e| format!("invalid arguments: {}", e))?;
-    let resolved = resolve_path(cwd, &args.path)?;
-    validate_write_path(cwd, &args.path, &resolved)?;
-
-    if !resolved.exists() {
-        return Err(format!("{} does not exist", args.path));
-    }
-    if !resolved.is_file() {
-        return Err(format!("{} is not a file", args.path));
-    }
-
-    fs::remove_file(&resolved)
-        .map_err(|e| format!("cannot delete {}: {}", args.path, e))?;
-
-    let summary = format!("deleted {}", args.path);
-    let payload = json!({ "path": args.path, "deleted": true }).to_string();
-    Ok((summary, payload))
-}
-
-fn tool_delete_directory(args_json: &str, cwd: &str) -> Result<(String, String), String> {
-    let args: DeletePathArgs = serde_json::from_str(args_json)
-        .map_err(|e| format!("invalid arguments: {}", e))?;
-    let resolved = resolve_path(cwd, &args.path)?;
-    validate_write_path(cwd, &args.path, &resolved)?;
-
-    if !resolved.exists() {
-        return Err(format!("{} does not exist", args.path));
-    }
-    if !resolved.is_dir() {
-        return Err(format!("{} is not a directory", args.path));
-    }
-
-    fs::remove_dir_all(&resolved)
-        .map_err(|e| format!("cannot delete directory {}: {}", args.path, e))?;
-
-    let summary = format!("deleted directory {}", args.path);
-    let payload = json!({ "path": args.path, "deleted": true }).to_string();
-    Ok((summary, payload))
-}
-
 fn tool_move_path(args_json: &str, cwd: &str) -> Result<(String, String), String> {
     let args: MovePathArgs = serde_json::from_str(args_json)
         .map_err(|e| format!("invalid arguments: {}", e))?;
@@ -3176,8 +3095,8 @@ mod tests {
         assert!(requires_approval("write_file"));
         assert!(requires_approval("edit_file"));
         assert!(requires_approval("run_shell"));
-        assert!(requires_approval("delete_file"));
-        assert!(requires_approval("delete_directory"));
+        assert!(!requires_approval("delete_file"));
+        assert!(!requires_approval("delete_directory"));
         assert!(requires_approval("move_path"));
         assert!(requires_approval("create_directory"));
         // read_skill is the one non-mutating tool that requires approval,
@@ -3192,11 +3111,28 @@ mod tests {
     }
 
     #[test]
+    fn delete_tools_do_not_remove_files() {
+        let dir = fresh_tmp();
+        fs::write(dir.join("keep.txt"), "data").unwrap();
+        let cwd = cwd_of(&dir);
+        let inv = execute(
+            "delete_file",
+            &json!({ "path": "keep.txt" }).to_string(),
+            &cwd,
+        );
+        assert!(!inv.ok, "delete_file must be rejected: {}", inv.summary);
+        assert!(
+            inv.summary.contains("disabled") || inv.payload.contains("disabled"),
+            "{}",
+            inv.payload
+        );
+        assert!(dir.join("keep.txt").exists());
+    }
+
+    #[test]
     fn session_approval_policy_blocks_filesystem_mutations() {
         assert!(!allows_session_approval("write_file"));
         assert!(!allows_session_approval("edit_file"));
-        assert!(!allows_session_approval("delete_file"));
-        assert!(!allows_session_approval("delete_directory"));
         assert!(!allows_session_approval("move_path"));
         assert!(!allows_session_approval("create_directory"));
         assert!(allows_session_approval("run_shell"));
