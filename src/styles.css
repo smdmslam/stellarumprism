@@ -473,10 +473,14 @@ body {
   display: none !important;
 }
 
-/* Hide the shell strip only; keep `.layout-divider-preview` so the user
- * can still drag to resize the file viewer height when the terminal is off. */
-.workspace.terminal-hidden .terminal-host {
+/* When the terminal is hidden, the file viewer expands to fill the entire
+ * middle column, and the horizontal layout divider is hidden. */
+.workspace.terminal-hidden .terminal-host,
+.workspace.terminal-hidden .layout-divider-preview {
   display: none !important;
+}
+.workspace.terminal-hidden .file-preview {
+  flex: 1 1 auto !important;
 }
 
 .workspace.preview-hidden .file-preview,
