@@ -55,7 +55,7 @@ use workspace_state::{
 use usage::get_usage_summary;
 use config::{
     get_agent_config, load_or_init, set_agent_model, set_verifier_enabled, set_verifier_model,
-    set_openrouter_api_key, ConfigState,
+    set_openrouter_api_key, set_auto_habit_suggestions, ConfigState,
 };
 use pty::{kill_shell, resize_shell, spawn_shell, write_to_shell, PtyState};
 
@@ -92,6 +92,7 @@ pub fn run() {
             set_openrouter_api_key,
             set_verifier_enabled,
             set_verifier_model,
+            set_auto_habit_suggestions,
             save_chat_markdown,
             load_chat_markdown,
             write_audit_report,

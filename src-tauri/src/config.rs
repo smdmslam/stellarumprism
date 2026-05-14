@@ -174,12 +174,32 @@ fn default_verifier_min_chars() -> usize {
     200
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HabitsConfig {
+    #[serde(default = "default_auto_habit_suggestions")]
+    pub auto_habit_suggestions: bool,
+}
+
+impl Default for HabitsConfig {
+    fn default() -> Self {
+        Self {
+            auto_habit_suggestions: default_auto_habit_suggestions(),
+        }
+    }
+}
+
+fn default_auto_habit_suggestions() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub openrouter: OpenRouterConfig,
     #[serde(default)]
     pub agent: AgentConfig,
+    #[serde(default)]
+    pub habits: HabitsConfig,
     #[serde(default)]
     pub recent_directories: Vec<String>,
     #[serde(default)]
@@ -468,6 +488,12 @@ impl ConfigState {
             let _ = save_config(&inner);
         }
     }
+
+    pub fn set_auto_habit_suggestions(&self, enabled: bool) {
+        let mut inner = self.inner.write();
+        inner.habits.auto_habit_suggestions = enabled;
+        let _ = save_config(&inner);
+    }
 }
 
 pub fn save_config(cfg: &Config) -> std::io::Result<()> {
@@ -530,6 +556,7 @@ pub fn get_agent_config(state: tauri::State<'_, ConfigState>) -> serde_json::Val
         "config_path": config_path().map(|p| p.to_string_lossy().to_string()),
         "verifier_enabled": cfg.agent.verifier.enabled,
         "verifier_model": cfg.agent.verifier.model,
+        "auto_habit_suggestions": cfg.habits.auto_habit_suggestions,
     })
 }
 
@@ -548,6 +575,15 @@ pub fn set_verifier_model(
     state: tauri::State<'_, ConfigState>,
 ) -> Result<(), String> {
     state.set_verifier_model(model);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_auto_habit_suggestions(
+    enabled: bool,
+    state: tauri::State<'_, ConfigState>,
+) -> Result<(), String> {
+    state.set_auto_habit_suggestions(enabled);
     Ok(())
 }
 
