@@ -20,6 +20,7 @@
  *   - The view is read-only — typing always lives in `.input-bar`.
  */
 import { marked } from "marked";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { WriteEntry } from "./turn-summary";
 import { AgentFind } from "./agent-find";
 
@@ -34,6 +35,22 @@ marked.setOptions({
   gfm: true,
   breaks: true,
 });
+
+/** http(s) / mailto links in the agent pane must not navigate the Tauri
+ *  webview (that replaces the whole app with no back affordance). */
+function openExternalHref(href: string): void {
+  const h = href.trim();
+  const isWeb = h.startsWith("https://") || h.startsWith("http://");
+  const isMail = h.toLowerCase().startsWith("mailto:");
+  if (!isWeb && !isMail) return;
+  void openUrl(h).catch(() => {
+    try {
+      window.open(h, "_blank", "noopener,noreferrer");
+    } catch {
+      /* ignore */
+    }
+  });
+}
 
 /** Render Markdown to a DocumentFragment. Returns a fragment so the
  *  caller doesn't care how many top-level elements parsed out. */
@@ -187,6 +204,30 @@ export class AgentView implements AgentViewApi {
       this.followStream = this.isPinnedToBottom();
     });
     this.find = new AgentFind(this.root, this.scrollHost);
+
+    // Capture phase so we win over the webview's default in-window navigation.
+    this.root.addEventListener(
+      "click",
+      (e: MouseEvent) => {
+        const t = e.target;
+        if (!(t instanceof Node)) return;
+        const a = (t as HTMLElement).closest("a[href]");
+        if (!(a instanceof HTMLAnchorElement)) return;
+        const href = a.getAttribute("href");
+        if (!href) return;
+        const trimmed = href.trim();
+        if (
+          !trimmed.startsWith("http://") &&
+          !trimmed.startsWith("https://") &&
+          !trimmed.toLowerCase().startsWith("mailto:")
+        ) {
+          return;
+        }
+        e.preventDefault();
+        openExternalHref(trimmed);
+      },
+      true,
+    );
   }
 
   beginTurn(userPrompt: string): void {
