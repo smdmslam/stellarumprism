@@ -1473,6 +1473,30 @@ input:checked + .toggle-slider:before {
   text-decoration-color: rgba(125, 211, 252, 0.4);
 }
 .markdown-body a:hover { color: #bae6fd; }
+
+/* http(s) inside ``` fences or bare-URL `code` — linkified after parse */
+.markdown-body pre .markdown-code-url-link {
+  color: #7dd3fc;
+  text-decoration: underline;
+  text-decoration-color: rgba(125, 211, 252, 0.45);
+  word-break: break-all;
+}
+.markdown-body pre .markdown-code-url-link:hover {
+  color: #bae6fd;
+}
+
+a.markdown-code-url-link--inline {
+  text-decoration: none;
+}
+a.markdown-code-url-link--inline code {
+  cursor: pointer;
+  border-color: rgba(125, 211, 252, 0.35);
+}
+a.markdown-code-url-link--inline:hover code {
+  color: #bae6fd;
+  border-color: rgba(125, 211, 252, 0.55);
+}
+
 .markdown-body strong { color: #f3f4f6; }
 .markdown-body em { color: #e5e7eb; }
 
@@ -2048,6 +2072,72 @@ input:checked + .toggle-slider:before {
   padding: 6px 10px;
   border-radius: 0 6px 6px 0;
   margin: 8px 0;
+}
+
+/* Habit auto-suggestion card (distinct from grounded-warning yellow strip) */
+.agent-habit-suggestion-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px 14px;
+  margin-top: 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(var(--prism-emerald-rgb), 0.28);
+  border-left: 4px solid var(--prism-emerald);
+  background: rgba(var(--prism-slate-rgb), 0.08);
+  font-family:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+}
+
+.agent-habit-suggestion-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-habit-suggestion-title {
+  margin: 0 0 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--prism-emerald);
+  line-height: 1.35;
+}
+
+.agent-habit-suggestion-quote {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: #cbd5e1;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.agent-habit-suggestion-accept {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--prism-emerald);
+  color: #020617;
+  border: 1px solid rgba(var(--prism-emerald-rgb), 0.55);
+}
+
+.agent-habit-suggestion-accept:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.agent-habit-suggestion-accept--done {
+  background: rgba(var(--prism-emerald-rgb), 0.12);
+  color: var(--prism-emerald);
+  border-color: rgba(var(--prism-emerald-rgb), 0.35);
+  cursor: default;
+  opacity: 0.9;
 }
 
 /* ---------- protocol report card (recipe runner Phase C) ----------

@@ -30,6 +30,11 @@ import { habitsManager } from "./habits";
  */
 const UNIVERSAL_TOOL_FALLBACK = "anthropic/claude-haiku-4.5";
 
+/** Collapse newlines in habit previews so multi-line prompts read as one block. */
+function formatHabitSuggestionQuote(raw: string): string {
+  return raw.replace(/\s*\n+\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+}
+
 // ---------------------------------------------------------------------------
 // Types shared with the Rust side
 // ---------------------------------------------------------------------------
@@ -1273,30 +1278,26 @@ export class AgentController {
         }
 
         const card = document.createElement("div");
-        card.className = "agent-notice agent-notice-grounded-warning";
-        card.style.display = "flex";
-        card.style.justifyContent = "space-between";
-        card.style.alignItems = "center";
-        card.style.padding = "12px 16px";
-        card.style.marginTop = "12px";
-        card.style.borderLeft = "4px solid var(--prism-emerald)";
-        card.style.background = "var(--prism-bg-subtle)";
-        card.style.borderRadius = "4px";
+        card.className = "agent-habit-suggestion-card";
 
         const info = document.createElement("div");
-        info.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: var(--prism-emerald);">[HABIT SUGGESTION] Discovered Rule</div><div style="font-size: 11px; color: var(--prism-text-dim); margin-top: 4px;">"${this.currentPrompt}"</div>`;
+        info.className = "agent-habit-suggestion-info";
+
+        const titleEl = document.createElement("div");
+        titleEl.className = "agent-habit-suggestion-title";
+        titleEl.textContent = "[HABIT SUGGESTION] Discovered Rule";
+
+        const quoteEl = document.createElement("div");
+        quoteEl.className = "agent-habit-suggestion-quote";
+        quoteEl.textContent = `"${formatHabitSuggestionQuote(this.currentPrompt)}"`;
+
+        info.appendChild(titleEl);
+        info.appendChild(quoteEl);
         card.appendChild(info);
 
         const btn = document.createElement("button");
-        btn.className = "prism-action-btn";
-        btn.style.background = "var(--prism-emerald)";
-        btn.style.color = "#000";
-        btn.style.fontWeight = "bold";
-        btn.style.padding = "4px 12px";
-        btn.style.borderRadius = "4px";
-        btn.style.border = "none";
-        btn.style.cursor = "pointer";
-        btn.style.fontSize = "11px";
+        btn.type = "button";
+        btn.className = "agent-habit-suggestion-accept";
         btn.textContent = "Accept";
 
         const ruleText = this.currentPrompt;
@@ -1305,8 +1306,7 @@ export class AgentController {
           void habitsManager.rememberHabit(ruleTitle, ruleText, "discovered").then((res) => {
             if (res) {
               btn.textContent = "✓ Accepted";
-              btn.style.background = "var(--prism-bg-subtle)";
-              btn.style.color = "var(--prism-emerald)";
+              btn.classList.add("agent-habit-suggestion-accept--done");
               btn.disabled = true;
             }
           });

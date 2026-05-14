@@ -52,6 +52,90 @@ function openExternalHref(href: string): void {
   });
 }
 
+/** Match http(s) URLs in plain text (code fences, etc.). */
+const HTTP_URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`]+/gi;
+
+/** Normalize a URL substring for `href`; return null if not http(s). */
+function normalizeUrlForHref(raw: string): string | null {
+  const u = raw.replace(/[),.;:!?\]]+$/g, "").trim();
+  try {
+    const parsed = new URL(u);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    return parsed.href;
+  } catch {
+    return null;
+  }
+}
+
+/** Split text into nodes, wrapping recognized http(s) URLs in `<a>`. */
+function fragmentForTextWithUrls(text: string): DocumentFragment {
+  const frag = document.createDocumentFragment();
+  HTTP_URL_IN_TEXT_RE.lastIndex = 0;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = HTTP_URL_IN_TEXT_RE.exec(text)) !== null) {
+    if (m.index > last) {
+      frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+    }
+    const raw = m[0];
+    const href = normalizeUrlForHref(raw);
+    if (href) {
+      const a = document.createElement("a");
+      a.href = href;
+      a.className = "markdown-code-url-link";
+      a.rel = "noopener noreferrer";
+      a.textContent = raw;
+      frag.appendChild(a);
+    } else {
+      frag.appendChild(document.createTextNode(raw));
+    }
+    last = HTTP_URL_IN_TEXT_RE.lastIndex;
+  }
+  if (last < text.length) {
+    frag.appendChild(document.createTextNode(text.slice(last)));
+  }
+  return frag;
+}
+
+/**
+ * Models often paste URLs inside fenced ``` blocks or inline `code`, so
+ * marked renders them as plain text (not `<a>`). Turn those into real
+ * links so they open externally like normal markdown links.
+ */
+function linkifyHttpUrlsInCodeElements(root: ParentNode): void {
+  const codes = Array.from(root.querySelectorAll("code"));
+  for (const node of codes) {
+    if (!(node instanceof HTMLElement)) continue;
+    const code = node;
+    if (code.closest("a.markdown-code-url-link")) continue;
+    if (code.getElementsByTagName("*").length > 0) continue;
+
+    const text = code.textContent ?? "";
+    if (!/https?:\/\//i.test(text)) continue;
+
+    const inPre = code.parentElement?.tagName === "PRE";
+    if (inPre) {
+      code.replaceChildren(fragmentForTextWithUrls(text));
+      continue;
+    }
+
+    const trimmed = text.trim();
+    if (trimmed.includes("\n")) continue;
+    if (!/^https?:\/\/\S+$/i.test(trimmed)) continue;
+    const href = normalizeUrlForHref(trimmed);
+    if (!href) continue;
+
+    const a = document.createElement("a");
+    a.href = href;
+    a.className = "markdown-code-url-link markdown-code-url-link--inline";
+    a.rel = "noopener noreferrer";
+    const inner = document.createElement("code");
+    inner.textContent = trimmed;
+    a.appendChild(inner);
+    code.replaceWith(a);
+  }
+}
+
 /** Render Markdown to a DocumentFragment. Returns a fragment so the
  *  caller doesn't care how many top-level elements parsed out. */
 function markdownToFragment(markdown: string): DocumentFragment {
@@ -82,6 +166,7 @@ function markdownToFragment(markdown: string): DocumentFragment {
   tmp.innerHTML = html;
   const frag = document.createDocumentFragment();
   while (tmp.firstChild) frag.appendChild(tmp.firstChild);
+  linkifyHttpUrlsInCodeElements(frag);
   return frag;
 }
 
