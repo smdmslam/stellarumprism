@@ -32,6 +32,7 @@ mod tools;
 mod workspace_state;
 pub mod audit;
 mod snapshot;
+mod habits;
 
 use agent::{
     agent_cancel, agent_drop_session, agent_get_history, agent_get_history_full,
@@ -57,6 +58,7 @@ use config::{
     get_agent_config, load_or_init, set_agent_model, set_verifier_enabled, set_verifier_model,
     set_openrouter_api_key, set_auto_habit_suggestions, ConfigState,
 };
+use habits::{get_habits, remember_habit, delete_habit, HabitsState};
 use pty::{kill_shell, resize_shell, spawn_shell, write_to_shell, PtyState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -69,6 +71,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyState::default())
         .manage(ConfigState::new(cfg))
+        .manage(HabitsState::new(habits::load_or_init()))
         .manage(AgentState::default())
         .manage(SessionState::default())
         .manage(ApprovalState::default())
@@ -131,6 +134,9 @@ pub fn run() {
             config::add_bookmarked_directory,
             config::remove_bookmarked_directory,
             snapshot::restore_latest_snapshot,
+            get_habits,
+            remember_habit,
+            delete_habit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
