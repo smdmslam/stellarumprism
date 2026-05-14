@@ -16,6 +16,22 @@ interface PaneState {
 const READER_EMPTY_HINT =
   '<div class="reader-pane-empty">No file open. Right-click a file in the tree → <strong>Open in Reader</strong>, or use <strong>Clear</strong> after a moved or deleted file.</div>';
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function escapeAttr(s: string): string {
+  return escapeHtml(s).replace(/\n/g, " ");
+}
+
+const COPY_PATH_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+
+const COPY_CONTENTS_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1Z"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>`;
+
 export class ReaderUI {
   private readonly overlay: HTMLElement;
   private readonly content: HTMLElement;
@@ -120,8 +136,14 @@ export class ReaderUI {
       
       host.innerHTML = `
         <div class="pane-header">
-          <span class="pane-filename">${filename}</span>
-          <span class="pane-path">${path}</span>
+          <div class="pane-header-top">
+            <span class="pane-filename" title="${escapeAttr(path)}">${escapeHtml(filename)}</span>
+            <div class="pane-header-actions">
+              <button class="file-preview-copy-path" type="button" aria-label="Copy path to clipboard" title="Copy path to clipboard">${COPY_PATH_SVG}</button>
+              <button class="file-preview-copy-contents" type="button" aria-label="Copy file contents to clipboard" title="Copy file contents to clipboard">${COPY_CONTENTS_SVG}</button>
+            </div>
+          </div>
+          <span class="pane-path" title="${escapeAttr(path)}">${escapeHtml(path)}</span>
         </div>
         <div id="${pane.hostId}-editor" class="reader-col-editor"></div>
       `;
@@ -130,7 +152,37 @@ export class ReaderUI {
       pane.editor = new FileEditor(editorHost, result.content, path, {
         onDirtyChange: () => this.updateSaveButton(),
       });
-      
+
+      const copyPathBtn = host.querySelector<HTMLButtonElement>(".file-preview-copy-path");
+      if (copyPathBtn) {
+        copyPathBtn.addEventListener("click", () => {
+          void navigator.clipboard.writeText(path).then(() => {
+            copyPathBtn.classList.add("copied");
+            copyPathBtn.setAttribute("title", "Copied!");
+            setTimeout(() => {
+              copyPathBtn.classList.remove("copied");
+              copyPathBtn.setAttribute("title", "Copy path to clipboard");
+            }, 1800);
+          });
+        });
+      }
+
+      const copyContentsBtn = host.querySelector<HTMLButtonElement>(".file-preview-copy-contents");
+      if (copyContentsBtn) {
+        copyContentsBtn.addEventListener("click", () => {
+          const ed = pane.editor;
+          if (!ed) return;
+          void navigator.clipboard.writeText(ed.getValue()).then(() => {
+            copyContentsBtn.classList.add("copied");
+            copyContentsBtn.setAttribute("title", "Copied!");
+            setTimeout(() => {
+              copyContentsBtn.classList.remove("copied");
+              copyContentsBtn.setAttribute("title", "Copy file contents to clipboard");
+            }, 1800);
+          });
+        });
+      }
+
       // Track focus to set activeSide
       editorHost.addEventListener("focusin", () => {
         this.activeSide = side;

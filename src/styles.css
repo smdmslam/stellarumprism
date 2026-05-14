@@ -4702,8 +4702,9 @@ input:checked + .toggle-slider:before {
 .file-preview-meta:empty {
   display: none;
 }
-/* Copy-path button in the file viewer header. */
-.file-preview-copy-path {
+/* Copy-path + copy-contents icon buttons in the file viewer header. */
+.file-preview-copy-path,
+.file-preview-copy-contents {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -4720,12 +4721,14 @@ input:checked + .toggle-slider:before {
   transition: background 100ms ease, color 100ms ease, border-color 100ms ease;
   position: relative;
 }
-.file-preview-copy-path:hover {
+.file-preview-copy-path:hover,
+.file-preview-copy-contents:hover {
   background: #1f2937;
   border-color: #374151;
   color: #94a3b8;
 }
-.file-preview-copy-path.copied {
+.file-preview-copy-path.copied,
+.file-preview-copy-contents.copied {
   background: rgba(34, 197, 94, 0.12);
   border-color: rgba(34, 197, 94, 0.35);
   color: #4ade80;
@@ -5259,7 +5262,22 @@ input:checked + .toggle-slider:before {
   border-bottom: 1px solid #1f2937;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 4px;
+}
+
+.pane-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pane-header-actions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .pane-filename {
@@ -5267,6 +5285,10 @@ input:checked + .toggle-slider:before {
   font-size: 13px;
   font-weight: 700;
   color: #e2e8f0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pane-path {

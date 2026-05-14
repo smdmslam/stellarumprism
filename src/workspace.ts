@@ -5047,6 +5047,9 @@ export class Workspace {
       `<button class="file-preview-copy-path" type="button" aria-label="Copy path to clipboard" title="Copy path to clipboard">` +
       `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>` +
       `</button>` +
+      `<button class="file-preview-copy-contents" type="button" aria-label="Copy file contents to clipboard" title="Copy file contents to clipboard">` +
+      `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M15 2H9a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1Z"/><path d="M9 13h6"/><path d="M9 17h6"/></svg>` +
+      `</button>` +
       `<button class="file-preview-save" type="button" disabled aria-label="Save (\u2318S)" title="Save (\u2318S)">Save</button>` +
       `<button class="file-preview-close" type="button" aria-label="Close (Esc)" title="Close (Esc)">\u00d7</button>` +
       `</div>` +
@@ -5095,6 +5098,7 @@ export class Workspace {
     } catch (err) {
       const body = overlay.querySelector<HTMLElement>(".file-preview-body");
       if (body) body.innerHTML = renderSnippetError(String(err), path);
+      overlay.querySelector(".file-preview-copy-contents")?.remove();
       this.openFilePath = null;
       this.openFileMtime = 0;
       return;
@@ -5109,6 +5113,22 @@ export class Workspace {
     this.fileEditor = new FileEditor(body, loaded.content, path, {
       onDirtyChange: (dirty) => this.reflectDirty(dirty),
     });
+
+    const copyContentsBtn = overlay.querySelector<HTMLButtonElement>(".file-preview-copy-contents");
+    if (copyContentsBtn) {
+      copyContentsBtn.addEventListener("click", () => {
+        if (!this.fileEditor) return;
+        const text = this.fileEditor.getValue();
+        void navigator.clipboard.writeText(text).then(() => {
+          copyContentsBtn.classList.add("copied");
+          copyContentsBtn.setAttribute("title", "Copied!");
+          setTimeout(() => {
+            copyContentsBtn.classList.remove("copied");
+            copyContentsBtn.setAttribute("title", "Copy file contents to clipboard");
+          }, 1800);
+        });
+      });
+    }
 
     if (lineNumber !== undefined) {
       this.fileEditor.scrollToLine(lineNumber);
