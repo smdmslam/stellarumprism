@@ -205,10 +205,15 @@ export class SettingsUI {
               Choose whether the input editor defaults to <strong>AGENT (Ask / Natural Language)</strong> or <strong>CMD (Terminal Command)</strong>.
             </div>
           </div>
-          <select id="setting-default-prompt-mode" style="-webkit-appearance: none; appearance: none; background: #111827; border: 1px solid #374151; color: #e5e7eb; border-radius: 6px; padding: 6px 12px; font-family: inherit; font-size: 11px; font-weight: 600; outline: none; cursor: pointer; height: 32px; box-sizing: border-box;">
-            <option value="agent" ${settings.getDefaultPromptMode() === "agent" ? "selected" : ""}>AGENT (Ask)</option>
-            <option value="command" ${settings.getDefaultPromptMode() === "command" ? "selected" : ""}>CMD (Terminal)</option>
-          </select>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="default-prompt-mode-status" style="font-size: 10px; font-weight: 800; color: ${settings.getDefaultPromptMode() === "agent" ? "var(--prism-emerald)" : "var(--prism-cyan)"}; text-transform: uppercase; width: 68px; text-align: right;">
+              ${settings.getDefaultPromptMode() === "agent" ? "AGENT (Ask)" : "CMD (Term)"}
+            </span>
+            <label class="prism-toggle">
+              <input type="checkbox" id="setting-default-prompt-mode" ${settings.getDefaultPromptMode() === "agent" ? "checked" : ""}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
         </div>
 
         <div class="model-setting-card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;">
@@ -313,10 +318,15 @@ export class SettingsUI {
       }
     });
 
-    const promptModeSelect = document.getElementById("setting-default-prompt-mode") as HTMLSelectElement;
-    promptModeSelect?.addEventListener("change", () => {
-      const mode = promptModeSelect.value as "agent" | "command";
-      settings.setDefaultPromptMode(mode);
+    const promptModeToggle = document.getElementById("setting-default-prompt-mode") as HTMLInputElement;
+    promptModeToggle?.addEventListener("change", () => {
+      const isAgent = promptModeToggle.checked;
+      settings.setDefaultPromptMode(isAgent ? "agent" : "command");
+      const statusEl = document.getElementById("default-prompt-mode-status");
+      if (statusEl) {
+        statusEl.textContent = isAgent ? "AGENT (Ask)" : "CMD (Term)";
+        statusEl.style.color = isAgent ? "var(--prism-emerald)" : "var(--prism-cyan)";
+      }
     });
 
     const autoBookmarkInput = document.getElementById("setting-auto-bookmark") as HTMLInputElement;
