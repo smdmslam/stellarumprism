@@ -205,7 +205,7 @@ export class SettingsUI {
               Choose whether the input editor defaults to <strong>AGENT (Ask / Natural Language)</strong> or <strong>CMD (Terminal Command)</strong>.
             </div>
           </div>
-          <select id="setting-default-prompt-mode" style="background: #111827; border: 1px solid #374151; color: #e5e7eb; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: 600; outline: none; cursor: pointer; height: 32px; box-sizing: border-box;">
+          <select id="setting-default-prompt-mode" style="-webkit-appearance: none; appearance: none; background: #111827; border: 1px solid #374151; color: #e5e7eb; border-radius: 6px; padding: 6px 12px; font-size: 11px; font-weight: 600; outline: none; cursor: pointer; height: 32px; box-sizing: border-box;">
             <option value="agent" ${settings.getDefaultPromptMode() === "agent" ? "selected" : ""}>AGENT (Ask)</option>
             <option value="command" ${settings.getDefaultPromptMode() === "command" ? "selected" : ""}>CMD (Terminal)</option>
           </select>
