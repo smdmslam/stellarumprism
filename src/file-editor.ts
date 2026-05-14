@@ -255,6 +255,8 @@ const prismMarkdownHighlightStyle = HighlightStyle.define([
   { tag: t.processingInstruction, color: "rgba(125, 211, 252, 0.55)" },
   { tag: t.punctuation, color: "rgba(125, 211, 252, 0.55)" },
   { tag: t.meta, color: "rgba(125, 211, 252, 0.55)" },
+  { tag: t.special(t.string), color: "rgba(125, 211, 252, 0.55)" },
+  { tag: t.string, color: "rgba(125, 211, 252, 0.55)" },
   { tag: t.contentSeparator, color: "rgba(125, 211, 252, 0.45)" },
   { tag: t.monospace, color: "#7dd3fc", backgroundColor: "rgba(125, 211, 252, 0.10)", border: "1px solid rgba(125, 211, 252, 0.15)", borderRadius: "4px", padding: "1px 5px" },
   { tag: t.url, color: "#7dd3fc", textDecoration: "underline" },
