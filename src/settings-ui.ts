@@ -231,6 +231,30 @@ export class SettingsUI {
       </div>
 
       <div class="settings-group">
+        <label class="settings-group-title">Habit & Learning Module</label>
+        <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
+          Prism autonomously learns coding styles and workflow preferences from your chat corrections.
+        </p>
+        <div class="model-setting-card" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 16px;">
+          <div class="model-setting-info">
+            <div class="model-setting-name">Autonomous Habit Suggestions</div>
+            <div class="model-setting-desc">
+              Uses an asynchronous, ultra-low-cost background evaluator (Flash-Lite) to suggest rules.
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="auto-habit-status" style="font-size: 10px; font-weight: 800; color: ${settings.getAutoHabitSuggestions() ? "var(--prism-emerald)" : "var(--prism-cyan)"}; text-transform: uppercase; width: 48px; text-align: right;">
+              ${settings.getAutoHabitSuggestions() ? "ACTIVE" : "OFF"}
+            </span>
+            <label class="prism-toggle">
+              <input type="checkbox" id="setting-auto-habit" ${settings.getAutoHabitSuggestions() ? "checked" : ""}>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
         <label class="settings-group-title">Editor Configuration</label>
         <p class="settings-group-desc" style="font-size: 11px; color: #6b7280; margin-bottom: 12px;">
           Controls for the CodeMirror editor core.
@@ -300,6 +324,18 @@ export class SettingsUI {
       const isChecked = autoBookmarkInput.checked;
       settings.setAutoBookmarkOnOpen(isChecked);
       const statusEl = document.getElementById("auto-bookmark-status");
+      if (statusEl) {
+        statusEl.textContent = isChecked ? "ACTIVE" : "OFF";
+        statusEl.style.color = isChecked ? "var(--prism-emerald)" : "var(--prism-cyan)";
+      }
+    });
+
+    const autoHabitInput = document.getElementById("setting-auto-habit") as HTMLInputElement;
+    autoHabitInput?.addEventListener("change", () => {
+      const isChecked = autoHabitInput.checked;
+      settings.setAutoHabitSuggestions(isChecked);
+      void invoke("set_auto_habit_suggestions", { enabled: isChecked }).catch(() => {});
+      const statusEl = document.getElementById("auto-habit-status");
       if (statusEl) {
         statusEl.textContent = isChecked ? "ACTIVE" : "OFF";
         statusEl.style.color = isChecked ? "var(--prism-emerald)" : "var(--prism-cyan)";

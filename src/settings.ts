@@ -59,6 +59,8 @@ export interface AppSettings {
   defaultPromptMode: "agent" | "command";
   /** Whether opened directories are automatically bookmarked */
   autoBookmarkOnOpen: boolean;
+  /** Whether Prism autonomously suggests habits from chat corrections */
+  autoHabitSuggestions: boolean;
 }
 
 const STORAGE_KEY = "prism-settings-v1";
@@ -78,6 +80,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   hasCompletedOnboarding: false,
   defaultPromptMode: "agent",
   autoBookmarkOnOpen: true,
+  autoHabitSuggestions: true,
 };
 
 export class SettingsManager {
@@ -350,6 +353,17 @@ export class SettingsManager {
   setAutoBookmarkOnOpen(val: boolean): void {
     if (this.current.autoBookmarkOnOpen === val) return;
     this.current.autoBookmarkOnOpen = val;
+    this.save();
+    window.dispatchEvent(new CustomEvent("prism-settings-changed"));
+  }
+
+  getAutoHabitSuggestions(): boolean {
+    return this.current.autoHabitSuggestions ?? true;
+  }
+
+  setAutoHabitSuggestions(val: boolean): void {
+    if (this.current.autoHabitSuggestions === val) return;
+    this.current.autoHabitSuggestions = val;
     this.save();
     window.dispatchEvent(new CustomEvent("prism-settings-changed"));
   }
