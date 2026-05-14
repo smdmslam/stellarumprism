@@ -234,14 +234,14 @@ export interface FileEditorCallbacks {
  * theme paints markdown headings red; `processingInstruction` (Lezer
  * `HeaderMark`, list bullets, etc.) shares oneDark's sage string
  * color unless overridden. Multiple `syntaxHighlighting` layers emit
- * merged classes, so oneDark's CSS can win on cascade; we register
- * this style with `Prec.lowest` so its stylesheet loads after oneDark
- * and the gutter-adjacent slate reads as structural syntax, not neon
- * green.
+ * merged classes, so oneDark's CSS can win on cascade. `EditorView`
+ * mounts `styleModule` facets in reverse order, so the **first**
+ * registered module tends to win equal-specificity color ties; use
+ * `Prec.highest` so this overlay sorts before `oneDarkHighlightStyle`.
  *
  *   tags.heading*           \u2192 cyan   (matches `.agent-turn-user`)
  *   tags.processingInstruction (markdown `#` / list markers / etc.)
- *                            \u2192 muted slate
+ *                            \u2192 cool violet (secondary to heading cyan)
  *   tags.monospace          \u2192 violet (matches the `agent` label)
  *   tags.url / tags.link    \u2192 cyan
  *   tags.emphasis           \u2192 italic, slate
@@ -255,7 +255,7 @@ const prismMarkdownHighlightStyle = HighlightStyle.define([
   { tag: t.heading4, color: "#7dd3fc", fontWeight: "700" },
   { tag: t.heading5, color: "#7dd3fc", fontWeight: "600" },
   { tag: t.heading6, color: "#7dd3fc", fontWeight: "600" },
-  { tag: t.processingInstruction, color: "#64748b" },
+  { tag: t.processingInstruction, color: "#c4b0ff" },
   { tag: t.punctuation, color: "rgba(125, 211, 252, 0.55)" },
   { tag: t.meta, color: "rgba(125, 211, 252, 0.55)" },
   { tag: t.special(t.string), color: "rgba(125, 211, 252, 0.55)" },
@@ -414,7 +414,7 @@ export class FileEditor {
         // source view speaks the same cyan/violet language as the
         // agent pane.
         syntaxHighlighting(oneDarkHighlightStyle),
-        Prec.lowest(syntaxHighlighting(prismMarkdownHighlightStyle)),
+        Prec.highest(syntaxHighlighting(prismMarkdownHighlightStyle)),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         updateListener,
       ],
