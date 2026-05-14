@@ -551,7 +551,9 @@ export class Workspace {
                 ></span>
                 <span class="elapsed-metric-text">
                   <span class="info-label">Elapsed</span>
-                  <span class="info-value" id="task-elapsed-display">0:00</span>
+                  <span class="elapsed-metric-time-slot">
+                    <span class="info-value" id="task-elapsed-display">0:00</span>
+                  </span>
                 </span>
               </span>
             </div>

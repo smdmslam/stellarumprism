@@ -5739,12 +5739,31 @@ a.markdown-code-url-link--inline:hover code {
   gap: 10px;
 }
 
-/* Label + elapsed value stay paired; width stable while seconds tick */
+/* Label + fixed-width time slot (tabular digits, left-aligned in box) */
 .elapsed-metric-text {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
+}
+
+/* Room for `h:mm:ss` (e.g. 12:07:05) without shifting the "Elapsed" label */
+.elapsed-metric-time-slot {
+  display: inline-flex;
+  justify-content: flex-start;
+  align-items: center;
+  flex: 0 0 10ch;
+  min-width: 10ch;
+  max-width: 10ch;
+  overflow: hidden;
+}
+
+.elapsed-metric-time-slot .info-value {
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  width: 100%;
+  min-width: 0;
+  letter-spacing: 0;
 }
 
 /* Spark marches across grey slot markers while the agent is busy */
