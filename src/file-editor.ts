@@ -246,15 +246,17 @@ export interface FileEditorCallbacks {
  */
 const prismMarkdownHighlightStyle = HighlightStyle.define([
   { tag: t.heading, color: "#7dd3fc", fontWeight: "700" },
-  { tag: t.heading1, color: "#7dd3fc", fontWeight: "800", fontSize: "1.4em" },
-  { tag: t.heading2, color: "#7dd3fc", fontWeight: "700", fontSize: "1.2em" },
-  { tag: t.heading3, color: "#7dd3fc", fontWeight: "700", fontSize: "1.1em" },
+  { tag: t.heading1, color: "#7dd3fc", fontWeight: "800", fontSize: "1.4em", letterSpacing: "-0.02em", lineHeight: "1.3" },
+  { tag: t.heading2, color: "#7dd3fc", fontWeight: "700", fontSize: "1.2em", letterSpacing: "-0.01em", lineHeight: "1.35" },
+  { tag: t.heading3, color: "#7dd3fc", fontWeight: "700", fontSize: "1.1em", lineHeight: "1.4" },
   { tag: t.heading4, color: "#7dd3fc", fontWeight: "700" },
   { tag: t.heading5, color: "#7dd3fc", fontWeight: "600" },
   { tag: t.heading6, color: "#7dd3fc", fontWeight: "600" },
   { tag: t.processingInstruction, color: "rgba(125, 211, 252, 0.55)" },
+  { tag: t.punctuation, color: "rgba(125, 211, 252, 0.55)" },
+  { tag: t.meta, color: "rgba(125, 211, 252, 0.55)" },
   { tag: t.contentSeparator, color: "rgba(125, 211, 252, 0.45)" },
-  { tag: t.monospace, color: "#c084fc" },
+  { tag: t.monospace, color: "#7dd3fc", backgroundColor: "rgba(125, 211, 252, 0.10)", border: "1px solid rgba(125, 211, 252, 0.15)", borderRadius: "4px", padding: "1px 5px" },
   { tag: t.url, color: "#7dd3fc", textDecoration: "underline" },
   { tag: t.link, color: "#7dd3fc" },
   { tag: t.emphasis, color: "#cbd5e1", fontStyle: "italic" },
@@ -395,6 +397,10 @@ export class FileEditor {
         // Language support
         languageExt,
         
+        // WARP-like feature: Word wrapping so text never gets cut off
+        EditorView.lineWrapping,
+        this.themeCompartment.of([oneDark, editorTheme]),
+
         // Syntax highlighting. oneDark paints baseline colors; the
         // Prism overlay wins for markdown heading/code tags so the
         // source view speaks the same cyan/violet language as the
@@ -402,9 +408,6 @@ export class FileEditor {
         syntaxHighlighting(oneDarkHighlightStyle),
         syntaxHighlighting(prismMarkdownHighlightStyle),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        // WARP-like feature: Word wrapping so text never gets cut off
-        EditorView.lineWrapping,
-        this.themeCompartment.of([oneDark, editorTheme]),
         updateListener,
       ],
     });
