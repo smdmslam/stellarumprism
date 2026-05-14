@@ -19,6 +19,7 @@
 import {
   EditorState,
   Compartment,
+  Prec,
   StateEffect,
   StateField,
   RangeSetBuilder,
@@ -41,7 +42,7 @@ import {
   defaultHighlightStyle,
   HighlightStyle,
 } from "@codemirror/language";
-import { oneDark, oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
+import { oneDarkTheme, oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
 import { tags as t } from "@lezer/highlight";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { javascript } from "@codemirror/lang-javascript";
@@ -230,15 +231,17 @@ export interface FileEditorCallbacks {
 
 /**
  * Prism-palette overlay on top of `oneDarkHighlightStyle`. The base
- * theme paints markdown headings red and inline code green, which
- * fights with the agent pane's cyan/violet language. We layer this
- * style AFTER oneDark so its rules win for the tags we care about
- * while everything else (keywords, strings, comments) keeps the
- * familiar oneDark coloring.
+ * theme paints markdown headings red; `processingInstruction` (Lezer
+ * `HeaderMark`, list bullets, etc.) shares oneDark's sage string
+ * color unless overridden. Multiple `syntaxHighlighting` layers emit
+ * merged classes, so oneDark's CSS can win on cascade; we register
+ * this style with `Prec.lowest` so its stylesheet loads after oneDark
+ * and the gutter-adjacent slate reads as structural syntax, not neon
+ * green.
  *
  *   tags.heading*           \u2192 cyan   (matches `.agent-turn-user`)
- *   tags.processingInstruction (the `#` glyphs)
- *                            \u2192 cyan, dimmed
+ *   tags.processingInstruction (markdown `#` / list markers / etc.)
+ *                            \u2192 muted slate
  *   tags.monospace          \u2192 violet (matches the `agent` label)
  *   tags.url / tags.link    \u2192 cyan
  *   tags.emphasis           \u2192 italic, slate
@@ -252,7 +255,7 @@ const prismMarkdownHighlightStyle = HighlightStyle.define([
   { tag: t.heading4, color: "#7dd3fc", fontWeight: "700" },
   { tag: t.heading5, color: "#7dd3fc", fontWeight: "600" },
   { tag: t.heading6, color: "#7dd3fc", fontWeight: "600" },
-  { tag: t.processingInstruction, color: "rgba(125, 211, 252, 0.55)" },
+  { tag: t.processingInstruction, color: "#64748b" },
   { tag: t.punctuation, color: "rgba(125, 211, 252, 0.55)" },
   { tag: t.meta, color: "rgba(125, 211, 252, 0.55)" },
   { tag: t.special(t.string), color: "rgba(125, 211, 252, 0.55)" },
@@ -401,14 +404,17 @@ export class FileEditor {
         
         // WARP-like feature: Word wrapping so text never gets cut off
         EditorView.lineWrapping,
-        this.themeCompartment.of([oneDark, editorTheme]),
+        // `oneDark` bundles the same highlighter again; use the theme
+        // surface only here and register oneDarkHighlightStyle once
+        // below so highlight CSS cascade stays predictable.
+        this.themeCompartment.of([oneDarkTheme, editorTheme]),
 
         // Syntax highlighting. oneDark paints baseline colors; the
         // Prism overlay wins for markdown heading/code tags so the
         // source view speaks the same cyan/violet language as the
         // agent pane.
         syntaxHighlighting(oneDarkHighlightStyle),
-        syntaxHighlighting(prismMarkdownHighlightStyle),
+        Prec.lowest(syntaxHighlighting(prismMarkdownHighlightStyle)),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         updateListener,
       ],

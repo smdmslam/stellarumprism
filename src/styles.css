@@ -5561,12 +5561,6 @@ input:checked + .toggle-slider:before {
   border-color: rgba(239, 68, 68, 0.3);
 }
 
-#tb-protocols.active {
-  background: rgba(125, 211, 252, 0.12);
-  border-color: rgba(125, 211, 252, 0.35);
-  color: #7dd3fc;
-}
-
 /* ---------- toolbar substrate status & energy gauge ---------- */
 
 .tb-indicator {

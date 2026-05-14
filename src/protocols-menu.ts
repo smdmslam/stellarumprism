@@ -284,6 +284,7 @@ export class ProtocolsMenuManager {
     const button = document.getElementById("tb-protocols");
     if (button) {
       button.classList.toggle("active", this.menuOpen);
+      button.setAttribute("aria-expanded", this.menuOpen ? "true" : "false");
     }
   }
 
