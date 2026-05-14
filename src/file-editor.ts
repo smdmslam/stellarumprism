@@ -242,7 +242,7 @@ export interface FileEditorCallbacks {
  *   tags.heading*           \u2192 cyan   (matches `.agent-turn-user`)
  *   tags.processingInstruction (markdown `#` / list markers / etc.)
  *                            \u2192 cool violet (secondary to heading cyan)
- *   tags.monospace          \u2192 violet (matches the `agent` label)
+ *   tags.monospace          \u2192 see `prismMarkdownInlineCodeStyle` (markdown only)
  *   tags.url / tags.link    \u2192 cyan
  *   tags.emphasis           \u2192 italic, slate
  *   tags.strong             \u2192 bold, near-white
@@ -261,7 +261,6 @@ const prismMarkdownHighlightStyle = HighlightStyle.define([
   { tag: t.special(t.string), color: "rgba(125, 211, 252, 0.55)" },
   { tag: t.string, color: "rgba(125, 211, 252, 0.55)" },
   { tag: t.contentSeparator, color: "rgba(125, 211, 252, 0.45)" },
-  { tag: t.monospace, color: "#7dd3fc", backgroundColor: "rgba(125, 211, 252, 0.10)", border: "1px solid rgba(125, 211, 252, 0.15)", borderRadius: "4px", padding: "1px 5px" },
   { tag: t.url, color: "#7dd3fc", textDecoration: "underline" },
   { tag: t.link, color: "#7dd3fc" },
   { tag: t.emphasis, color: "#cbd5e1", fontStyle: "italic" },
@@ -269,6 +268,21 @@ const prismMarkdownHighlightStyle = HighlightStyle.define([
   { tag: t.strikethrough, textDecoration: "line-through" },
   { tag: t.quote, color: "#9ca3af", fontStyle: "italic" },
 ]);
+
+/** Markdown-only: `` `inline` `` chips read as lavender, distinct from cyan `heading*` titles. */
+const prismMarkdownInlineCodeStyle = HighlightStyle.define(
+  [
+    {
+      tag: t.monospace,
+      color: "#e9d5ff",
+      backgroundColor: "rgba(196, 181, 253, 0.12)",
+      border: "1px solid rgba(196, 181, 253, 0.28)",
+      borderRadius: "4px",
+      padding: "1px 5px",
+    },
+  ],
+  { scope: markdownLanguage },
+);
 
 /** Helper function to determine language extension from file path */
 function getLanguageExtension(filePath: string): Extension {
@@ -414,7 +428,10 @@ export class FileEditor {
         // source view speaks the same cyan/violet language as the
         // agent pane.
         syntaxHighlighting(oneDarkHighlightStyle),
-        Prec.highest(syntaxHighlighting(prismMarkdownHighlightStyle)),
+        Prec.highest([
+          syntaxHighlighting(prismMarkdownHighlightStyle),
+          syntaxHighlighting(prismMarkdownInlineCodeStyle),
+        ]),
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         updateListener,
       ],
