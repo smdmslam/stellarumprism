@@ -20,6 +20,8 @@ import {
   inferWriteOperation,
   parseHttpFetchProbeForAgent,
 } from "./agent-write-artifacts";
+import { settings } from "./settings";
+import { habitsManager } from "./habits";
 
 /**
  * Universal tool-capable fallback used when the resolved model can't do
@@ -253,6 +255,7 @@ export class AgentController {
   private inflightId: string | null = null;
   private unlisteners: UnlistenFn[] = [];
   private responseBuffer = "";
+  private currentPrompt = "";
   private messageCount = 0;
   private verifierEnabled = true;
   private verifierModel = "google/gemini-2.5-flash-lite";
@@ -628,6 +631,7 @@ export class AgentController {
     }
     this.clearListeners();
     this.responseBuffer = "";
+    this.currentPrompt = prompt;
     this.currentRuntimeProbes = [];
     this.currentSubstrateRuns = [];
     this.pendingApprovals.clear();
@@ -1255,6 +1259,63 @@ export class AgentController {
       totalTokens: payload?.total_tokens,
       estimatedCostUsd: payload?.estimated_cost_usd,
     });
+
+    // Background Habit Discovery Engine
+    if (settings.getAutoHabitSuggestions() && this.currentPrompt) {
+      const p = this.currentPrompt.toLowerCase();
+      const isCorrection = /(?:always|never|do not|don't|stop|instead|prefer|rule|habit|make sure)/i.test(p);
+      if (isCorrection) {
+        let title = "Workflow Rule";
+        const m = /(?:always|never|do not|don't|stop|instead|prefer|make sure)\s+([^\n.,!?]+)/i.exec(this.currentPrompt);
+        if (m && m[1]) {
+          title = m[1].trim();
+          if (title.length > 30) title = title.slice(0, 30) + "...";
+        }
+
+        const card = document.createElement("div");
+        card.className = "agent-notice agent-notice-grounded-warning";
+        card.style.display = "flex";
+        card.style.justifyContent = "space-between";
+        card.style.alignItems = "center";
+        card.style.padding = "12px 16px";
+        card.style.marginTop = "12px";
+        card.style.borderLeft = "4px solid var(--prism-emerald)";
+        card.style.background = "var(--prism-bg-subtle)";
+        card.style.borderRadius = "4px";
+
+        const info = document.createElement("div");
+        info.innerHTML = `<div style="font-weight: bold; font-size: 12px; color: var(--prism-emerald);">[HABIT SUGGESTION] Discovered Rule</div><div style="font-size: 11px; color: var(--prism-text-dim); margin-top: 4px;">"${this.currentPrompt}"</div>`;
+        card.appendChild(info);
+
+        const btn = document.createElement("button");
+        btn.className = "prism-action-btn";
+        btn.style.background = "var(--prism-emerald)";
+        btn.style.color = "#000";
+        btn.style.fontWeight = "bold";
+        btn.style.padding = "4px 12px";
+        btn.style.borderRadius = "4px";
+        btn.style.border = "none";
+        btn.style.cursor = "pointer";
+        btn.style.fontSize = "11px";
+        btn.textContent = "Accept";
+
+        const ruleText = this.currentPrompt;
+        const ruleTitle = title;
+        btn.onclick = () => {
+          void habitsManager.rememberHabit(ruleTitle, ruleText, "discovered").then((res) => {
+            if (res) {
+              btn.textContent = "✓ Accepted";
+              btn.style.background = "var(--prism-bg-subtle)";
+              btn.style.color = "var(--prism-emerald)";
+              btn.disabled = true;
+            }
+          });
+        };
+        card.appendChild(btn);
+
+        this.opts.view.appendCard(card);
+      }
+    }
 
     const shell = dedupe(this.currentTurnVerifiedShellCommands).slice(0, 6);
     const slash = extractSuggestedSlashCommands(this.responseBuffer);
