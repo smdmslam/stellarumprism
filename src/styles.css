@@ -5645,6 +5645,72 @@ input:checked + .toggle-slider:before {
 /* Tokens stay left; elapsed time sits on the right edge of the bar */
 .input-info-row .elapsed-metric {
   margin-left: auto;
+  /* Rail first, then label + time as one unit (no rail between label and clock). */
+  gap: 10px;
+}
+
+/* Label + elapsed value stay paired; width stable while seconds tick */
+.elapsed-metric-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+/* Spark marches across grey slot markers while the agent is busy */
+.agent-activity-rail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  /* Fixed strip so ✲ vs · never nudges “Elapsed” or the clock */
+  width: 92px;
+  min-width: 92px;
+  max-width: 92px;
+  min-height: 12px;
+  user-select: none;
+}
+
+.agent-activity-rail--idle {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-activity-cell {
+  flex: 0 0 11px;
+  width: 11px;
+  min-width: 11px;
+  max-width: 11px;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1;
+  font-family: var(--font-mono);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.agent-activity-cell::before {
+  content: "·";
+  color: rgba(148, 163, 184, 0.4);
+}
+
+.agent-activity-cell.is-active::before {
+  content: "✲";
+  color: #7dd3fc;
+  font-weight: 600;
+  text-shadow: 0 0 8px rgba(125, 211, 252, 0.35);
+}
+
+/* One static spark instead of stepping when the OS requests reduced motion */
+.agent-activity-rail--reduced .agent-activity-cell:nth-child(n + 2) {
+  display: none;
+  width: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .info-item {

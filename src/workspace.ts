@@ -206,6 +206,11 @@ export class Workspace {
   /** Wall-clock span for the in-flight agent request (see `setBusyState`). */
   private taskElapsedTimer: ReturnType<typeof setInterval> | null = null;
   private taskBusyStartMs: number | null = null;
+  /** Stepped “thinking” rail to the left of elapsed time while the agent is busy. */
+  private taskActivityRailTimer: ReturnType<typeof setInterval> | null = null;
+  private taskActivityRailIndex = 0;
+  private static readonly ACTIVITY_RAIL_SLOT_COUNT = 7;
+  private static readonly ACTIVITY_RAIL_TICK_MS = 360;
   /** Next agent turn queued while another is in-flight (single-slot). */
   private queuedAgentPrompt: {
     prompt: string;
@@ -536,10 +541,18 @@ export class Workspace {
               </span>
               <span
                 class="info-item elapsed-metric"
-                title="Elapsed time for this in-flight agent request (per request; resets when the turn completes or is cancelled)"
+                title="Elapsed time for this in-flight agent request (per request; resets when the turn completes or is cancelled). The spark moves while Prism is working."
               >
-                <span class="info-label">Elapsed</span>
-                <span class="info-value" id="task-elapsed-display">0:00</span>
+                <span
+                  class="agent-activity-rail agent-activity-rail--idle"
+                  id="task-activity-rail"
+                  role="presentation"
+                  aria-hidden="true"
+                ></span>
+                <span class="elapsed-metric-text">
+                  <span class="info-label">Elapsed</span>
+                  <span class="info-value" id="task-elapsed-display">0:00</span>
+                </span>
               </span>
             </div>
             <div class="input-row">
@@ -2356,6 +2369,7 @@ export class Workspace {
     this.stopTaskElapsedTicker();
     this.taskBusyStartMs = Date.now();
     this.updateTaskElapsedDisplay(0);
+    this.startActivityRail();
     this.taskElapsedTimer = window.setInterval(() => {
       const start = this.taskBusyStartMs;
       if (start == null) return;
@@ -2369,12 +2383,75 @@ export class Workspace {
       window.clearInterval(this.taskElapsedTimer);
       this.taskElapsedTimer = null;
     }
+    this.stopActivityRail();
     // Preserve the completed turn's elapsed time so users can compare
     // long-running test runs without having to keep watching live.
     if (start != null) {
       this.updateTaskElapsedDisplay(Date.now() - start);
     }
     this.taskBusyStartMs = null;
+  }
+
+  private startActivityRail(): void {
+    this.stopActivityRail();
+    const rail = this.root.querySelector<HTMLElement>("#task-activity-rail");
+    if (!rail) return;
+    const n = Workspace.ACTIVITY_RAIL_SLOT_COUNT;
+    rail.replaceChildren();
+    for (let i = 0; i < n; i++) {
+      const cell = document.createElement("span");
+      cell.className = "agent-activity-cell";
+      cell.setAttribute("aria-hidden", "true");
+      rail.appendChild(cell);
+    }
+    rail.classList.remove("agent-activity-rail--idle");
+    rail.setAttribute("role", "img");
+    rail.setAttribute("aria-label", "Agent working");
+    rail.removeAttribute("aria-hidden");
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    if (reduced) {
+      rail.classList.add("agent-activity-rail--reduced");
+      this.renderActivityRailFrame();
+      return;
+    }
+    rail.classList.remove("agent-activity-rail--reduced");
+    this.taskActivityRailIndex = 0;
+    this.renderActivityRailFrame();
+    this.taskActivityRailTimer = window.setInterval(() => {
+      this.taskActivityRailIndex =
+        (this.taskActivityRailIndex + 1) % Workspace.ACTIVITY_RAIL_SLOT_COUNT;
+      this.renderActivityRailFrame();
+    }, Workspace.ACTIVITY_RAIL_TICK_MS);
+  }
+
+  private stopActivityRail(): void {
+    if (this.taskActivityRailTimer != null) {
+      window.clearInterval(this.taskActivityRailTimer);
+      this.taskActivityRailTimer = null;
+    }
+    this.taskActivityRailIndex = 0;
+    const rail = this.root.querySelector<HTMLElement>("#task-activity-rail");
+    if (rail) {
+      rail.replaceChildren();
+      rail.classList.remove("agent-activity-rail--reduced");
+      rail.classList.add("agent-activity-rail--idle");
+      rail.setAttribute("role", "presentation");
+      rail.removeAttribute("aria-label");
+      rail.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  private renderActivityRailFrame(): void {
+    const rail = this.root.querySelector<HTMLElement>("#task-activity-rail");
+    if (!rail) return;
+    const cells = rail.querySelectorAll<HTMLElement>(".agent-activity-cell");
+    const idx =
+      rail.classList.contains("agent-activity-rail--reduced") ? 0 : this.taskActivityRailIndex;
+    cells.forEach((cell, i) => {
+      cell.classList.toggle("is-active", i === idx);
+    });
   }
 
   private updateTaskElapsedDisplay(elapsedMs: number): void {
