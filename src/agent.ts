@@ -1577,7 +1577,7 @@ const FAKE_COMMANDS = new Set([
  * Filters out pseudo-commands (fake tool-call syntax) that would fail if
  * executed in a real shell.
  */
-function extractCodeBlocks(markdown: string): string[] {
+export function extractCodeBlocks(markdown: string): string[] {
   const out: string[] = [];
   const re = /```([A-Za-z0-9_+-]*)\n([\s\S]*?)```/g;
   let m: RegExpExecArray | null;

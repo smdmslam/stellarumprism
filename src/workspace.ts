@@ -38,6 +38,7 @@ import { listSkills, readSkill, renderSkillsMarkdown, type SkillBody, type Skill
 import { decideEngagement, formatKB, SESSION_SKILL_BUDGET_BYTES } from "./skill-limits";
 import { extractFileRefs, resolveFileRefs } from "./file-refs";
 import { settings } from "./settings";
+import { habitsManager } from "./habits";
 import { findMode, type Mode } from "./modes";
 import {
   applyRouteGuardrails,
@@ -1435,6 +1436,59 @@ export class Workspace {
       return;
     }
 
+    // /remember <title> | <rule> — commit a workflow habit/rule to memory.
+    const rememberMatch = /^\s*\/remember\s+(\S.*)$/i.exec(text);
+    if (rememberMatch) {
+      const parts = rememberMatch[1].split("|");
+      const title = parts[0].trim();
+      const rule = (parts[1] ?? "").trim();
+      if (!title || !rule) {
+        this.notifyError(`[habits] use /remember <title> | <rule description>`);
+        return;
+      }
+      void habitsManager.rememberHabit(title, rule, "manual").then((res) => {
+        if (res) {
+          this.notify(`[habits] remembered rule "${stripAnsi(title)}"`);
+        } else {
+          this.notifyError(`[habits] failed to commit rule`);
+        }
+      });
+      return;
+    }
+
+    // /habits [delete <id>] — list or manage active habits.
+    const habitsSlash = /^\s*\/habits(?:\s+(.*))?\s*$/i.exec(text);
+    if (habitsSlash) {
+      const arg = (habitsSlash[1] ?? "").trim();
+      if (arg.toLowerCase().startsWith("delete ")) {
+        const id = arg.slice(7).trim();
+        void habitsManager.deleteHabit(id).then((ok) => {
+          if (ok) {
+            this.notify(`[habits] deleted rule ${id}`);
+          } else {
+            this.notifyError(`[habits] failed to delete rule ${id}`);
+          }
+        });
+        return;
+      }
+      void habitsManager.getHabits().then((habits) => {
+        if (habits.length === 0) {
+          this.notify(`[habits] no active habits. Use /remember <title> | <rule>`);
+          return;
+        }
+        let out = `## Active Habits & Rules\n\n`;
+        for (const h of habits) {
+          out += `- **${h.title}** (${h.id}): ${h.rule}\n`;
+        }
+        if (this.agentView) {
+          this.agentView.appendReport(out);
+        } else {
+          this.notify(stripAnsi(out));
+        }
+      });
+      return;
+    }
+
     // /build [--max-rounds=N] <feature description> — substrate-gated
     // generation. Drives plan → verify → iterate using the same agent
     // loop as /audit and /fix, with a higher round budget. Each edit
@@ -1948,6 +2002,12 @@ export class Workspace {
           ? `${systemPrefix}\n\n${manifest}`
           : manifest;
       }
+    }
+    const habitsBlock = await habitsManager.getHabitsPromptBlock();
+    if (habitsBlock.length > 0) {
+      systemPrefix = systemPrefix
+        ? `${systemPrefix}\n\n${habitsBlock}`
+        : habitsBlock;
     }
     // One-shot model-switch continuity handoff. This packet is compact
     // by default, with optional expansion for explicit "continue/resume"
