@@ -246,9 +246,9 @@ export interface FileEditorCallbacks {
  */
 const prismMarkdownHighlightStyle = HighlightStyle.define([
   { tag: t.heading, color: "#7dd3fc", fontWeight: "700" },
-  { tag: t.heading1, color: "#7dd3fc", fontWeight: "800" },
-  { tag: t.heading2, color: "#7dd3fc", fontWeight: "700" },
-  { tag: t.heading3, color: "#7dd3fc", fontWeight: "700" },
+  { tag: t.heading1, color: "#7dd3fc", fontWeight: "800", fontSize: "1.4em" },
+  { tag: t.heading2, color: "#7dd3fc", fontWeight: "700", fontSize: "1.2em" },
+  { tag: t.heading3, color: "#7dd3fc", fontWeight: "700", fontSize: "1.1em" },
   { tag: t.heading4, color: "#7dd3fc", fontWeight: "700" },
   { tag: t.heading5, color: "#7dd3fc", fontWeight: "600" },
   { tag: t.heading6, color: "#7dd3fc", fontWeight: "600" },
