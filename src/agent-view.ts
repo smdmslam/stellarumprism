@@ -627,6 +627,14 @@ export class AgentView implements AgentViewApi {
     }
     header.appendChild(nameEl);
 
+    // Absorb leftover header width so clicks past the filename still hit the
+    // header toggle (name used flex:1 and stopPropagation, which swallowed
+    // most of the bar).
+    const headerFill = document.createElement("span");
+    headerFill.className = "agent-diff-header-fill";
+    headerFill.setAttribute("aria-hidden", "true");
+    header.appendChild(headerFill);
+
     const revealBtn = document.createElement("span");
     revealBtn.className = "agent-diff-reveal";
     revealBtn.title = "Reveal in explorer";

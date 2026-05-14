@@ -1828,7 +1828,9 @@ a.markdown-code-url-link--inline:hover code {
 }
 
 .agent-diff-name {
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(52%, 320px);
   font-size: 13px;
   font-weight: 600;
   color: #e5e7eb;
@@ -1836,6 +1838,13 @@ a.markdown-code-url-link--inline:hover code {
   overflow: hidden;
   text-overflow: ellipsis;
   font-family: var(--prism-font-mono);
+}
+
+.agent-diff-header-fill {
+  flex: 1 1 auto;
+  min-width: 12px;
+  min-height: 1px;
+  align-self: stretch;
 }
 
 .agent-diff-reveal {
